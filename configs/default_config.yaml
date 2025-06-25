@@ -1,0 +1,55 @@
+# Configuration file for RL-Mesh-Generation project
+
+# SAC Algorithm Parameters
+sac:
+  learning_rate: 3e-4
+  discount_factor: 0.99
+  buffer_size: 1000000
+  batch_size: 256
+  tau: 0.005
+  alpha: 0.2
+  gradient_steps: 1
+  polyak: 0.995
+
+# Network Architecture
+networks:
+  actor_hidden_layers: [128, 128, 128]
+  critic_hidden_layers: [128, 128, 128]
+  activation: relu
+
+# Environment Parameters
+environment:
+  # State representation
+  n_neighbors: 2
+  n_fan_points: 3
+  beta_obs: 6.0
+
+  # Action space
+  alpha_action: 2.0
+
+  # Reward function
+  v_density: 1.0
+  M_angle: 60.0
+
+  # Reference vertex selection
+  nrv: 2
+
+# Training Parameters
+training:
+  total_timesteps: 1200000
+  evaluation_freq: 10000
+  seed: 356
+  log_interval: 1000
+  save_freq: 50000
+
+# Paths
+paths:
+  data_dir: "data/domains"
+  results_dir: "results"
+  models_dir: "results/models"
+  logs_dir: "results/logs"
+  figures_dir: "results/figures"
+
+# Domain settings
+domain:
+  training_domain: "T1.txt"
