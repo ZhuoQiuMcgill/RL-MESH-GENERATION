@@ -141,6 +141,7 @@ def setup_agent(config: dict, device: torch.device) -> SACAgent:
 
 def set_random_seeds(seed: int):
     """Set random seeds for reproducibility."""
+    seed = int(seed)  # Ensure seed is integer
     torch.manual_seed(seed)
     np.random.seed(seed)
     if torch.cuda.is_available():
@@ -187,14 +188,14 @@ def main():
     args = parse_arguments()
 
     # Load configuration
-    config = load_config(args.config)
+    config = load_config(args.configs)
 
     # Override configs with command line arguments
     if args.seed is not None:
-        config['training']['seed'] = args.seed
-        set_random_seeds(args.seed)
+        config['training']['seed'] = int(args.seed)
+        set_random_seeds(int(args.seed))
     elif 'seed' in config['training']:
-        set_random_seeds(config['training']['seed'])
+        set_random_seeds(int(config['training']['seed']))
 
     # Setup device
     device = setup_device(args.device)

@@ -32,14 +32,14 @@ class MeshEnv(gym.Env):
 
         self.config = config
 
-        # Environment parameters
-        self.n_neighbors = config['environment']['n_neighbors']
-        self.n_fan_points = config['environment']['n_fan_points']
-        self.beta_obs = config['environment']['beta_obs']
-        self.alpha_action = config['environment']['alpha_action']
-        self.v_density = config['environment']['v_density']
-        self.M_angle = config['environment']['M_angle']
-        self.nrv = config['environment']['nrv']
+        # Environment parameters (ensure proper types)
+        self.n_neighbors = int(config['environment']['n_neighbors'])
+        self.n_fan_points = int(config['environment']['n_fan_points'])
+        self.beta_obs = float(config['environment']['beta_obs'])
+        self.alpha_action = float(config['environment']['alpha_action'])
+        self.v_density = float(config['environment']['v_density'])
+        self.M_angle = float(config['environment']['M_angle'])
+        self.nrv = int(config['environment']['nrv'])
 
         # Domain settings
         self.domain_file = config['domain']['training_domain']

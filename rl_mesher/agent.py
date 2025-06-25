@@ -30,18 +30,18 @@ class SACAgent:
         self.config = config
         self.device = device
 
-        # Algorithm parameters
-        self.lr = config['sac']['learning_rate']
-        self.gamma = config['sac']['discount_factor']
-        self.tau = config['sac']['tau']
-        self.alpha = config['sac']['alpha']
-        self.batch_size = config['sac']['batch_size']
-        self.buffer_size = config['sac']['buffer_size']
-        self.gradient_steps = config['sac']['gradient_steps']
+        # Algorithm parameters (ensure proper types)
+        self.lr = float(config['sac']['learning_rate'])
+        self.gamma = float(config['sac']['discount_factor'])
+        self.tau = float(config['sac']['tau'])
+        self.alpha = float(config['sac']['alpha'])
+        self.batch_size = int(config['sac']['batch_size'])
+        self.buffer_size = int(config['sac']['buffer_size'])
+        self.gradient_steps = int(config['sac']['gradient_steps'])
 
-        # Network parameters
-        self.n_neighbors = config['environment']['n_neighbors']
-        self.n_fan_points = config['environment']['n_fan_points']
+        # Network parameters (ensure proper types)
+        self.n_neighbors = int(config['environment']['n_neighbors'])
+        self.n_fan_points = int(config['environment']['n_fan_points'])
         self.hidden_layers = config['networks']['actor_hidden_layers']
 
         # Initialize networks
@@ -54,7 +54,7 @@ class SACAgent:
         self.replay_buffer = MeshReplayBuffer(self.buffer_size, device)
 
         # Automatic entropy tuning
-        self.target_entropy = -3  # For 3D action space
+        self.target_entropy = -3.0  # For 3D action space
         self.log_alpha = torch.tensor(np.log(self.alpha), requires_grad=True, device=device)
         self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr)
 
@@ -336,11 +336,11 @@ class MeshSACTrainer:
         self.env = env
         self.config = config
 
-        # Training parameters
-        self.total_timesteps = config['training']['total_timesteps']
-        self.eval_freq = config['training']['evaluation_freq']
-        self.log_interval = config['training']['log_interval']
-        self.save_freq = config['training']['save_freq']
+        # Training parameters (ensure proper types)
+        self.total_timesteps = int(config['training']['total_timesteps'])
+        self.eval_freq = int(config['training']['evaluation_freq'])
+        self.log_interval = int(config['training']['log_interval'])
+        self.save_freq = int(config['training']['save_freq'])
 
         # Paths
         self.models_dir = config['paths']['models_dir']
