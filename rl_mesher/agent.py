@@ -114,10 +114,10 @@ class SACAgent:
         """Ensure all state components are tensors on correct device."""
         tensor_state = {}
         for key, value in state_dict.items():
-            if isinstance(value, np.ndarray):
-                tensor_state[key] = torch.tensor(value, dtype=torch.float32, device=self.device)
-            elif isinstance(value, torch.Tensor):
+            if isinstance(value, torch.Tensor):
                 tensor_state[key] = value.to(self.device)
+            elif isinstance(value, np.ndarray):
+                tensor_state[key] = torch.tensor(value, dtype=torch.float32, device=self.device)
             else:
                 tensor_state[key] = torch.tensor([value], dtype=torch.float32, device=self.device)
         return tensor_state

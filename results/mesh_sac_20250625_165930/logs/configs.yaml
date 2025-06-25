@@ -1,0 +1,41 @@
+domain:
+  training_domain: T1.txt
+environment:
+  M_angle: 60.0
+  alpha_action: 2.0
+  beta_obs: 6.0
+  n_fan_points: 3
+  n_neighbors: 2
+  nrv: 2
+  v_density: 1.0
+networks:
+  activation: relu
+  actor_hidden_layers:
+  - 128
+  - 128
+  - 128
+  critic_hidden_layers:
+  - 128
+  - 128
+  - 128
+paths:
+  data_dir: data/domains
+  figures_dir: results\mesh_sac_20250625_165930\figures
+  logs_dir: results\mesh_sac_20250625_165930\logs
+  models_dir: results\mesh_sac_20250625_165930\models
+  results_dir: results
+sac:
+  alpha: 0.2
+  batch_size: 256
+  buffer_size: 1000000
+  discount_factor: 0.99
+  gradient_steps: 1
+  learning_rate: 3e-4
+  polyak: 0.995
+  tau: 0.005
+training:
+  evaluation_freq: 10000
+  log_interval: 1000
+  save_freq: 50000
+  seed: 356
+  total_timesteps: 1200000

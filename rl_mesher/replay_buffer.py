@@ -157,9 +157,13 @@ class MeshReplayBuffer:
         """Convert state dictionary numpy arrays to tensors."""
         tensor_dict = {}
         for key, value in state_dict.items():
-            if isinstance(value, np.ndarray):
+            if isinstance(value, torch.Tensor):
+                # Already a tensor, just move to correct device
+                tensor_dict[key] = value.to(self.device)
+            elif isinstance(value, np.ndarray):
                 tensor_dict[key] = torch.tensor(value, dtype=torch.float32, device=self.device)
             else:
+                # Scalar value
                 tensor_dict[key] = torch.tensor([value], dtype=torch.float32, device=self.device)
         return tensor_dict
 
@@ -334,9 +338,13 @@ class PrioritizedReplayBuffer:
         """Convert state dictionary numpy arrays to tensors."""
         tensor_dict = {}
         for key, value in state_dict.items():
-            if isinstance(value, np.ndarray):
+            if isinstance(value, torch.Tensor):
+                # Already a tensor, just move to correct device
+                tensor_dict[key] = value.to(self.device)
+            elif isinstance(value, np.ndarray):
                 tensor_dict[key] = torch.tensor(value, dtype=torch.float32, device=self.device)
             else:
+                # Scalar value
                 tensor_dict[key] = torch.tensor([value], dtype=torch.float32, device=self.device)
         return tensor_dict
 

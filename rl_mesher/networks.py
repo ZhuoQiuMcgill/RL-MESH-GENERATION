@@ -240,24 +240,65 @@ class StateEncoder(nn.Module):
         Returns:
             Encoded state tensor
         """
-        # Extract and flatten components
-        ref_vertex = state_dict['ref_vertex'].flatten()
-        left_neighbors = state_dict['left_neighbors'].flatten()
-        right_neighbors = state_dict['right_neighbors'].flatten()
-        fan_points = state_dict['fan_points'].flatten()
+        # Extract components
+        ref_vertex = state_dict['ref_vertex']
+        left_neighbors = state_dict['left_neighbors']
+        right_neighbors = state_dict['right_neighbors']
+        fan_points = state_dict['fan_points']
         area_ratio = state_dict['area_ratio']
+
+        # Handle batch dimension - check if we're processing a batch
+        if ref_vertex.dim() > 1:  # Batch processing
+            batch_size = ref_vertex.shape[0]
+
+            # Flatten each component properly for batch processing
+            ref_vertex_flat = ref_vertex.view(batch_size, -1)
+            left_neighbors_flat = left_neighbors.view(batch_size, -1)
+            right_neighbors_flat = right_neighbors.view(batch_size, -1)
+            fan_points_flat = fan_points.view(batch_size, -1)
+
+            # Handle area_ratio for batch processing
+            if area_ratio.dim() == 1:
+                area_ratio_flat = area_ratio.unsqueeze(1)  # [batch_size, 1]
+            else:
+                area_ratio_flat = area_ratio.view(batch_size, -1)
+
+        else:  # Single sample processing
+            # Flatten components
+            ref_vertex_flat = ref_vertex.flatten()
+            left_neighbors_flat = left_neighbors.flatten()
+            right_neighbors_flat = right_neighbors.flatten()
+            fan_points_flat = fan_points.flatten()
+
+            # Handle area_ratio for single sample
+            if area_ratio.dim() == 0:
+                area_ratio_flat = area_ratio.unsqueeze(0)
+            else:
+                area_ratio_flat = area_ratio.flatten()
+
+            # Add batch dimension for consistency
+            ref_vertex_flat = ref_vertex_flat.unsqueeze(0)
+            left_neighbors_flat = left_neighbors_flat.unsqueeze(0)
+            right_neighbors_flat = right_neighbors_flat.unsqueeze(0)
+            fan_points_flat = fan_points_flat.unsqueeze(0)
+            area_ratio_flat = area_ratio_flat.unsqueeze(0)
 
         # Concatenate all components
         state_vector = torch.cat([
-            ref_vertex,
-            left_neighbors,
-            right_neighbors,
-            fan_points,
-            area_ratio.unsqueeze(0) if area_ratio.dim() == 0 else area_ratio
-        ])
+            ref_vertex_flat,
+            left_neighbors_flat,
+            right_neighbors_flat,
+            fan_points_flat,
+            area_ratio_flat
+        ], dim=1)
 
         # Encode
         encoded_state = self.encoder(state_vector)
+
+        # Remove batch dimension if input was single sample
+        if ref_vertex.dim() == 1:
+            encoded_state = encoded_state.squeeze(0)
+
         return encoded_state
 
 

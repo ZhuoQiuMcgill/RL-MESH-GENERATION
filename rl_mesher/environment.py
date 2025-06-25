@@ -303,13 +303,17 @@ class MeshEnv(gym.Env):
             all_points, ref_vertex, reference_direction
         )
 
+        # Ensure we have the right number of points
+        while len(relative_points) < 1 + 2 * self.n_neighbors + self.n_fan_points:
+            relative_points.append(np.zeros(2))
+
         # Create observation dictionary
         observation = {
             'ref_vertex': torch.tensor(relative_points[0], dtype=torch.float32),
             'left_neighbors': torch.tensor(np.array(relative_points[1:1 + self.n_neighbors]), dtype=torch.float32),
             'right_neighbors': torch.tensor(np.array(relative_points[1 + self.n_neighbors:1 + 2 * self.n_neighbors]),
                                             dtype=torch.float32),
-            'fan_points': torch.tensor(np.array(relative_points[1 + 2 * self.n_neighbors:]), dtype=torch.float32),
+            'fan_points': torch.tensor(np.array(relative_points[1 + 2 * self.n_neighbors:1 + 2 * self.n_neighbors + self.n_fan_points]), dtype=torch.float32),
             'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
         }
 
