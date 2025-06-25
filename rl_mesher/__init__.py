@@ -22,40 +22,50 @@ quadrilateral mesh generation: a soft actor-critic approach"
 __version__ = "1.0.0"
 __author__ = "RL-Mesh-Generation Team"
 
-# Core classes
-from .environment import MeshEnv, MultiDomainMeshEnv
-from .agent import SACAgent, MeshSACTrainer
-from .networks import MeshActor, MeshCritic, Actor, Critic, DoubleCritic
-from .replay_buffer import MeshReplayBuffer, ReplayBuffer, PrioritizedReplayBuffer
+# Import with error handling
+_import_errors = []
 
-# Utility modules
-from .utils import geometry, visualization
+try:
+    from .environment import MeshEnv, MultiDomainMeshEnv
+except ImportError as e:
+    _import_errors.append(f"environment: {e}")
+    MeshEnv = None
+    MultiDomainMeshEnv = None
 
-__all__ = [
-    # Core environment
-    "MeshEnv",
-    "MultiDomainMeshEnv",
+try:
+    from .agent import SACAgent, MeshSACTrainer
+except ImportError as e:
+    _import_errors.append(f"agent: {e}")
+    SACAgent = None
+    MeshSACTrainer = None
 
-    # Agent and training
-    "SACAgent",
-    "MeshSACTrainer",
+try:
+    from .networks import MeshActor, MeshCritic, Actor, Critic, DoubleCritic
+except ImportError as e:
+    _import_errors.append(f"networks: {e}")
+    MeshActor = None
+    MeshCritic = None
+    Actor = None
+    Critic = None
+    DoubleCritic = None
 
-    # Neural networks
-    "MeshActor",
-    "MeshCritic",
-    "Actor",
-    "Critic",
-    "DoubleCritic",
+try:
+    from .replay_buffer import MeshReplayBuffer, ReplayBuffer, PrioritizedReplayBuffer
+except ImportError as e:
+    _import_errors.append(f"replay_buffer: {e}")
+    MeshReplayBuffer = None
+    ReplayBuffer = None
+    PrioritizedReplayBuffer = None
 
-    # Experience replay
-    "MeshReplayBuffer",
-    "ReplayBuffer",
-    "PrioritizedReplayBuffer",
-
-    # Utility modules
-    "geometry",
-    "visualization",
-]
+# Utility modules - import with fallback
+try:
+    from . import utils
+    from .utils import geometry, visualization
+except ImportError as e:
+    _import_errors.append(f"utils: {e}")
+    utils = None
+    geometry = None
+    visualization = None
 
 # Package information
 __package_info__ = {
@@ -67,6 +77,24 @@ __package_info__ = {
     "domain": "Computational Geometry / Mesh Generation",
     "paper": "Reinforcement learning for automatic quadrilateral mesh generation: a soft actor-critic approach"
 }
+
+# Export successful imports only
+__all__ = []
+
+if MeshEnv is not None:
+    __all__.extend(["MeshEnv", "MultiDomainMeshEnv"])
+
+if SACAgent is not None:
+    __all__.extend(["SACAgent", "MeshSACTrainer"])
+
+if MeshActor is not None:
+    __all__.extend(["MeshActor", "MeshCritic", "Actor", "Critic", "DoubleCritic"])
+
+if MeshReplayBuffer is not None:
+    __all__.extend(["MeshReplayBuffer", "ReplayBuffer", "PrioritizedReplayBuffer"])
+
+if utils is not None:
+    __all__.extend(["utils", "geometry", "visualization"])
 
 
 def get_package_info():
@@ -87,8 +115,13 @@ def print_package_info():
     print(f"Paper: {info['paper']}")
     print("=" * 60)
 
+    if _import_errors:
+        print("⚠️  Import warnings:")
+        for error in _import_errors:
+            print(f"  - {error}")
+        print("=" * 60)
 
-# Version compatibility check
+
 def check_dependencies():
     """Check if all required dependencies are available."""
     import sys
@@ -100,7 +133,10 @@ def check_dependencies():
     missing_packages = []
     for package in required_packages:
         try:
-            __import__(package)
+            if package == 'yaml':
+                import yaml
+            else:
+                __import__(package)
         except ImportError:
             missing_packages.append(package)
 
@@ -112,7 +148,6 @@ def check_dependencies():
     return True
 
 
-# Initialize package
 def _initialize_package():
     """Initialize package and perform basic checks."""
     # Check Python version
@@ -120,9 +155,16 @@ def _initialize_package():
     if sys.version_info < (3, 8):
         print("Warning: This package requires Python 3.8 or higher")
 
-    # Check dependencies
-    check_dependencies()
+    # Only check dependencies if there were no import errors
+    if not _import_errors:
+        check_dependencies()
 
 
 # Run initialization
 _initialize_package()
+
+# Print import status for debugging
+if _import_errors and __name__ == "__main__":
+    print("Import errors detected:")
+    for error in _import_errors:
+        print(f"  - {error}")

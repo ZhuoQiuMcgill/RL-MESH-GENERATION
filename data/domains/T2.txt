@@ -1,0 +1,33 @@
+# Training Domain T2 - Complex domain with bottleneck regions
+# This domain contains narrow passages and irregular boundary distribution
+# Coordinates are given as x y pairs, one vertex per line
+# The boundary should be specified in counter-clockwise order
+
+0.0 0.0
+2.0 0.0
+3.0 0.0
+4.0 0.0
+5.0 0.0
+5.0 1.0
+5.0 2.0
+4.5 2.0
+4.0 2.0
+4.0 3.0
+4.0 4.0
+5.0 4.0
+5.0 5.0
+5.0 6.0
+4.0 6.0
+3.0 6.0
+2.0 6.0
+1.0 6.0
+0.0 6.0
+0.0 5.0
+0.0 4.0
+0.5 4.0
+1.0 4.0
+1.0 3.0
+1.0 2.0
+0.5 2.0
+0.0 2.0
+0.0 1.0

@@ -10,6 +10,18 @@ import sys
 import os
 import platform
 from typing import Dict, List, Tuple
+from pathlib import Path
+
+# Add project root to path - CRITICAL for package imports
+ROOT_DIR = os.getcwd()
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+# Also add the parent directory if we're in scripts/
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 
 def check_python_version() -> Tuple[bool, str]:
@@ -32,7 +44,10 @@ def check_package_import(package_name: str, optional: bool = False) -> Tuple[boo
             cuda_available = torch.cuda.is_available()
             device_info = f"CUDA: {'✅' if cuda_available else '❌'}"
             if cuda_available:
-                device_info += f" (GPU: {torch.cuda.get_device_name()})"
+                try:
+                    device_info += f" (GPU: {torch.cuda.get_device_name()})"
+                except:
+                    device_info += " (GPU: Available)"
             return True, f"✅ PyTorch {version} ({device_info})"
 
         elif package_name == 'numpy':
@@ -88,6 +103,9 @@ def check_package_import(package_name: str, optional: bool = False) -> Tuple[boo
 
 def check_project_structure() -> List[Tuple[bool, str]]:
     """Check if project structure is correct."""
+    # Use PROJECT_ROOT as base directory
+    base_dir = PROJECT_ROOT if os.path.exists(os.path.join(PROJECT_ROOT, 'rl_mesher')) else ROOT_DIR
+
     required_paths = [
         'rl_mesher/',
         'rl_mesher/__init__.py',
@@ -108,7 +126,8 @@ def check_project_structure() -> List[Tuple[bool, str]]:
 
     results = []
     for path in required_paths:
-        if os.path.exists(path):
+        full_path = os.path.join(base_dir, path)
+        if os.path.exists(full_path):
             results.append((True, f"✅ {path}"))
         else:
             results.append((False, f"❌ {path} (missing)"))
@@ -118,11 +137,14 @@ def check_project_structure() -> List[Tuple[bool, str]]:
 
 def check_sample_domains() -> List[Tuple[bool, str]]:
     """Check if sample domain files exist."""
+    # Use PROJECT_ROOT as base directory
+    base_dir = PROJECT_ROOT if os.path.exists(os.path.join(PROJECT_ROOT, 'rl_mesher')) else ROOT_DIR
+
     domain_files = ['T1.txt', 'T2.txt', 'T3.txt']
     results = []
 
     for domain_file in domain_files:
-        path = os.path.join('data', 'domains', domain_file)
+        path = os.path.join(base_dir, 'data', 'domains', domain_file)
         if os.path.exists(path):
             try:
                 with open(path, 'r') as f:
@@ -140,11 +162,26 @@ def check_sample_domains() -> List[Tuple[bool, str]]:
 def check_rl_mesher_import() -> Tuple[bool, str]:
     """Check if rl_mesher package can be imported."""
     try:
+        # Ensure paths are set correctly
+        print(f"Debug: ROOT_DIR = {ROOT_DIR}")
+        print(f"Debug: PROJECT_ROOT = {PROJECT_ROOT}")
+        print(f"Debug: sys.path includes: {sys.path[:3]}...")
+
+        # Try different import strategies
         import rl_mesher
         info = rl_mesher.get_package_info()
         return True, f"✅ RL-MESH-GENERATION v{info['version']} successfully imported"
+
     except ImportError as e:
-        return False, f"❌ Cannot import rl_mesher: {str(e)}"
+        # Try alternative import method
+        try:
+            # Try importing directly from the project directory
+            sys.path.insert(0, os.path.join(PROJECT_ROOT, 'rl_mesher'))
+            import rl_mesher
+            info = rl_mesher.get_package_info()
+            return True, f"✅ RL-MESH-GENERATION v{info['version']} successfully imported (alternative method)"
+        except Exception as e2:
+            return False, f"❌ Cannot import rl_mesher: {str(e)}"
     except Exception as e:
         return False, f"❌ Error importing rl_mesher: {str(e)}"
 
@@ -157,6 +194,8 @@ def get_system_info() -> Dict[str, str]:
         'Processor': platform.processor() or 'Unknown',
         'Python Path': sys.executable,
         'Working Directory': os.getcwd(),
+        'Script Directory': SCRIPT_DIR,
+        'Project Root': PROJECT_ROOT,
     }
 
 
@@ -249,7 +288,8 @@ def main():
 
         if not import_ok:
             print("  - Fix package import issues")
-            print("    Check Python path and package installation")
+            print("    Try running: python fix_installation.py")
+            print("    Or: pip install -e .")
 
     # GPU recommendation
     try:
