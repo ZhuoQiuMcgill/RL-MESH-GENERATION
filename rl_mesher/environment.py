@@ -160,17 +160,18 @@ class MeshEnv(gym.Env):
                 self.current_boundary, ref_idx, self.n_neighbors,
                 self.n_fan_points, self.beta_obs
             )
-        except Exception:
-            # If we can't get state components, give small penalty and continue
+        except Exception as e:
+            # If we can't get state components, give small penalty and terminate
             observation = self._get_observation()
             info = self._get_info()
             info.update({
                 'is_valid_element': False,
                 'element_count': len(self.generated_elements),
-                'area_ratio': self.current_area_ratio
+                'area_ratio': self.current_area_ratio,
+                'termination_reason': f'state_error: {str(e)}'
             })
 
-            return observation, -0.1, False, False, info
+            return observation, -1.0, True, False, info
 
         # Generate element based on action
         element_vertices, is_valid = self._generate_element(action, state_components, action_type)
@@ -180,13 +181,14 @@ class MeshEnv(gym.Env):
 
         # Update environment if element is valid
         terminated = False
+        termination_reason = None
 
         if is_valid:
             self.generated_elements.append(element_vertices)
 
-            # Update boundary
+            # Update boundary by properly removing the generated element
             try:
-                new_boundary = update_boundary(self.current_boundary, element_vertices)
+                new_boundary = self._update_boundary_properly(self.current_boundary, element_vertices)
 
                 # Validate the new boundary
                 if len(new_boundary) >= 3 and calculate_polygon_area(new_boundary) > 0:
@@ -200,19 +202,28 @@ class MeshEnv(gym.Env):
                     if len(self.current_boundary) <= 4:
                         reward += 10.0  # Completion bonus
                         terminated = True
+                        termination_reason = 'mesh_complete'
 
                 else:
-                    # Invalid boundary update, penalize
-                    reward -= 0.5
-                    is_valid = False
+                    # Invalid boundary update, penalize and terminate
+                    reward -= 5.0
+                    terminated = True
+                    termination_reason = 'invalid_boundary_update'
 
-            except Exception:
-                # Boundary update failed, penalize
-                reward -= 0.5
-                is_valid = False
+            except Exception as e:
+                # Boundary update failed, penalize and terminate
+                reward -= 5.0
+                terminated = True
+                termination_reason = f'boundary_update_error: {str(e)}'
+        else:
+            # Invalid element generated, small penalty but continue
+            reward -= 0.1
 
         # Check for truncation (max steps reached)
         truncated = self.step_count >= self.max_steps
+
+        if truncated and not terminated:
+            termination_reason = 'max_steps_reached'
 
         # Get next observation
         observation = self._get_observation()
@@ -225,7 +236,9 @@ class MeshEnv(gym.Env):
         info.update({
             'is_valid_element': is_valid,
             'element_count': len(self.generated_elements),
-            'area_ratio': self.current_area_ratio
+            'area_ratio': self.current_area_ratio,
+            'boundary_vertices': len(self.current_boundary),
+            'termination_reason': termination_reason
         })
 
         return observation, reward, terminated, truncated, info
@@ -251,29 +264,53 @@ class MeshEnv(gym.Env):
 
         # Ensure we have enough neighbors
         if len(left_neighbors) == 0 or len(right_neighbors) == 0:
-            # Simple fallback element
-            new_vertex = generate_action_coordinates(
-                action, ref_vertex, reference_direction,
-                self.alpha_action, base_length
-            )
-
-            # Create a simple quadrilateral
+            # Simple fallback element - create a small quadrilateral near reference vertex
+            offset = base_length * 0.1
             element_vertices = np.array([
                 ref_vertex,
-                ref_vertex + np.array([base_length * 0.5, 0]),
-                new_vertex,
-                ref_vertex + np.array([0, base_length * 0.5])
+                ref_vertex + np.array([offset, 0]),
+                ref_vertex + np.array([offset, offset]),
+                ref_vertex + np.array([0, offset])
             ])
         else:
             if action_type == 0:
                 # Type 0: Use existing vertices to form quadrilateral
-                # Create element using reference vertex and neighbors
-                element_vertices = np.array([
-                    ref_vertex,
-                    right_neighbors[0],
-                    (left_neighbors[0] + right_neighbors[0]) / 2,  # Midpoint
-                    left_neighbors[0]
-                ])
+                # This should properly remove vertices from the boundary
+                try:
+                    # Get the indices of the vertices we'll use for the element
+                    ref_idx = self._find_vertex_index(ref_vertex)
+                    left_idx = self._find_vertex_index(left_neighbors[0])
+                    right_idx = self._find_vertex_index(right_neighbors[0])
+
+                    # Create element using reference vertex and immediate neighbors
+                    element_vertices = np.array([
+                        ref_vertex,
+                        right_neighbors[0],
+                        left_neighbors[0],
+                        ref_vertex  # Close the quadrilateral
+                    ])
+                    # Remove duplicate last vertex
+                    element_vertices = element_vertices[:-1]
+
+                    # Add a small interior point to make it a proper quadrilateral
+                    center = np.mean([ref_vertex, right_neighbors[0], left_neighbors[0]], axis=0)
+                    interior_offset = np.array([-base_length * 0.1, base_length * 0.1])
+                    element_vertices = np.array([
+                        ref_vertex,
+                        right_neighbors[0],
+                        center + interior_offset,
+                        left_neighbors[0]
+                    ])
+
+                except Exception:
+                    # Fallback to simple quadrilateral
+                    offset = base_length * 0.1
+                    element_vertices = np.array([
+                        ref_vertex,
+                        ref_vertex + np.array([offset, 0]),
+                        ref_vertex + np.array([offset, offset]),
+                        ref_vertex + np.array([0, offset])
+                    ])
             else:
                 # Type 1: Generate new vertex based on action
                 new_vertex = generate_action_coordinates(
@@ -292,6 +329,71 @@ class MeshEnv(gym.Env):
         is_valid = is_element_valid(element_vertices, self.current_boundary)
 
         return element_vertices, is_valid
+
+    def _find_vertex_index(self, vertex: np.ndarray) -> int:
+        """Find the index of a vertex in the current boundary."""
+        for i, boundary_vertex in enumerate(self.current_boundary):
+            if np.allclose(vertex, boundary_vertex, atol=1e-6):
+                return i
+        return -1  # Not found
+
+    def _update_boundary_properly(self, boundary: np.ndarray, element_vertices: np.ndarray) -> np.ndarray:
+        """
+        Properly update boundary after element generation.
+        This should actually remove the generated element area from the boundary.
+
+        Args:
+            boundary: Current boundary
+            element_vertices: Generated element vertices
+
+        Returns:
+            Updated boundary
+        """
+        # This is a simplified approach for demonstration
+        # In a real implementation, this would require sophisticated polygon operations
+
+        # Find which boundary vertices are part of the element
+        vertices_to_remove = []
+        vertices_to_add = []
+
+        for i, element_vertex in enumerate(element_vertices):
+            boundary_idx = self._find_vertex_index(element_vertex)
+            if boundary_idx >= 0:
+                vertices_to_remove.append(boundary_idx)
+            else:
+                # This is a new vertex that should be added to the boundary
+                vertices_to_add.append(element_vertex)
+
+        # Create new boundary
+        new_boundary_list = []
+
+        # Sort removal indices in descending order to avoid index shifting issues
+        vertices_to_remove.sort(reverse=True)
+
+        # Start with original boundary
+        new_boundary_list = list(boundary)
+
+        # Remove vertices that are consumed by the element
+        # But be careful not to remove all vertices
+        if len(vertices_to_remove) > 0 and len(vertices_to_remove) < len(new_boundary_list) - 2:
+            for idx in vertices_to_remove:
+                if 0 <= idx < len(new_boundary_list):
+                    new_boundary_list.pop(idx)
+
+        # Add new vertices created by the element (if any)
+        for new_vertex in vertices_to_add:
+            # Insert new vertices at appropriate positions
+            # For simplicity, add them at the end for now
+            new_boundary_list.append(new_vertex)
+
+        # Convert back to numpy array
+        if len(new_boundary_list) >= 3:
+            new_boundary = np.array(new_boundary_list)
+        else:
+            # If boundary becomes too small, keep at least 3 vertices
+            new_boundary = boundary  # Fallback
+
+        return new_boundary
 
     def _calculate_reward(self, element_vertices: np.ndarray, is_valid: bool,
                           state_components: Dict) -> float:
@@ -318,6 +420,11 @@ class MeshEnv(gym.Env):
 
             # Combined reward
             reward = eta_e + eta_b + mu_t
+
+            # Bonus for reducing boundary size (encouraging progress)
+            original_boundary_size = len(self.current_boundary)
+            progress_bonus = 0.1 * (1.0 / max(1, original_boundary_size - 4))
+            reward += progress_bonus
 
             return reward
 

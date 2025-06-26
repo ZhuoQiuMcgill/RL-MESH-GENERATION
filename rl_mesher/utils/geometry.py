@@ -8,6 +8,7 @@ from shapely.ops import nearest_points
 def calculate_reference_vertex(boundary: np.ndarray, nrv: int = 2) -> int:
     """
     Calculate reference vertex using minimum average angle criterion.
+    Uses CLOCKWISE orientation as specified in the paper.
 
     Args:
         boundary: Array of boundary vertices [N, 2]
@@ -24,8 +25,9 @@ def calculate_reference_vertex(boundary: np.ndarray, nrv: int = 2) -> int:
         angles = []
 
         for j in range(1, nrv + 1):
-            left_idx = (i - j) % n_vertices
-            right_idx = (i + j) % n_vertices
+            # CLOCKWISE orientation: left side is negative direction, right side is positive
+            left_idx = (i - j) % n_vertices  # Clockwise left (negative direction)
+            right_idx = (i + j) % n_vertices  # Clockwise right (positive direction)
 
             v_left = boundary[left_idx]
             v_center = boundary[i]
@@ -65,7 +67,7 @@ def calculate_angle(p1: np.ndarray, p2: np.ndarray, p3: np.ndarray) -> float:
 def get_state_components(boundary: np.ndarray, ref_idx: int, n: int, g: int,
                          beta: float) -> Dict:
     """
-    Extract state components around reference vertex.
+    Extract state components around reference vertex using CLOCKWISE orientation.
 
     Args:
         boundary: Boundary vertices
@@ -80,37 +82,38 @@ def get_state_components(boundary: np.ndarray, ref_idx: int, n: int, g: int,
     n_vertices = len(boundary)
     ref_vertex = boundary[ref_idx]
 
-    # Get neighboring vertices
+    # Get neighboring vertices using CLOCKWISE orientation
     left_neighbors = []
     right_neighbors = []
 
     for i in range(1, n + 1):
-        left_idx = (ref_idx - i) % n_vertices
-        right_idx = (ref_idx + i) % n_vertices
+        # CLOCKWISE: left is negative direction, right is positive direction
+        left_idx = (ref_idx - i) % n_vertices  # Clockwise left
+        right_idx = (ref_idx + i) % n_vertices  # Clockwise right
         left_neighbors.append(boundary[left_idx])
         right_neighbors.append(boundary[right_idx])
 
-    # Calculate base length L
-    edge_lengths = []
-    for i in range(n):
-        if i == 0:
-            left_edge = np.linalg.norm(ref_vertex - left_neighbors[i])
-            right_edge = np.linalg.norm(ref_vertex - right_neighbors[i])
-        else:
-            left_edge = np.linalg.norm(left_neighbors[i - 1] - left_neighbors[i])
-            right_edge = np.linalg.norm(right_neighbors[i - 1] - right_neighbors[i])
-
-        edge_lengths.extend([left_edge, right_edge])
-
-    L = np.mean(edge_lengths)
+    # Calculate base length L according to Equation (2) from paper
+    L = calculate_base_length_equation2(ref_vertex, left_neighbors, right_neighbors, n)
     Lr = beta * L
 
-    # Get fan-shaped observation points
-    fan_points = get_fan_observation_points(boundary, ref_idx, right_neighbors[0],
-                                            g, Lr)
+    # Get fan-shaped observation points using correct V_{l,1} and V_{r,1}
+    if len(left_neighbors) > 0 and len(right_neighbors) > 0:
+        v_left_1 = left_neighbors[0]  # V_{l,1}
+        v_right_1 = right_neighbors[0]  # V_{r,1}
+        fan_points = get_fan_observation_points_corrected(
+            boundary, ref_idx, ref_vertex, v_left_1, v_right_1, g, Lr
+        )
+    else:
+        # Fallback for edge cases
+        fan_points = [ref_vertex] * g
 
-    # Transform to relative coordinates
-    reference_direction = right_neighbors[0] - ref_vertex
+    # Reference direction should be V_0 -> V_{r,1}
+    if len(right_neighbors) > 0:
+        reference_direction = right_neighbors[0] - ref_vertex
+    else:
+        # Fallback
+        reference_direction = np.array([1.0, 0.0])
 
     state_components = {
         'ref_vertex': ref_vertex,
@@ -124,48 +127,96 @@ def get_state_components(boundary: np.ndarray, ref_idx: int, n: int, g: int,
     return state_components
 
 
-def get_fan_observation_points(boundary: np.ndarray, ref_idx: int,
-                               right_neighbor: np.ndarray, g: int,
-                               radius: float) -> List[np.ndarray]:
+def calculate_base_length_equation2(ref_vertex: np.ndarray, left_neighbors: List[np.ndarray],
+                                    right_neighbors: List[np.ndarray], n: int) -> float:
     """
-    Get observation points in fan-shaped sectors.
+    Calculate base length L according to Equation (2) from the paper:
+    L = (1/2n) * Σ(j=0 to n) |V_{l,j}V_{l,j+1}| + |V_{r,j}V_{r,j+1}|
+    where V_{l,0} = V_i = V_{r,0} (reference vertex)
+
+    Args:
+        ref_vertex: Reference vertex V_0
+        left_neighbors: Left neighbors [V_{l,1}, V_{l,2}, ..., V_{l,n}]
+        right_neighbors: Right neighbors [V_{r,1}, V_{r,2}, ..., V_{r,n}]
+        n: Number of neighbors
+
+    Returns:
+        Base length L
+    """
+    total_length = 0.0
+
+    # Build complete sequences including reference vertex
+    # Left sequence: [V_{l,0}, V_{l,1}, ..., V_{l,n}] where V_{l,0} = ref_vertex
+    left_sequence = [ref_vertex] + left_neighbors
+    # Right sequence: [V_{r,0}, V_{r,1}, ..., V_{r,n}] where V_{r,0} = ref_vertex
+    right_sequence = [ref_vertex] + right_neighbors
+
+    # Calculate sum according to Equation (2): Σ(j=0 to n)
+    for j in range(n):
+        # Left side: |V_{l,j}V_{l,j+1}|
+        if j + 1 < len(left_sequence):
+            left_edge_length = np.linalg.norm(left_sequence[j + 1] - left_sequence[j])
+            total_length += left_edge_length
+
+        # Right side: |V_{r,j}V_{r,j+1}|
+        if j + 1 < len(right_sequence):
+            right_edge_length = np.linalg.norm(right_sequence[j + 1] - right_sequence[j])
+            total_length += right_edge_length
+
+    # Apply the coefficient (1/2n)
+    L = total_length / (2 * n) if n > 0 else 1.0
+
+    return L
+
+
+def get_fan_observation_points_corrected(boundary: np.ndarray, ref_idx: int,
+                                         ref_vertex: np.ndarray, v_left_1: np.ndarray,
+                                         v_right_1: np.ndarray, g: int, radius: float) -> List[np.ndarray]:
+    """
+    Get observation points in fan-shaped sectors according to Figure 6 in the paper.
+    The fan area should be within angle ∠V_{l,1}V_0V_{r,1} and divided evenly.
 
     Args:
         boundary: Boundary vertices
         ref_idx: Reference vertex index
-        right_neighbor: Right neighbor vertex
+        ref_vertex: Reference vertex V_0
+        v_left_1: Left neighbor V_{l,1}
+        v_right_1: Right neighbor V_{r,1}
         g: Number of sectors
         radius: Observation radius
 
     Returns:
         List of observation points
     """
-    ref_vertex = boundary[ref_idx]
     n_vertices = len(boundary)
 
-    # Find left neighbor (assuming clockwise orientation)
-    left_idx = (ref_idx - 1) % n_vertices
-    left_neighbor = boundary[left_idx]
+    # Calculate vectors from reference vertex
+    vec_left = v_left_1 - ref_vertex
+    vec_right = v_right_1 - ref_vertex
 
-    # Calculate angle span
-    vec_right = right_neighbor - ref_vertex
-    vec_left = left_neighbor - ref_vertex
-
-    angle_right = np.arctan2(vec_right[1], vec_right[0])
+    # Calculate angles (using atan2 for proper angle handling)
     angle_left = np.arctan2(vec_left[1], vec_left[0])
+    angle_right = np.arctan2(vec_right[1], vec_right[0])
 
-    # Ensure proper angle ordering
+    # Ensure proper angle ordering for clockwise traversal
+    # We want to go from right to left in clockwise direction
     if angle_left < angle_right:
         angle_left += 2 * np.pi
+
+    # Calculate angular span of the fan area
+    angle_span = angle_left - angle_right
 
     fan_points = []
 
     for i in range(g):
-        sector_angle = angle_right + (i + 0.5) * (angle_left - angle_right) / g
+        # Calculate angle for this sector (from right to left)
+        # Each sector is evenly divided: ζ_1 = ζ_2 = ζ_3 = ... = ζ_g
+        sector_angle = angle_right + (i + 0.5) * angle_span / g
 
-        # Find closest boundary point in this sector
+        # Direction vector for this sector
         sector_direction = np.array([np.cos(sector_angle), np.sin(sector_angle)])
 
+        # Find closest boundary point in this sector
         closest_point = None
         min_distance = float('inf')
 
@@ -183,7 +234,7 @@ def get_fan_observation_points(boundary: np.ndarray, ref_idx: int,
                     min_distance = distance
                     closest_point = intersection
 
-        # If no intersection within radius, use bisector point
+        # If no intersection within radius, use point on bisector at radius distance
         if closest_point is None:
             closest_point = ref_vertex + radius * sector_direction
 
@@ -205,22 +256,20 @@ def line_ray_intersection(ray_origin: np.ndarray, ray_direction: np.ndarray,
 
     line_dir = line_p2 - line_p1
 
+    # Check for parallel lines
+    denominator = ray_direction[0] * line_dir[1] - ray_direction[1] * line_dir[0]
+    if abs(denominator) < 1e-10:
+        return None
+
     # Solve: ray_origin + t * ray_direction = line_p1 + s * line_dir
-    # Matrix form: [ray_direction, -line_dir] * [t, s]^T = line_p1 - ray_origin
+    diff = line_p1 - ray_origin
+    t = (diff[0] * line_dir[1] - diff[1] * line_dir[0]) / denominator
+    s = (diff[0] * ray_direction[1] - diff[1] * ray_direction[0]) / denominator
 
-    A = np.column_stack([ray_direction, -line_dir])
-    b = line_p1 - ray_origin
-
-    try:
-        params = np.linalg.solve(A, b)
-        t, s = params[0], params[1]
-
-        # Check if intersection is valid
-        if t >= 0 and 0 <= s <= 1:
-            intersection = ray_origin + t * ray_direction
-            return intersection
-    except np.linalg.LinAlgError:
-        pass
+    # Check if intersection is valid
+    if t >= 0 and 0 <= s <= 1:
+        intersection = ray_origin + t * ray_direction
+        return intersection
 
     return None
 
@@ -228,12 +277,13 @@ def line_ray_intersection(ray_origin: np.ndarray, ray_direction: np.ndarray,
 def transform_to_relative_coords(points: List[np.ndarray], origin: np.ndarray,
                                  reference_direction: np.ndarray) -> List[np.ndarray]:
     """
-    Transform points to relative coordinate system.
+    Transform points to relative coordinate system according to paper specifications.
+    Uses V_0 as origin and V_0V_{r,1} as reference direction.
 
     Args:
         points: Points to transform
-        origin: Origin of coordinate system
-        reference_direction: Reference direction vector
+        origin: Origin of coordinate system (V_0)
+        reference_direction: Reference direction vector (V_0V_{r,1})
 
     Returns:
         Transformed points in relative coordinates
@@ -245,6 +295,7 @@ def transform_to_relative_coords(points: List[np.ndarray], origin: np.ndarray,
     cos_theta = ref_dir_norm[0]
     sin_theta = ref_dir_norm[1]
 
+    # Rotation matrix (correct orientation for coordinate transformation)
     rotation_matrix = np.array([[cos_theta, sin_theta],
                                 [-sin_theta, cos_theta]])
 
@@ -252,7 +303,7 @@ def transform_to_relative_coords(points: List[np.ndarray], origin: np.ndarray,
     for point in points:
         # Translate to origin
         translated = point - origin
-        # Rotate
+        # Rotate to align with reference direction
         rotated = rotation_matrix @ translated
         relative_points.append(rotated)
 
@@ -539,7 +590,7 @@ def generate_action_coordinates(action_vector: np.ndarray, ref_vertex: np.ndarra
     # Transform to absolute coordinates
     ref_dir_norm = reference_direction / np.linalg.norm(reference_direction)
 
-    # Rotation matrix
+    # Rotation matrix (inverse of the transformation matrix)
     cos_theta = ref_dir_norm[0]
     sin_theta = ref_dir_norm[1]
 

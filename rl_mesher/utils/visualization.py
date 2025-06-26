@@ -10,52 +10,58 @@ from datetime import datetime
 def plot_mesh(boundary: np.ndarray, elements: List[np.ndarray] = None,
               title: str = "Mesh Visualization", save_path: Optional[str] = None,
               figsize: tuple = (10, 8), show_vertices: bool = True,
-              show_element_numbers: bool = False) -> None:
+              show_element_numbers: bool = False, original_boundary: np.ndarray = None) -> None:
     """
-    Plot mesh boundary and generated quadrilateral elements.
+    Plot mesh boundary and generated quadrilateral elements with enhanced visualization.
 
     Args:
-        boundary: Boundary vertices [N, 2]
+        boundary: Current boundary vertices [N, 2]
         elements: List of element vertices, each element is [4, 2] array
         title: Plot title
         save_path: Path to save figure
         figsize: Figure size
         show_vertices: Whether to show vertex numbers
         show_element_numbers: Whether to show element numbers
+        original_boundary: Original domain boundary to display for reference
     """
     fig, ax = plt.subplots(figsize=figsize)
 
-    # Plot boundary
-    if boundary is not None and len(boundary) > 0:
-        # Close the boundary for plotting
-        boundary_closed = np.vstack([boundary, boundary[0]])
-        ax.plot(boundary_closed[:, 0], boundary_closed[:, 1],
-                'k-', linewidth=2, label='Boundary', zorder=3)
+    # Plot original boundary first (if provided)
+    if original_boundary is not None and len(original_boundary) > 0:
+        # Close the original boundary for plotting
+        original_closed = np.vstack([original_boundary, original_boundary[0]])
+        ax.plot(original_closed[:, 0], original_closed[:, 1],
+                'gray', linewidth=1, linestyle='--', alpha=0.7,
+                label='Original Domain', zorder=1)
 
-        # Plot boundary vertices
-        ax.scatter(boundary[:, 0], boundary[:, 1],
-                   c='red', s=50, zorder=4, label='Boundary Vertices')
-
-        # Show vertex numbers if requested
-        if show_vertices:
-            for i, (x, y) in enumerate(boundary):
-                ax.annotate(f'{i}', (x, y), xytext=(5, 5),
-                            textcoords='offset points', fontsize=8,
-                            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
-
-    # Plot generated elements
+    # Plot generated elements with full edge rendering
     if elements is not None and len(elements) > 0:
         for elem_idx, element in enumerate(elements):
-            if element is not None and len(element) == 4:
-                # Create quadrilateral patch
-                quad = patches.Polygon(element, linewidth=1.5,
-                                       edgecolor='blue', facecolor='lightblue',
-                                       alpha=0.3, zorder=1)
+            if element is not None and len(element) >= 3:
+                # Ensure element is closed for proper rendering
+                if len(element) == 4:
+                    # Close the quadrilateral
+                    element_closed = np.vstack([element, element[0]])
+                else:
+                    element_closed = element
+
+                # Create quadrilateral patch for filled area
+                quad = patches.Polygon(element[:4] if len(element) >= 4 else element,
+                                       linewidth=2, edgecolor='blue',
+                                       facecolor='lightblue', alpha=0.3, zorder=2)
                 ax.add_patch(quad)
+
+                # Plot element edges explicitly to ensure all edges are visible
+                for i in range(len(element)):
+                    start_vertex = element[i]
+                    end_vertex = element[(i + 1) % len(element)]
+                    ax.plot([start_vertex[0], end_vertex[0]],
+                            [start_vertex[1], end_vertex[1]],
+                            'b-', linewidth=2, alpha=0.8, zorder=3)
 
                 # Plot element vertices
                 ax.scatter(element[:, 0], element[:, 1],
-                           c='blue', s=30, zorder=2, alpha=0.7)
+                           c='blue', s=40, zorder=4, alpha=0.8)
 
                 # Show element number if requested
                 if show_element_numbers:
@@ -64,22 +70,54 @@ def plot_mesh(boundary: np.ndarray, elements: List[np.ndarray] = None,
                                 fontsize=10, fontweight='bold',
                                 bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.8))
 
+    # Plot current boundary (remaining unmeshed area)
+    if boundary is not None and len(boundary) > 0:
+        # Close the boundary for plotting
+        boundary_closed = np.vstack([boundary, boundary[0]])
+        ax.plot(boundary_closed[:, 0], boundary_closed[:, 1],
+                'k-', linewidth=3, label='Current Boundary', zorder=5)
+
+        # Plot boundary vertices with numbers
+        ax.scatter(boundary[:, 0], boundary[:, 1],
+                   c='red', s=60, zorder=6, label='Boundary Vertices',
+                   edgecolors='black', linewidth=1)
+
+        # Show vertex numbers if requested
+        if show_vertices:
+            for i, (x, y) in enumerate(boundary):
+                ax.annotate(f'{i}', (x, y), xytext=(8, 8),
+                            textcoords='offset points', fontsize=10, fontweight='bold',
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                                      edgecolor='black', alpha=0.9))
+
     # Set equal aspect ratio and adjust limits
     ax.set_aspect('equal')
 
-    # Set limits with some padding
-    if boundary is not None and len(boundary) > 0:
-        x_min, x_max = boundary[:, 0].min(), boundary[:, 0].max()
-        y_min, y_max = boundary[:, 1].min(), boundary[:, 1].max()
+    # Calculate bounds including all elements
+    all_x_coords = []
+    all_y_coords = []
 
-        # Add elements to bounds calculation if they exist
-        if elements is not None and len(elements) > 0:
-            all_element_points = np.vstack([elem for elem in elements if elem is not None])
-            if len(all_element_points) > 0:
-                x_min = min(x_min, all_element_points[:, 0].min())
-                x_max = max(x_max, all_element_points[:, 0].max())
-                y_min = min(y_min, all_element_points[:, 1].min())
-                y_max = max(y_max, all_element_points[:, 1].max())
+    # Add original boundary coordinates
+    if original_boundary is not None and len(original_boundary) > 0:
+        all_x_coords.extend(original_boundary[:, 0])
+        all_y_coords.extend(original_boundary[:, 1])
+
+    # Add current boundary coordinates
+    if boundary is not None and len(boundary) > 0:
+        all_x_coords.extend(boundary[:, 0])
+        all_y_coords.extend(boundary[:, 1])
+
+    # Add element coordinates
+    if elements is not None and len(elements) > 0:
+        for element in elements:
+            if element is not None and len(element) > 0:
+                all_x_coords.extend(element[:, 0])
+                all_y_coords.extend(element[:, 1])
+
+    # Set limits with padding
+    if all_x_coords and all_y_coords:
+        x_min, x_max = min(all_x_coords), max(all_x_coords)
+        y_min, y_max = min(all_y_coords), max(all_y_coords)
 
         # Add padding
         x_range = x_max - x_min
@@ -90,17 +128,37 @@ def plot_mesh(boundary: np.ndarray, elements: List[np.ndarray] = None,
         ax.set_ylim(y_min - padding, y_max + padding)
 
     # Labels and title
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_title(title)
+    ax.set_xlabel('X', fontsize=12)
+    ax.set_ylabel('Y', fontsize=12)
+    ax.set_title(title, fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(loc='best')
 
-    # Add mesh statistics
-    info_text = f"Boundary vertices: {len(boundary) if boundary is not None else 0}\n"
-    info_text += f"Generated elements: {len(elements) if elements is not None else 0}"
+    # Add enhanced mesh statistics
+    current_vertices = len(boundary) if boundary is not None else 0
+    original_vertices = len(original_boundary) if original_boundary is not None else 0
+    generated_elements = len(elements) if elements is not None else 0
+
+    info_text = f"Original vertices: {original_vertices}\n"
+    info_text += f"Current vertices: {current_vertices}\n"
+    info_text += f"Generated elements: {generated_elements}"
+
+    # Add element quality info if available
+    if elements is not None and len(elements) > 0:
+        total_area = 0
+        for element in elements:
+            if element is not None and len(element) >= 3:
+                # Simple area calculation using shoelace formula
+                x = element[:, 0]
+                y = element[:, 1]
+                area = 0.5 * abs(sum(x[i] * y[(i + 1) % len(x)] - x[(i + 1) % len(x)] * y[i]
+                                     for i in range(len(x))))
+                total_area += area
+        info_text += f"\nTotal meshed area: {total_area:.3f}"
+
     ax.text(0.02, 0.98, info_text, transform=ax.transAxes, fontsize=10,
-            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.9, edgecolor='black'))
 
     plt.tight_layout()
 
@@ -117,9 +175,10 @@ def plot_mesh_generation_progress(boundary_history: List[np.ndarray],
                                   elements_history: List[List[np.ndarray]],
                                   title: str = "Mesh Generation Progress",
                                   save_path: Optional[str] = None,
-                                  max_steps: int = 6) -> None:
+                                  max_steps: int = 6,
+                                  original_boundary: np.ndarray = None) -> None:
     """
-    Plot mesh generation progress showing multiple steps.
+    Plot mesh generation progress showing multiple steps with enhanced visualization.
 
     Args:
         boundary_history: List of boundary states at each step
@@ -127,6 +186,7 @@ def plot_mesh_generation_progress(boundary_history: List[np.ndarray],
         title: Plot title
         save_path: Path to save figure
         max_steps: Maximum number of steps to show
+        original_boundary: Original domain boundary for reference
     """
     n_steps = min(len(boundary_history), len(elements_history), max_steps)
 
@@ -134,14 +194,14 @@ def plot_mesh_generation_progress(boundary_history: List[np.ndarray],
         # If only one step, use regular plot_mesh
         boundary = boundary_history[0] if boundary_history else None
         elements = elements_history[0] if elements_history else None
-        plot_mesh(boundary, elements, title, save_path)
+        plot_mesh(boundary, elements, title, save_path, original_boundary=original_boundary)
         return
 
     # Create subplot grid
     cols = min(3, n_steps)
     rows = (n_steps + cols - 1) // cols
 
-    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+    fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 5 * rows))
     if rows == 1 and cols == 1:
         axes = [axes]
     elif rows == 1 or cols == 1:
@@ -157,39 +217,57 @@ def plot_mesh_generation_progress(boundary_history: List[np.ndarray],
         boundary = boundary_history[step] if step < len(boundary_history) else None
         elements = elements_history[step] if step < len(elements_history) else []
 
-        # Plot boundary
-        if boundary is not None and len(boundary) > 0:
-            boundary_closed = np.vstack([boundary, boundary[0]])
-            ax.plot(boundary_closed[:, 0], boundary_closed[:, 1],
-                    'k-', linewidth=2)
-            ax.scatter(boundary[:, 0], boundary[:, 1], c='red', s=50, zorder=4)
+        # Plot original boundary first
+        if original_boundary is not None and len(original_boundary) > 0:
+            original_closed = np.vstack([original_boundary, original_boundary[0]])
+            ax.plot(original_closed[:, 0], original_closed[:, 1],
+                    'gray', linewidth=1, linestyle='--', alpha=0.5)
 
         # Plot elements
         if elements is not None and len(elements) > 0:
             for element in elements:
-                if element is not None and len(element) == 4:
-                    quad = patches.Polygon(element, linewidth=1.5,
-                                           edgecolor='blue', facecolor='lightblue',
-                                           alpha=0.3)
+                if element is not None and len(element) >= 3:
+                    quad = patches.Polygon(element[:4] if len(element) >= 4 else element,
+                                           linewidth=1.5, edgecolor='blue',
+                                           facecolor='lightblue', alpha=0.3)
                     ax.add_patch(quad)
-                    ax.scatter(element[:, 0], element[:, 1], c='blue', s=30, alpha=0.7)
+
+                    # Plot edges explicitly
+                    for i in range(len(element)):
+                        start_vertex = element[i]
+                        end_vertex = element[(i + 1) % len(element)]
+                        ax.plot([start_vertex[0], end_vertex[0]],
+                                [start_vertex[1], end_vertex[1]],
+                                'b-', linewidth=1.5, alpha=0.8)
+
+                    ax.scatter(element[:, 0], element[:, 1], c='blue', s=20, alpha=0.7)
+
+        # Plot current boundary
+        if boundary is not None and len(boundary) > 0:
+            boundary_closed = np.vstack([boundary, boundary[0]])
+            ax.plot(boundary_closed[:, 0], boundary_closed[:, 1], 'k-', linewidth=2)
+            ax.scatter(boundary[:, 0], boundary[:, 1], c='red', s=40, zorder=4)
 
         ax.set_aspect('equal')
-        ax.set_title(f'Step {step + 1}')
+        ax.set_title(
+            f'Step {step + 1}\nVertices: {len(boundary) if boundary is not None else 0}, Elements: {len(elements)}')
         ax.grid(True, alpha=0.3)
 
         # Set consistent limits across all subplots
-        if boundary is not None and len(boundary) > 0:
-            x_min, x_max = boundary[:, 0].min(), boundary[:, 0].max()
-            y_min, y_max = boundary[:, 1].min(), boundary[:, 1].max()
+        all_coords = []
+        if original_boundary is not None:
+            all_coords.extend(original_boundary)
+        if boundary is not None:
+            all_coords.extend(boundary)
+        if elements is not None:
+            for element in elements:
+                if element is not None:
+                    all_coords.extend(element)
 
-            if elements is not None and len(elements) > 0:
-                all_element_points = np.vstack([elem for elem in elements if elem is not None])
-                if len(all_element_points) > 0:
-                    x_min = min(x_min, all_element_points[:, 0].min())
-                    x_max = max(x_max, all_element_points[:, 0].max())
-                    y_min = min(y_min, all_element_points[:, 1].min())
-                    y_max = max(y_max, all_element_points[:, 1].max())
+        if all_coords:
+            all_coords = np.array(all_coords)
+            x_min, x_max = all_coords[:, 0].min(), all_coords[:, 0].max()
+            y_min, y_max = all_coords[:, 1].min(), all_coords[:, 1].max()
 
             x_range = x_max - x_min
             y_range = y_max - y_min
@@ -215,14 +293,16 @@ def plot_mesh_generation_progress(boundary_history: List[np.ndarray],
 
 def save_mesh_animation_frames(boundary_history: List[np.ndarray],
                                elements_history: List[List[np.ndarray]],
-                               output_dir: str) -> None:
+                               output_dir: str,
+                               original_boundary: np.ndarray = None) -> None:
     """
-    Save individual frames for mesh generation animation.
+    Save individual frames for mesh generation animation with enhanced visualization.
 
     Args:
         boundary_history: List of boundary states
         elements_history: List of element lists
         output_dir: Directory to save frames
+        original_boundary: Original domain boundary for reference
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -231,7 +311,8 @@ def save_mesh_animation_frames(boundary_history: List[np.ndarray],
         plot_mesh(boundary, elements,
                   title=f"Mesh Generation - Step {step + 1}",
                   save_path=frame_path,
-                  show_vertices=False)
+                  show_vertices=False,
+                  original_boundary=original_boundary)
 
     print(f"💾 Animation frames saved to: {output_dir}")
 

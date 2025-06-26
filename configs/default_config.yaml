@@ -42,10 +42,10 @@ environment:
 
 # Training Parameters
 training:
-  total_timesteps: 1200000
+  total_timesteps: 100000
   evaluation_freq: 1000
   seed: 356
-  log_interval: 1
+  log_interval: 10
   save_freq: 50000
 
 # Paths
