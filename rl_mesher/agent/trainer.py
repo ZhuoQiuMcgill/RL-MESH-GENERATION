@@ -1,356 +1,12 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
 import numpy as np
 import time
 from typing import Dict, Tuple, Optional, List
 import os
-from collections import defaultdict
+from datetime import datetime
 
-from .networks import MeshActor, MeshCritic, soft_update_target_network
-from .replay_buffer import MeshReplayBuffer
-from .utils.visualization import plot_mesh
-
-
-class SACAgent:
-    """
-    Soft Actor-Critic agent for mesh generation.
-
-    Implements the SAC algorithm with entropy regularization for
-    stable and efficient learning in the mesh generation domain.
-    """
-
-    def __init__(self, config: Dict, device: torch.device = torch.device("cpu")):
-        """
-        Initialize SAC agent.
-
-        Args:
-            config: Configuration dictionary
-            device: Device to run computations on
-        """
-        self.config = config
-        self.device = device
-
-        # Algorithm parameters (ensure proper types)
-        self.lr = float(config['sac']['learning_rate'])
-        self.gamma = float(config['sac']['discount_factor'])
-        self.tau = float(config['sac']['tau'])
-        self.batch_size = int(config['sac']['batch_size'])
-        self.buffer_size = int(config['sac']['buffer_size'])
-        self.gradient_steps = int(config['sac']['gradient_steps'])
-
-        # Alpha (temperature) parameter configuration
-        self.use_static_alpha = config['sac'].get('use_static_alpha', False)
-        if self.use_static_alpha:
-            self.alpha = float(config['sac'].get('static_alpha', 0.1))
-            self.log_alpha = None
-            self.alpha_optimizer = None
-            print(f"Using static alpha: {self.alpha}")
-        else:
-            self.alpha = float(config['sac']['alpha'])
-            # Automatic entropy tuning
-            self.target_entropy = -3.0  # For 3D action space
-            self.log_alpha = torch.tensor(np.log(self.alpha), requires_grad=True, device=device)
-            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr)
-            print(f"Using automatic alpha tuning, initial alpha: {self.alpha}")
-
-        # Network parameters (ensure proper types)
-        self.n_neighbors = int(config['environment']['n_neighbors'])
-        self.n_fan_points = int(config['environment']['n_fan_points'])
-        self.hidden_layers = config['networks']['actor_hidden_layers']
-
-        # Initialize networks
-        self._build_networks()
-
-        # Initialize optimizers
-        self._build_optimizers()
-
-        # Initialize replay buffer
-        self.replay_buffer = MeshReplayBuffer(self.buffer_size, device)
-
-        # Training statistics
-        self.training_stats = defaultdict(list)
-        self.total_updates = 0
-
-    def _build_networks(self):
-        """Build actor and critic networks."""
-        # Actor network
-        self.actor = MeshActor(
-            self.n_neighbors, self.n_fan_points,
-            self.hidden_layers
-        ).to(self.device)
-
-        # Critic networks (double critic)
-        self.critic = MeshCritic(
-            self.n_neighbors, self.n_fan_points,
-            self.hidden_layers
-        ).to(self.device)
-
-        # Target critic networks
-        self.target_critic = MeshCritic(
-            self.n_neighbors, self.n_fan_points,
-            self.hidden_layers
-        ).to(self.device)
-
-        # Initialize target networks
-        self.target_critic.load_state_dict(self.critic.state_dict())
-
-    def _build_optimizers(self):
-        """Build optimizers for networks."""
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=self.lr)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.lr)
-
-    def select_action(self, state_dict: Dict, deterministic: bool = False) -> np.ndarray:
-        """
-        Select action based on current policy.
-
-        Args:
-            state_dict: Current state dictionary
-            deterministic: Whether to use deterministic action
-
-        Returns:
-            Action array
-        """
-        with torch.no_grad():
-            # Convert state dict to tensors if needed
-            state_dict = self._ensure_tensor_state(state_dict)
-
-            # Get action from actor
-            action = self.actor.get_action(state_dict, deterministic)
-
-            return action.cpu().numpy().flatten()
-
-    def _ensure_tensor_state(self, state_dict: Dict) -> Dict:
-        """Ensure all state components are tensors on correct device."""
-        tensor_state = {}
-        for key, value in state_dict.items():
-            if isinstance(value, torch.Tensor):
-                tensor_state[key] = value.to(self.device)
-            elif isinstance(value, np.ndarray):
-                tensor_state[key] = torch.tensor(value, dtype=torch.float32, device=self.device)
-            else:
-                tensor_state[key] = torch.tensor([value], dtype=torch.float32, device=self.device)
-        return tensor_state
-
-    def store_transition(self, state_dict: Dict, action: np.ndarray, reward: float,
-                         next_state_dict: Dict, done: bool):
-        """
-        Store transition in replay buffer.
-
-        Args:
-            state_dict: Current state dictionary
-            action: Action taken
-            reward: Reward received
-            next_state_dict: Next state dictionary
-            done: Whether episode ended
-        """
-        self.replay_buffer.add(state_dict, action, reward, next_state_dict, done)
-
-    def update(self) -> Dict:
-        """
-        Update actor and critic networks.
-
-        Returns:
-            Dictionary of training statistics
-        """
-        if not self.replay_buffer.is_ready(self.batch_size):
-            return {}
-
-        stats = {}
-
-        for _ in range(self.gradient_steps):
-            # Sample batch from replay buffer
-            batch = self.replay_buffer.sample(self.batch_size)
-
-            # Update critic
-            critic_loss = self._update_critic(batch)
-            stats['critic_loss'] = critic_loss
-
-            # Update actor
-            actor_loss = self._update_actor(batch)
-            stats['actor_loss'] = actor_loss
-
-            # Update alpha (temperature parameter) only if not using static alpha
-            if not self.use_static_alpha:
-                alpha_loss = self._update_alpha(batch)
-                stats['alpha_loss'] = alpha_loss
-            else:
-                # For static alpha, just record the current value
-                stats['alpha_loss'] = 0.0
-
-            stats['alpha'] = self.alpha
-
-            # Update target networks
-            soft_update_target_network(self.target_critic, self.critic, self.tau)
-
-            self.total_updates += 1
-
-        # Store training statistics
-        for key, value in stats.items():
-            self.training_stats[key].append(value)
-
-        return stats
-
-    def _update_critic(self, batch: Dict) -> float:
-        """Update critic networks."""
-        states = batch['states']
-        actions = batch['actions']
-        rewards = batch['rewards']
-        next_states = batch['next_states']
-        dones = batch['dones']
-
-        with torch.no_grad():
-            # Sample next actions from current policy
-            next_actions, next_log_probs = self.actor.sample(next_states)
-
-            # Compute target Q-values
-            target_q1, target_q2 = self.target_critic(next_states, next_actions)
-            target_q = torch.min(target_q1, target_q2) - self.alpha * next_log_probs
-            target_q = rewards + (1 - dones.float()) * self.gamma * target_q
-
-        # Get current Q-values
-        current_q1, current_q2 = self.critic(states, actions)
-
-        # Compute critic loss
-        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
-
-        # Update critic
-        self.critic_optimizer.zero_grad()
-        critic_loss.backward()
-        self.critic_optimizer.step()
-
-        return critic_loss.item()
-
-    def _update_actor(self, batch: Dict) -> float:
-        """Update actor network."""
-        states = batch['states']
-
-        # Sample actions from current policy
-        actions, log_probs = self.actor.sample(states)
-
-        # Compute Q-values for sampled actions
-        q1, q2 = self.critic(states, actions)
-        q_value = torch.min(q1, q2)
-
-        # Actor loss (maximize Q-value and entropy)
-        actor_loss = (self.alpha * log_probs - q_value).mean()
-
-        # Update actor
-        self.actor_optimizer.zero_grad()
-        actor_loss.backward()
-        self.actor_optimizer.step()
-
-        return actor_loss.item()
-
-    def _update_alpha(self, batch: Dict) -> float:
-        """Update alpha (temperature parameter) - only called when not using static alpha."""
-        if self.use_static_alpha:
-            return 0.0
-
-        states = batch['states']
-
-        with torch.no_grad():
-            _, log_probs = self.actor.sample(states)
-
-        # Alpha loss
-        alpha_loss = -(self.log_alpha * (log_probs + self.target_entropy)).mean()
-
-        # Update alpha
-        self.alpha_optimizer.zero_grad()
-        alpha_loss.backward()
-        self.alpha_optimizer.step()
-
-        # Update alpha value
-        self.alpha = self.log_alpha.exp().item()
-
-        return alpha_loss.item()
-
-    def save(self, filepath: str):
-        """
-        Save agent state to file.
-
-        Args:
-            filepath: Path to save file
-        """
-        checkpoint = {
-            'actor_state_dict': self.actor.state_dict(),
-            'critic_state_dict': self.critic.state_dict(),
-            'target_critic_state_dict': self.target_critic.state_dict(),
-            'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
-            'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
-            'total_updates': self.total_updates,
-            'configs': self.config,
-            'use_static_alpha': self.use_static_alpha,
-            'alpha': self.alpha
-        }
-
-        # Only save alpha-related parameters if using automatic tuning
-        if not self.use_static_alpha:
-            checkpoint['alpha_optimizer_state_dict'] = self.alpha_optimizer.state_dict()
-            checkpoint['log_alpha'] = self.log_alpha
-
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        torch.save(checkpoint, filepath)
-
-    def load(self, filepath: str):
-        """
-        Load agent state from file.
-
-        Args:
-            filepath: Path to save file
-        """
-        checkpoint = torch.load(filepath, map_location=self.device)
-
-        self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        self.critic.load_state_dict(checkpoint['critic_state_dict'])
-        self.target_critic.load_state_dict(checkpoint['target_critic_state_dict'])
-        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
-        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-        self.total_updates = checkpoint['total_updates']
-
-        # Load alpha configuration
-        saved_use_static = checkpoint.get('use_static_alpha', False)
-        if saved_use_static and self.use_static_alpha:
-            # Both using static alpha
-            self.alpha = checkpoint.get('alpha', self.alpha)
-        elif not saved_use_static and not self.use_static_alpha:
-            # Both using automatic alpha tuning
-            self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
-            self.log_alpha = checkpoint['log_alpha']
-            self.alpha = self.log_alpha.exp().item()
-        else:
-            # Configuration mismatch - use current configuration
-            print(f"Warning: Alpha configuration mismatch. Using current config: static={self.use_static_alpha}")
-
-    def get_training_stats(self) -> Dict:
-        """Get training statistics."""
-        return dict(self.training_stats)
-
-    def reset_training_stats(self):
-        """Reset training statistics."""
-        self.training_stats = defaultdict(list)
-
-    def set_training_mode(self, training: bool = True):
-        """Set training mode for networks."""
-        self.actor.train(training)
-        self.critic.train(training)
-        self.target_critic.train(training)
-
-    def get_network_info(self) -> Dict:
-        """Get information about network architectures."""
-
-        def count_parameters(model):
-            return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-        return {
-            'actor_parameters': count_parameters(self.actor),
-            'critic_parameters': count_parameters(self.critic),
-            'total_parameters': count_parameters(self.actor) + count_parameters(self.critic),
-            'total_updates': self.total_updates,
-            'use_static_alpha': self.use_static_alpha,
-            'current_alpha': self.alpha
-        }
+from .sac_agent import SACAgent
+from ..utils.visualization import plot_mesh
 
 
 class MeshSACTrainer:
@@ -416,7 +72,7 @@ class MeshSACTrainer:
         Returns:
             Training results dictionary
         """
-        print("🚀 Starting SAC training for mesh generation...")
+        print("Starting SAC training for mesh generation...")
         print("=" * 70)
         self._print_training_setup()
 
@@ -501,7 +157,7 @@ class MeshSACTrainer:
             if timestep % self.save_freq == 0:
                 model_path = os.path.join(self.models_dir, f"model_{timestep}.pt")
                 self.agent.save(model_path)
-                print(f"💾 Model saved: {model_path}")
+                print(f"Model saved: {model_path}")
 
         # Final save
         final_model_path = os.path.join(self.models_dir, "final_model.pt")
@@ -510,7 +166,7 @@ class MeshSACTrainer:
         # Training completion summary
         self._print_training_summary()
 
-        print("🎉 Training completed!")
+        print("Training completed!")
 
         return {
             'episode_rewards': self.episode_rewards,
@@ -538,7 +194,7 @@ class MeshSACTrainer:
         Returns:
             Evaluation results
         """
-        print(f"\n🔍 Starting evaluation ({num_episodes} episodes)...")
+        print(f"\nStarting evaluation ({num_episodes} episodes)...")
         eval_start_time = time.time()
 
         self.agent.set_training_mode(False)
@@ -620,41 +276,7 @@ class MeshSACTrainer:
                     results[f'mean_{key}'] = np.mean(values)
                     results[f'std_{key}'] = np.std(values)
 
-        print(f"✅ Evaluation completed in {eval_total_time:.1f}s")
-        self.eval_count += 1
-        return results
-
-        self.agent.set_training_mode(True)
-
-        eval_total_time = time.time() - eval_start_time
-
-        # Create mesh visualization for the best evaluation episode
-        self._save_evaluation_mesh_visualization(timestep, best_episode_boundary,
-                                                 best_episode_elements, best_episode_reward, best_episode_info)
-
-        results = {
-            'timestep': timestep,
-            'mean_reward': np.mean(eval_rewards),
-            'std_reward': np.std(eval_rewards),
-            'min_reward': np.min(eval_rewards),
-            'max_reward': np.max(eval_rewards),
-            'mean_length': np.mean(eval_lengths),
-            'std_length': np.std(eval_lengths),
-            'mean_episode_time': np.mean(eval_times),
-            'completion_rate': np.mean(completion_rates),
-            'eval_total_time': eval_total_time
-        }
-
-        if mesh_qualities:
-            # Calculate average mesh quality metrics
-            quality_keys = mesh_qualities[0].keys()
-            for key in quality_keys:
-                values = [q[key] for q in mesh_qualities if key in q]
-                if values:
-                    results[f'mean_{key}'] = np.mean(values)
-                    results[f'std_{key}'] = np.std(values)
-
-        print(f"✅ Evaluation completed in {eval_total_time:.1f}s")
+        print(f"Evaluation completed in {eval_total_time:.1f}s")
         self.eval_count += 1
         return results
 
@@ -701,10 +323,10 @@ class MeshSACTrainer:
                 show_element_numbers=False
             )
 
-            print(f"📸 Evaluation mesh saved: {mesh_filename}")
+            print(f"Evaluation mesh saved: {mesh_filename}")
 
         except Exception as e:
-            print(f"⚠️  Failed to save evaluation mesh visualization: {e}")
+            print(f"Failed to save evaluation mesh visualization: {e}")
 
     def _log_progress(self, episode: int, timestep: int, reward: float, length: int,
                       episode_time: float, mesh_quality: float, completion_rate: float):
@@ -734,32 +356,32 @@ class MeshSACTrainer:
             self.episodes_per_hour = episode / training_hours
 
         print(f"\n{'=' * 70}")
-        print(f"📊 EPISODE {episode:,} | TIMESTEP {timestep:,} ({progress:.1f}%)")
+        print(f"EPISODE {episode:,} | TIMESTEP {timestep:,} ({progress:.1f}%)")
         print(f"{'=' * 70}")
 
         # Current episode info
-        print(f"🎯 Current Episode:")
+        print(f"Current Episode:")
         print(f"   Reward: {reward:8.2f} | Length: {length:4d} steps | Time: {episode_time:6.2f}s")
-        print(f"   Quality: {mesh_quality:.3f} | Completed: {'✅' if completion_rate > 0 else '❌'}")
+        print(f"   Quality: {mesh_quality:.3f} | Completed: {'Yes' if completion_rate > 0 else 'No'}")
 
         # Recent performance (last 100 episodes)
-        print(f"\n📈 Recent Performance (last {recent_episodes} episodes):")
+        print(f"\nRecent Performance (last {recent_episodes} episodes):")
         print(f"   Avg Reward: {avg_reward:8.2f} | Avg Length: {avg_length:6.1f} steps")
         print(f"   Avg Time: {avg_time:8.2f}s | Avg Quality: {avg_quality:.3f}")
         print(f"   Completion Rate: {avg_completion:.1%}")
 
         # Best performance tracking
-        print(f"\n🏆 Best Performance:")
+        print(f"\nBest Performance:")
         print(f"   Best Reward: {self.best_reward:8.2f} (Episode {self.best_episode})")
 
         # Training progress
-        print(f"\n⏱️  Training Progress:")
+        print(f"\nTraining Progress:")
         print(f"   Elapsed Time: {training_hours:.2f} hours")
         print(f"   Episodes/Hour: {self.episodes_per_hour:.1f}")
         print(f"   Timesteps/Hour: {timestep / training_hours if training_hours > 0 else 0:,.0f}")
 
         # Agent statistics
-        print(f"\n🤖 Agent Status:")
+        print(f"\nAgent Status:")
         alpha_status = f"Alpha: {recent_alpha:.4f}"
         if self.agent.use_static_alpha:
             alpha_status += " (static)"
@@ -782,7 +404,7 @@ class MeshSACTrainer:
 
     def _print_training_setup(self):
         """Print training configuration and setup information."""
-        print(f"🚀 Training Configuration:")
+        print(f"Training Configuration:")
         print(f"   Total Timesteps: {self.total_timesteps:,}")
         print(f"   Evaluation Frequency: {self.eval_freq:,}")
         print(f"   Log Interval: {self.log_interval}")
@@ -800,7 +422,7 @@ class MeshSACTrainer:
 
     def _log_evaluation(self, timestep: int, eval_results: Dict):
         """Log evaluation results."""
-        print(f"\n🔍 EVALUATION at timestep {timestep:,}")
+        print(f"\nEVALUATION at timestep {timestep:,}")
         print(f"   Mean Reward: {eval_results['mean_reward']:8.2f} ± {eval_results['std_reward']:.2f}")
         print(f"   Mean Length: {eval_results['mean_length']:8.1f} ± {eval_results['std_length']:.1f}")
         if 'mean_mean_element_quality' in eval_results:
@@ -813,11 +435,11 @@ class MeshSACTrainer:
         total_hours = total_training_time / 3600
 
         print(f"\n{'=' * 70}")
-        print(f"🎉 TRAINING COMPLETED!")
+        print(f"TRAINING COMPLETED!")
         print(f"{'=' * 70}")
 
         if self.episode_rewards:
-            print(f"📊 Final Statistics:")
+            print(f"Final Statistics:")
             print(f"   Total Episodes: {len(self.episode_rewards):,}")
             print(f"   Total Training Time: {total_hours:.2f} hours")
             print(f"   Final Reward: {self.episode_rewards[-1]:.2f}")
@@ -835,7 +457,7 @@ class MeshSACTrainer:
                 late_rewards = np.mean(self.episode_rewards[-100:])
                 improvement = late_rewards - early_rewards
 
-                print(f"\n📈 Learning Progress:")
+                print(f"\nLearning Progress:")
                 print(f"   Early Performance: {early_rewards:.2f}")
                 print(f"   Late Performance: {late_rewards:.2f}")
                 print(
@@ -846,7 +468,7 @@ class MeshSACTrainer:
         # Evaluation visualization summary
         if self.eval_count > 0:
             eval_mesh_dir = os.path.join(self.figures_dir, "evaluation_meshes")
-            print(f"📸 Evaluation mesh visualizations saved to: {eval_mesh_dir}")
+            print(f"Evaluation mesh visualizations saved to: {eval_mesh_dir}")
             print(f"   Total evaluation meshes: {self.eval_count}")
 
     def save_training_results(self, filepath: str):
@@ -868,7 +490,7 @@ class MeshSACTrainer:
         }
 
         torch.save(results, filepath)
-        print(f"📊 Training results saved to: {filepath}")
+        print(f"Training results saved to: {filepath}")
 
         # Also save a human-readable summary
         summary_path = filepath.replace('.pt', '_summary.txt')
@@ -916,4 +538,4 @@ class MeshSACTrainer:
             else:
                 f.write(f"  Alpha: {results['configs']['sac']['alpha']} (automatic tuning)\n")
 
-        print(f"📄 Text summary saved to: {filepath}")
+        print(f"Text summary saved to: {filepath}")
