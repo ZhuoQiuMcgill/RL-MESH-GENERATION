@@ -7,8 +7,8 @@ from gymnasium import spaces
 
 from .utils.geometry import (
     calculate_reference_vertex, get_state_components, transform_to_relative_coords,
-    calculate_reward_components, is_element_valid, update_boundary,
-    calculate_polygon_area, load_domain_from_file, generate_action_coordinates
+    calculate_reward_components, calculate_polygon_area,
+    load_domain_from_file, generate_action_coordinates, calculate_element_quality
 )
 
 
@@ -16,9 +16,12 @@ class MeshEnv(gym.Env):
     """
     Mesh generation environment implementing Gymnasium interface.
 
-    This environment formulates quadrilateral mesh generation as a
-    Markov Decision Process where the agent sequentially generates
-    mesh elements by making local decisions.
+    This environment follows the exact algorithm from the paper:
+    1. Select reference vertex with minimum angle
+    2. Execute action (Type 0: connect neighbors, Type 1: add new vertex)
+    3. Use action filter to ensure new vertices are inside boundary
+    4. Update boundary by inserting/removing vertices correctly
+    5. Stop when max_steps reached or boundary has only 4 vertices
     """
 
     def __init__(self, config: Dict):
@@ -41,7 +44,7 @@ class MeshEnv(gym.Env):
         self.M_angle = float(config['environment']['M_angle'])
         self.nrv = int(config['environment']['nrv'])
 
-        # Episode settings - read from config instead of hardcoding
+        # Episode settings
         self.max_steps = int(config['environment'].get('max_steps', 1000))
 
         # Domain settings
@@ -51,6 +54,9 @@ class MeshEnv(gym.Env):
         # Load initial domain
         self.original_boundary = self._load_domain()
         self.original_area = calculate_polygon_area(self.original_boundary)
+
+        # Ensure boundary is clockwise oriented
+        self.original_boundary = self._ensure_clockwise(self.original_boundary)
 
         # Initialize state
         self.current_boundary = None
@@ -63,9 +69,22 @@ class MeshEnv(gym.Env):
 
         # Episode tracking
         self.episode_reward = 0.0
-        self.episode_length = 0
 
         print(f"🌍 Environment initialized with max_steps: {self.max_steps}")
+
+    def _ensure_clockwise(self, boundary: np.ndarray) -> np.ndarray:
+        """Ensure boundary vertices are in clockwise order."""
+        # Calculate signed area using shoelace formula
+        area = 0.0
+        n = len(boundary)
+        for i in range(n):
+            j = (i + 1) % n
+            area += (boundary[j][0] - boundary[i][0]) * (boundary[j][1] + boundary[i][1])
+
+        # If area > 0, vertices are counterclockwise, so reverse them
+        if area > 0:
+            return boundary[::-1]
+        return boundary
 
     def _load_domain(self) -> np.ndarray:
         """Load domain boundary from file."""
@@ -74,47 +93,36 @@ class MeshEnv(gym.Env):
 
     def _setup_spaces(self):
         """Setup action and observation spaces."""
-        # Action space: [type_prob, x_coord, y_coord]
-        # type_prob in [0, 1], coordinates in [-1, 1] (normalized)
+        # Action space: [type_prob, x, y] where type_prob determines action type
+        # and (x, y) are relative coordinates for new vertex generation
         self.action_space = spaces.Box(
-            low=np.array([0.0, -1.0, -1.0]),
+            low=np.array([-1.0, -1.0, -1.0]),
             high=np.array([1.0, 1.0, 1.0]),
             dtype=np.float32
         )
 
-        # Observation space: flattened state vector
-        # ref_vertex(2) + left_neighbors(n*2) + right_neighbors(n*2) +
-        # fan_points(g*2) + area_ratio(1)
-        state_dim = 2 + (self.n_neighbors * 2) + (self.n_neighbors * 2) + \
-                    (self.n_fan_points * 2) + 1
-
-        self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=(state_dim,),
-            dtype=np.float32
-        )
+        # Observation space components
+        self.observation_space = spaces.Dict({
+            'ref_vertex': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32),
+            'left_neighbors': spaces.Box(low=-np.inf, high=np.inf,
+                                         shape=(self.n_neighbors, 2), dtype=np.float32),
+            'right_neighbors': spaces.Box(low=-np.inf, high=np.inf,
+                                          shape=(self.n_neighbors, 2), dtype=np.float32),
+            'fan_points': spaces.Box(low=-np.inf, high=np.inf,
+                                     shape=(self.n_fan_points, 2), dtype=np.float32),
+            'area_ratio': spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32)
+        })
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[Dict, Dict]:
-        """
-        Reset the environment to initial state.
-
-        Args:
-            seed: Random seed
-            options: Additional options
-
-        Returns:
-            Tuple of (observation, info)
-        """
+        """Reset environment to initial state."""
         super().reset(seed=seed)
 
-        # Reset environment state
+        # Reset boundary to original (ensure clockwise)
         self.current_boundary = self.original_boundary.copy()
         self.generated_elements = []
         self.current_area_ratio = 1.0
         self.step_count = 0
         self.episode_reward = 0.0
-        self.episode_length = 0
 
         # Get initial observation
         observation = self._get_observation()
@@ -123,138 +131,128 @@ class MeshEnv(gym.Env):
         return observation, info
 
     def step(self, action: np.ndarray) -> Tuple[Dict, float, bool, bool, Dict]:
-        """
-        Execute one step in the environment.
-
-        Args:
-            action: Action to take [type_prob, x, y]
-
-        Returns:
-            Tuple of (observation, reward, terminated, truncated, info)
-        """
+        """Execute one environment step following the paper's algorithm."""
         self.step_count += 1
-        self.episode_length += 1
 
-        # Extract action components
-        type_prob = action[0]
-        action_type = 0 if type_prob < 0.5 else 1  # Binary decision for now
-
-        # Check if boundary is too small to continue (mesh generation complete)
-        if len(self.current_boundary) <= 4:
-            # Mesh generation is complete
+        # Check for max steps truncation first
+        if self.step_count >= self.max_steps:
             observation = self._get_observation()
             info = self._get_info()
             info.update({
                 'is_valid_element': False,
                 'element_count': len(self.generated_elements),
-                'area_ratio': self.current_area_ratio,
-                'termination_reason': 'mesh_complete'
+                'termination_reason': 'max_steps_reached'
             })
+            return observation, -1.0, False, True, info
 
-            return observation, 10.0, True, False, info
-
-        # Get current state components
+        # Step 1: Select reference vertex
         try:
             ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
+        except Exception as e:
+            # If reference vertex calculation fails, just use index 0
+            ref_idx = 0
+
+        # Step 2: Get state components
+        try:
             state_components = get_state_components(
                 self.current_boundary, ref_idx, self.n_neighbors,
                 self.n_fan_points, self.beta_obs
             )
         except Exception as e:
-            # If we can't get state components, give small penalty and terminate
+            # If state calculation fails, give small penalty and continue
             observation = self._get_observation()
             info = self._get_info()
             info.update({
                 'is_valid_element': False,
                 'element_count': len(self.generated_elements),
-                'area_ratio': self.current_area_ratio,
                 'termination_reason': f'state_error: {str(e)}'
             })
+            return observation, -0.1, False, False, info
 
-            return observation, -1.0, True, False, info
+        # Step 3: Determine action type
+        action_type = 0 if action[0] < 0 else 1
 
-        # Generate element based on action
-        element_vertices, is_valid = self._generate_element(action, state_components, action_type)
+        # Step 4: Generate element and apply action filter
+        element_vertices, is_valid, new_boundary = self._execute_action(
+            action, state_components, action_type, ref_idx
+        )
 
-        # Calculate reward
+        # Step 5: Calculate reward
         reward = self._calculate_reward(element_vertices, is_valid, state_components)
 
-        # Update environment if element is valid
+        # Step 6: Update environment if action is valid
         terminated = False
         termination_reason = None
 
         if is_valid:
+            # Debug: Print detailed boundary change info
+            old_boundary_size = len(self.current_boundary)
+            new_boundary_size = len(new_boundary)
+
+            # if self.step_count % 20 == 0:  # Print every 20 steps for more frequent monitoring
+            #     print(f"\n=== Step {self.step_count} ===")
+            #     print(f"Action type: {action_type}")
+            #     print(f"Ref vertex index: {ref_idx}")
+            #     print(f"Boundary: {old_boundary_size} -> {new_boundary_size}")
+            #     print(f"Elements generated: {len(self.generated_elements)}")
+#
+            #     # Show actual boundary change
+            #     old_vertices = [f"({v[0]:.1f},{v[1]:.1f})" for v in self.current_boundary]
+            #     new_vertices = [f"({v[0]:.1f},{v[1]:.1f})" for v in new_boundary]
+            #     print(f"Old boundary: {old_vertices}")
+            #     print(f"New boundary: {new_vertices}")
+#
+            #     if old_boundary_size == new_boundary_size:
+            #         print("✓ Boundary size unchanged (replacement operation)")
+            #     elif new_boundary_size == old_boundary_size - 1:
+            #         print("✓ Boundary size decreased by 1 (vertex removal)")
+            #     else:
+            #         print("⚠️  Unexpected boundary size change!")
+            #     print()
+
             self.generated_elements.append(element_vertices)
+            self.current_boundary = new_boundary
+            # Update area ratio
+            current_area = calculate_polygon_area(self.current_boundary)
+            self.current_area_ratio = current_area / self.original_area if self.original_area > 0 else 0.0
+            self.episode_reward += reward
 
-            # Update boundary by properly removing the generated element
-            try:
-                new_boundary = self._update_boundary_properly(self.current_boundary, element_vertices)
+            # Check termination: Only terminate when boundary becomes 4 vertices or less
+            if len(self.current_boundary) <= 4:
+                # Add final element if boundary can form one
+                if len(self.current_boundary) == 4:
+                    final_element = self.current_boundary.copy()
+                    self.generated_elements.append(final_element)
 
-                # Validate the new boundary
-                if len(new_boundary) >= 3 and calculate_polygon_area(new_boundary) > 0:
-                    self.current_boundary = new_boundary
-
-                    # Update area ratio
-                    current_area = calculate_polygon_area(self.current_boundary)
-                    self.current_area_ratio = current_area / self.original_area
-
-                    # Check if mesh generation is complete
-                    if len(self.current_boundary) <= 4:
-                        reward += 10.0  # Completion bonus
-                        terminated = True
-                        termination_reason = 'mesh_complete'
-
-                else:
-                    # Invalid boundary update, penalize and terminate
-                    reward -= 5.0
-                    terminated = True
-                    termination_reason = 'invalid_boundary_update'
-
-            except Exception as e:
-                # Boundary update failed, penalize and terminate
-                reward -= 5.0
                 terminated = True
-                termination_reason = f'boundary_update_error: {str(e)}'
+                termination_reason = 'boundary_complete'
+                reward += 10.0  # Completion bonus
+                print(f"🎉 Mesh generation completed at step {self.step_count}! "
+                      f"Generated {len(self.generated_elements)} elements.")
+
         else:
-            # Invalid element generated, small penalty but continue
-            reward -= 0.1
-
-        # Check for truncation (max steps reached)
-        truncated = self.step_count >= self.max_steps
-
-        if truncated and not terminated:
-            termination_reason = 'max_steps_reached'
+            # Invalid action, small penalty but continue
+            reward = -0.1
 
         # Get next observation
         observation = self._get_observation()
-
-        # Update episode tracking
-        self.episode_reward += reward
 
         # Get info
         info = self._get_info()
         info.update({
             'is_valid_element': is_valid,
             'element_count': len(self.generated_elements),
-            'area_ratio': self.current_area_ratio,
             'boundary_vertices': len(self.current_boundary),
             'termination_reason': termination_reason
         })
 
-        return observation, reward, terminated, truncated, info
+        return observation, reward, terminated, False, info
 
-    def _generate_element(self, action: np.ndarray, state_components: Dict,
-                          action_type: int) -> Tuple[np.ndarray, bool]:
+    def _execute_action(self, action: np.ndarray, state_components: Dict,
+                        action_type: int, ref_idx: int) -> Tuple[np.ndarray, bool, np.ndarray]:
         """
-        Generate element based on action and current state.
-
-        Args:
-            action: Action vector
-            state_components: Current state components
-            action_type: Type of action (0 or 1)
-
-        Returns:
-            Tuple of (element_vertices, is_valid)
+        Execute action following the paper's algorithm.
+        Key insight: When element is cut off, the new point becomes part of the boundary.
         """
         ref_vertex = state_components['ref_vertex']
         left_neighbors = state_components['left_neighbors']
@@ -262,73 +260,109 @@ class MeshEnv(gym.Env):
         reference_direction = state_components['reference_direction']
         base_length = state_components['base_length']
 
-        # Ensure we have enough neighbors
-        if len(left_neighbors) == 0 or len(right_neighbors) == 0:
-            # Simple fallback element - create a small quadrilateral near reference vertex
-            offset = base_length * 0.1
-            element_vertices = np.array([
-                ref_vertex,
-                ref_vertex + np.array([offset, 0]),
-                ref_vertex + np.array([offset, offset]),
-                ref_vertex + np.array([0, offset])
-            ])
-        else:
-            if action_type == 0:
-                # Type 0: Use existing vertices to form quadrilateral
-                # This should properly remove vertices from the boundary
-                try:
-                    # Get the indices of the vertices we'll use for the element
-                    ref_idx = self._find_vertex_index(ref_vertex)
-                    left_idx = self._find_vertex_index(left_neighbors[0])
-                    right_idx = self._find_vertex_index(right_neighbors[0])
+        n_boundary = len(self.current_boundary)
 
-                    # Create element using reference vertex and immediate neighbors
-                    element_vertices = np.array([
-                        ref_vertex,
-                        right_neighbors[0],
-                        left_neighbors[0],
-                        ref_vertex  # Close the quadrilateral
-                    ])
-                    # Remove duplicate last vertex
-                    element_vertices = element_vertices[:-1]
+        # Ensure we have enough neighbors for the action
+        if len(left_neighbors) == 0 or len(right_neighbors) == 0 or n_boundary < 5:
+            return np.array([[0, 0], [0, 0], [0, 0], [0, 0]]), False, self.current_boundary
 
-                    # Add a small interior point to make it a proper quadrilateral
-                    center = np.mean([ref_vertex, right_neighbors[0], left_neighbors[0]], axis=0)
-                    interior_offset = np.array([-base_length * 0.1, base_length * 0.1])
-                    element_vertices = np.array([
-                        ref_vertex,
-                        right_neighbors[0],
-                        center + interior_offset,
-                        left_neighbors[0]
-                    ])
+        # Get neighbor vertices
+        v_right = right_neighbors[0]  # Right neighbor (clockwise)
+        v_left = left_neighbors[0]  # Left neighbor (counter-clockwise)
 
-                except Exception:
-                    # Fallback to simple quadrilateral
-                    offset = base_length * 0.1
-                    element_vertices = np.array([
-                        ref_vertex,
-                        ref_vertex + np.array([offset, 0]),
-                        ref_vertex + np.array([offset, offset]),
-                        ref_vertex + np.array([0, offset])
-                    ])
+        if action_type == 0:
+            # Type 0: Create element using three existing boundary vertices + interior point
+            # Element: [ref_vertex, v_right, interior_point, v_left]
+            # After cutting: ref_vertex is replaced by interior_point in boundary
+
+            # Create interior point that makes a reasonable quadrilateral
+            triangle_center = np.mean([ref_vertex, v_right, v_left], axis=0)
+
+            # Calculate an inward direction to place interior point
+            edge_vec = v_right - ref_vertex
+            perp_vec = np.array([-edge_vec[1], edge_vec[0]])  # Perpendicular
+            if np.linalg.norm(perp_vec) > 1e-8:
+                perp_vec = perp_vec / np.linalg.norm(perp_vec)
+
+                # Test which direction is inward
+                test_point = triangle_center + perp_vec * base_length * 0.01
+                if self._is_point_inside_boundary(test_point):
+                    interior_point = triangle_center + perp_vec * base_length * 0.2
+                else:
+                    interior_point = triangle_center - perp_vec * base_length * 0.2
             else:
-                # Type 1: Generate new vertex based on action
-                new_vertex = generate_action_coordinates(
-                    action, ref_vertex, reference_direction,
-                    self.alpha_action, base_length
-                )
+                interior_point = triangle_center
 
-                element_vertices = np.array([
-                    ref_vertex,
-                    right_neighbors[0],
-                    new_vertex,
-                    left_neighbors[0]
-                ])
+            # Element vertices: ref_vertex, v_right, interior_point, v_left
+            element_vertices = np.array([ref_vertex, v_right, interior_point, v_left])
 
-        # Check if element is valid
-        is_valid = is_element_valid(element_vertices, self.current_boundary)
+            # For boundary update: interior_point will replace ref_vertex
+            boundary_replacement_point = interior_point
 
-        return element_vertices, is_valid
+        else:
+            # Type 1: Add new vertex inside the boundary
+            # Element: [ref_vertex, v_right, new_vertex, v_left]
+            # After cutting: ref_vertex is replaced by new_vertex in boundary
+
+            new_vertex = generate_action_coordinates(
+                action, ref_vertex, reference_direction,
+                self.alpha_action, base_length
+            )
+
+            # Action filter: check if new vertex is inside boundary
+            if not self._is_point_inside_boundary(new_vertex):
+                return np.array([[0, 0], [0, 0], [0, 0], [0, 0]]), False, self.current_boundary
+
+            # Element vertices: ref_vertex, v_right, new_vertex, v_left
+            element_vertices = np.array([ref_vertex, v_right, new_vertex, v_left])
+
+            # For boundary update: new_vertex will replace ref_vertex
+            boundary_replacement_point = new_vertex
+
+        # Update boundary: replace ref_vertex with the new point
+        new_boundary = self._update_boundary_cut(ref_idx, 0, 0, boundary_replacement_point, action_type)
+
+        # Validate the generated element and new boundary
+        is_valid = self._validate_element(element_vertices) and len(new_boundary) >= 3
+
+        if not is_valid:
+            return element_vertices, False, self.current_boundary
+
+        return element_vertices, True, new_boundary
+
+    def _update_boundary_cut(self, ref_idx: int, right_idx: int, left_idx: int,
+                             new_point: np.ndarray, action_type: int) -> np.ndarray:
+        """
+        Update boundary by cutting off the element region properly.
+
+        Key insight: When element [ref_vertex, right_neighbor, new_point, left_neighbor]
+        is cut off, the new boundary should include the new_point as it becomes part
+        of the new boundary where the element was removed.
+
+        Example: boundary [0,1,2,3,4,5,6,7,8,9,10,11]
+        If element is [5,6,7,P], new boundary should be [0,1,2,3,4,5,P,7,8,9,10,11]
+        """
+        boundary_list = [v.tolist() for v in self.current_boundary]
+        n = len(boundary_list)
+
+        if action_type == 0:
+            # Type 0: Element uses ref_vertex + neighbors + interior_point
+            # After cutting: replace ref_vertex with interior_point
+            # This simulates the element being cut off and interior_point becoming new boundary
+            new_boundary_list = boundary_list.copy()
+            new_boundary_list[ref_idx] = new_point.tolist()
+
+        else:
+            # Type 1: Element uses ref_vertex + neighbors + new_vertex
+            # After cutting: replace ref_vertex with new_vertex
+            new_boundary_list = boundary_list.copy()
+            new_boundary_list[ref_idx] = new_point.tolist()
+
+        # Ensure we have enough vertices
+        if len(new_boundary_list) < 3:
+            return self.current_boundary
+
+        return np.array(new_boundary_list)
 
     def _find_vertex_index(self, vertex: np.ndarray) -> int:
         """Find the index of a vertex in the current boundary."""
@@ -337,82 +371,83 @@ class MeshEnv(gym.Env):
                 return i
         return -1  # Not found
 
-    def _update_boundary_properly(self, boundary: np.ndarray, element_vertices: np.ndarray) -> np.ndarray:
+    def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
         """
-        Properly update boundary after element generation.
-        This should actually remove the generated element area from the boundary.
-
-        Args:
-            boundary: Current boundary
-            element_vertices: Generated element vertices
-
-        Returns:
-            Updated boundary
+        Check if point is inside the boundary using ray casting algorithm.
+        For clockwise oriented boundary.
         """
-        # This is a simplified approach for demonstration
-        # In a real implementation, this would require sophisticated polygon operations
+        x, y = point
+        boundary = self.current_boundary
+        n = len(boundary)
+        inside = False
 
-        # Find which boundary vertices are part of the element
-        vertices_to_remove = []
-        vertices_to_add = []
+        p1x, p1y = boundary[0]
+        for i in range(1, n + 1):
+            p2x, p2y = boundary[i % n]
+            if y > min(p1y, p2y):
+                if y <= max(p1y, p2y):
+                    if x <= max(p1x, p2x):
+                        if p1y != p2y:
+                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= xinters:
+                            inside = not inside
+            p1x, p1y = p2x, p2y
 
-        for i, element_vertex in enumerate(element_vertices):
-            boundary_idx = self._find_vertex_index(element_vertex)
-            if boundary_idx >= 0:
-                vertices_to_remove.append(boundary_idx)
-            else:
-                # This is a new vertex that should be added to the boundary
-                vertices_to_add.append(element_vertex)
+        return inside
 
-        # Create new boundary
-        new_boundary_list = []
+    def _update_boundary_type0(self, ref_idx: int, v3_idx: int) -> np.ndarray:
+        """
+        Update boundary for Type 0 action (connect neighbors).
+        Simply remove the reference vertex, connecting left and right neighbors directly.
+        """
+        boundary_list = self.current_boundary.tolist()
+        n = len(boundary_list)
 
-        # Sort removal indices in descending order to avoid index shifting issues
-        vertices_to_remove.sort(reverse=True)
+        # Remove only the reference vertex
+        new_boundary_list = boundary_list[:ref_idx] + boundary_list[ref_idx + 1:]
 
-        # Start with original boundary
-        new_boundary_list = list(boundary)
+        # Ensure we have enough vertices left
+        if len(new_boundary_list) < 3:
+            return self.current_boundary
 
-        # Remove vertices that are consumed by the element
-        # But be careful not to remove all vertices
-        if len(vertices_to_remove) > 0 and len(vertices_to_remove) < len(new_boundary_list) - 2:
-            for idx in vertices_to_remove:
-                if 0 <= idx < len(new_boundary_list):
-                    new_boundary_list.pop(idx)
+        return np.array(new_boundary_list)
 
-        # Add new vertices created by the element (if any)
-        for new_vertex in vertices_to_add:
-            # Insert new vertices at appropriate positions
-            # For simplicity, add them at the end for now
-            new_boundary_list.append(new_vertex)
-
-        # Convert back to numpy array
-        if len(new_boundary_list) >= 3:
-            new_boundary = np.array(new_boundary_list)
-        else:
-            # If boundary becomes too small, keep at least 3 vertices
-            new_boundary = boundary  # Fallback
+    def _update_boundary_type1(self, ref_idx: int, new_vertex: np.ndarray) -> np.ndarray:
+        """
+        Update boundary for Type 1 action (add new vertex).
+        Replace ref_vertex with new_vertex.
+        """
+        new_boundary = self.current_boundary.copy()
+        new_boundary[ref_idx] = new_vertex
 
         return new_boundary
 
+    def _validate_element(self, element_vertices: np.ndarray) -> bool:
+        """Validate that the generated element is acceptable - simplified version."""
+        if len(element_vertices) < 3:
+            return False
+
+        # Check for degenerate element (zero area)
+        area = calculate_polygon_area(element_vertices)
+        if area < 1e-6:  # More lenient area threshold
+            return False
+
+        # Simple validation: just check if vertices are distinct
+        for i in range(len(element_vertices)):
+            for j in range(i + 1, len(element_vertices)):
+                if np.linalg.norm(element_vertices[i] - element_vertices[j]) < 1e-6:
+                    return False  # Duplicate vertices
+
+        return True
+
     def _calculate_reward(self, element_vertices: np.ndarray, is_valid: bool,
                           state_components: Dict) -> float:
-        """
-        Calculate reward for the current action.
-
-        Args:
-            element_vertices: Generated element vertices
-            is_valid: Whether element is valid
-            state_components: Current state components
-
-        Returns:
-            Reward value
-        """
+        """Calculate reward for the current action."""
         if not is_valid:
-            return -0.1  # Invalid element penalty
+            return -0.5
 
         try:
-            # Calculate reward components
+            # Calculate reward components according to paper
             eta_e, eta_b, mu_t = calculate_reward_components(
                 element_vertices, self.current_boundary, self.current_boundary,
                 self.current_area_ratio, self.v_density, self.M_angle
@@ -421,34 +456,26 @@ class MeshEnv(gym.Env):
             # Combined reward
             reward = eta_e + eta_b + mu_t
 
-            # Bonus for reducing boundary size (encouraging progress)
-            original_boundary_size = len(self.current_boundary)
-            progress_bonus = 0.1 * (1.0 / max(1, original_boundary_size - 4))
-            reward += progress_bonus
+            # Bonus for progress (reducing boundary size)
+            if len(self.current_boundary) < len(self.original_boundary):
+                progress_bonus = 0.1
+                reward += progress_bonus
 
             return reward
 
         except Exception:
-            # Fallback reward calculation
-            element_area = calculate_polygon_area(element_vertices)
-            return element_area * 0.01  # Small positive reward for valid elements
+            return -0.1
 
     def _get_observation(self) -> Dict:
-        """
-        Get current observation from environment state.
-
-        Returns:
-            Observation dictionary
-        """
+        """Get current observation."""
         if len(self.current_boundary) < 3:
-            # Handle edge case of very small boundary
             return self._get_default_observation()
 
         # Get reference vertex
         try:
             ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
         except:
-            ref_idx = 0  # Fallback
+            ref_idx = 0
 
         # Get state components
         try:
@@ -508,23 +535,16 @@ class MeshEnv(gym.Env):
     def _get_info(self) -> Dict:
         """Get additional information about current state."""
         return {
+            'boundary_area': calculate_polygon_area(self.current_boundary) if len(self.current_boundary) >= 3 else 0,
             'boundary_vertices': len(self.current_boundary),
-            'elements_generated': len(self.generated_elements),
-            'step_count': self.step_count,
-            'max_steps': self.max_steps,
-            'area_ratio': self.current_area_ratio,
+            'generated_elements': len(self.generated_elements),
             'episode_reward': self.episode_reward,
-            'episode_length': self.episode_length
+            'step_count': self.step_count,
+            'area_ratio': self.current_area_ratio
         }
 
     def render(self, mode: str = 'human'):
-        """
-        Render the current state of the environment.
-
-        Args:
-            mode: Rendering mode
-        """
-        # This would integrate with visualization.py for rendering
+        """Render the current state of the environment."""
         pass
 
     def close(self):
@@ -532,36 +552,20 @@ class MeshEnv(gym.Env):
         pass
 
     def get_current_mesh(self) -> Tuple[np.ndarray, List[np.ndarray]]:
-        """
-        Get current mesh state.
-
-        Returns:
-            Tuple of (current_boundary, generated_elements)
-        """
+        """Get current mesh state."""
         return self.current_boundary.copy(), self.generated_elements.copy()
 
     def set_domain(self, domain_file: str):
-        """
-        Set new domain for the environment.
-
-        Args:
-            domain_file: Path to domain file
-        """
+        """Set new domain for the environment."""
         self.domain_file = domain_file
         self.original_boundary = self._load_domain()
+        self.original_boundary = self._ensure_clockwise(self.original_boundary)
         self.original_area = calculate_polygon_area(self.original_boundary)
 
     def get_mesh_quality_metrics(self) -> Dict:
-        """
-        Calculate quality metrics for current mesh.
-
-        Returns:
-            Dictionary of quality metrics
-        """
+        """Calculate quality metrics for current mesh."""
         if len(self.generated_elements) == 0:
             return {}
-
-        from .utils.geometry import calculate_element_quality
 
         element_qualities = []
         for element in self.generated_elements:
@@ -586,9 +590,7 @@ class MeshEnv(gym.Env):
 
 
 class MultiDomainMeshEnv(MeshEnv):
-    """
-    Extended mesh environment that can handle multiple domains for training.
-    """
+    """Extended mesh environment that can handle multiple domains for training."""
 
     def __init__(self, config: Dict, domain_files: List[str]):
         """
@@ -610,6 +612,7 @@ class MultiDomainMeshEnv(MeshEnv):
             self.current_domain_idx = np.random.randint(0, len(self.domain_files))
             self.domain_file = self.domain_files[self.current_domain_idx]
             self.original_boundary = self._load_domain()
+            self.original_boundary = self._ensure_clockwise(self.original_boundary)
             self.original_area = calculate_polygon_area(self.original_boundary)
 
         return super().reset(seed, options)
