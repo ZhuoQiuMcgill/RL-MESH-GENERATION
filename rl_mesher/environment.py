@@ -139,12 +139,38 @@ class MeshEnv(gym.Env):
         type_prob = action[0]
         action_type = 0 if type_prob < 0.5 else 1  # Binary decision for now
 
+        # Check if boundary is too small to continue (mesh generation complete)
+        if len(self.current_boundary) <= 4:
+            # Mesh generation is complete
+            observation = self._get_observation()
+            info = self._get_info()
+            info.update({
+                'is_valid_element': False,
+                'element_count': len(self.generated_elements),
+                'area_ratio': self.current_area_ratio,
+                'termination_reason': 'mesh_complete'
+            })
+
+            return observation, 10.0, True, False, info
+
         # Get current state components
-        ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
-        state_components = get_state_components(
-            self.current_boundary, ref_idx, self.n_neighbors,
-            self.n_fan_points, self.beta_obs
-        )
+        try:
+            ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
+            state_components = get_state_components(
+                self.current_boundary, ref_idx, self.n_neighbors,
+                self.n_fan_points, self.beta_obs
+            )
+        except Exception:
+            # If we can't get state components, give small penalty and continue
+            observation = self._get_observation()
+            info = self._get_info()
+            info.update({
+                'is_valid_element': False,
+                'element_count': len(self.generated_elements),
+                'area_ratio': self.current_area_ratio
+            })
+
+            return observation, -0.1, False, False, info
 
         # Generate element based on action
         element_vertices, is_valid = self._generate_element(action, state_components, action_type)
@@ -154,20 +180,36 @@ class MeshEnv(gym.Env):
 
         # Update environment if element is valid
         terminated = False
+
         if is_valid:
             self.generated_elements.append(element_vertices)
 
             # Update boundary
-            self.current_boundary = update_boundary(self.current_boundary, element_vertices)
+            try:
+                new_boundary = update_boundary(self.current_boundary, element_vertices)
 
-            # Update area ratio
-            current_area = calculate_polygon_area(self.current_boundary)
-            self.current_area_ratio = current_area / self.original_area
+                # Validate the new boundary
+                if len(new_boundary) >= 3 and calculate_polygon_area(new_boundary) > 0:
+                    self.current_boundary = new_boundary
 
-            # Check if meshing is complete
-            if len(self.current_boundary) <= 4:  # Final element
-                reward += 10.0  # Completion bonus
-                terminated = True
+                    # Update area ratio
+                    current_area = calculate_polygon_area(self.current_boundary)
+                    self.current_area_ratio = current_area / self.original_area
+
+                    # Check if mesh generation is complete
+                    if len(self.current_boundary) <= 4:
+                        reward += 10.0  # Completion bonus
+                        terminated = True
+
+                else:
+                    # Invalid boundary update, penalize
+                    reward -= 0.5
+                    is_valid = False
+
+            except Exception:
+                # Boundary update failed, penalize
+                reward -= 0.5
+                is_valid = False
 
         # Check for truncation (max steps reached)
         truncated = self.step_count >= self.max_steps
@@ -207,35 +249,44 @@ class MeshEnv(gym.Env):
         reference_direction = state_components['reference_direction']
         base_length = state_components['base_length']
 
-        if action_type == 0:
-            # Type 0: Use existing vertices to form quadrilateral
-            # Use ref_vertex, left_neighbor[0], right_neighbor[0], and their common neighbor
-            if len(left_neighbors) > 0 and len(right_neighbors) > 0:
-                # Find common neighbor (simplified)
-                # In practice, this requires more complex topology analysis
-                element_vertices = np.array([
-                    ref_vertex,
-                    right_neighbors[0],
-                    (left_neighbors[0] + right_neighbors[0]) / 2,  # Simplified
-                    left_neighbors[0]
-                ])
-            else:
-                # Fallback to type 1
-                action_type = 1
-
-        if action_type == 1:
-            # Type 1: Generate new vertex based on action
+        # Ensure we have enough neighbors
+        if len(left_neighbors) == 0 or len(right_neighbors) == 0:
+            # Simple fallback element
             new_vertex = generate_action_coordinates(
                 action, ref_vertex, reference_direction,
                 self.alpha_action, base_length
             )
 
+            # Create a simple quadrilateral
             element_vertices = np.array([
                 ref_vertex,
-                right_neighbors[0] if len(right_neighbors) > 0 else ref_vertex + [1, 0],
+                ref_vertex + np.array([base_length * 0.5, 0]),
                 new_vertex,
-                left_neighbors[0] if len(left_neighbors) > 0 else ref_vertex + [0, 1]
+                ref_vertex + np.array([0, base_length * 0.5])
             ])
+        else:
+            if action_type == 0:
+                # Type 0: Use existing vertices to form quadrilateral
+                # Create element using reference vertex and neighbors
+                element_vertices = np.array([
+                    ref_vertex,
+                    right_neighbors[0],
+                    (left_neighbors[0] + right_neighbors[0]) / 2,  # Midpoint
+                    left_neighbors[0]
+                ])
+            else:
+                # Type 1: Generate new vertex based on action
+                new_vertex = generate_action_coordinates(
+                    action, ref_vertex, reference_direction,
+                    self.alpha_action, base_length
+                )
+
+                element_vertices = np.array([
+                    ref_vertex,
+                    right_neighbors[0],
+                    new_vertex,
+                    left_neighbors[0]
+                ])
 
         # Check if element is valid
         is_valid = is_element_valid(element_vertices, self.current_boundary)
@@ -258,16 +309,22 @@ class MeshEnv(gym.Env):
         if not is_valid:
             return -0.1  # Invalid element penalty
 
-        # Calculate reward components
-        eta_e, eta_b, mu_t = calculate_reward_components(
-            element_vertices, self.current_boundary, self.current_boundary,
-            self.current_area_ratio, self.v_density, self.M_angle
-        )
+        try:
+            # Calculate reward components
+            eta_e, eta_b, mu_t = calculate_reward_components(
+                element_vertices, self.current_boundary, self.current_boundary,
+                self.current_area_ratio, self.v_density, self.M_angle
+            )
 
-        # Combined reward
-        reward = eta_e + eta_b + mu_t
+            # Combined reward
+            reward = eta_e + eta_b + mu_t
 
-        return reward
+            return reward
+
+        except Exception:
+            # Fallback reward calculation
+            element_area = calculate_polygon_area(element_vertices)
+            return element_area * 0.01  # Small positive reward for valid elements
 
     def _get_observation(self) -> Dict:
         """
@@ -287,10 +344,13 @@ class MeshEnv(gym.Env):
             ref_idx = 0  # Fallback
 
         # Get state components
-        state_components = get_state_components(
-            self.current_boundary, ref_idx, self.n_neighbors,
-            self.n_fan_points, self.beta_obs
-        )
+        try:
+            state_components = get_state_components(
+                self.current_boundary, ref_idx, self.n_neighbors,
+                self.n_fan_points, self.beta_obs
+            )
+        except:
+            return self._get_default_observation()
 
         # Transform to relative coordinates
         ref_vertex = state_components['ref_vertex']
@@ -303,9 +363,12 @@ class MeshEnv(gym.Env):
         all_points.extend(state_components['fan_points'])
 
         # Transform to relative coordinates
-        relative_points = transform_to_relative_coords(
-            all_points, ref_vertex, reference_direction
-        )
+        try:
+            relative_points = transform_to_relative_coords(
+                all_points, ref_vertex, reference_direction
+            )
+        except:
+            return self._get_default_observation()
 
         # Ensure we have the right number of points
         while len(relative_points) < 1 + 2 * self.n_neighbors + self.n_fan_points:
@@ -395,8 +458,14 @@ class MeshEnv(gym.Env):
 
         element_qualities = []
         for element in self.generated_elements:
-            quality = calculate_element_quality(element)
-            element_qualities.append(quality)
+            try:
+                quality = calculate_element_quality(element)
+                element_qualities.append(quality)
+            except:
+                element_qualities.append(0.0)
+
+        if not element_qualities:
+            return {}
 
         metrics = {
             'mean_element_quality': np.mean(element_qualities),

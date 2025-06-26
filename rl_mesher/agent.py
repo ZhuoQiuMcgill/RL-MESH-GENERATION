@@ -624,6 +624,40 @@ class MeshSACTrainer:
         self.eval_count += 1
         return results
 
+        self.agent.set_training_mode(True)
+
+        eval_total_time = time.time() - eval_start_time
+
+        # Create mesh visualization for the best evaluation episode
+        self._save_evaluation_mesh_visualization(timestep, best_episode_boundary,
+                                                 best_episode_elements, best_episode_reward, best_episode_info)
+
+        results = {
+            'timestep': timestep,
+            'mean_reward': np.mean(eval_rewards),
+            'std_reward': np.std(eval_rewards),
+            'min_reward': np.min(eval_rewards),
+            'max_reward': np.max(eval_rewards),
+            'mean_length': np.mean(eval_lengths),
+            'std_length': np.std(eval_lengths),
+            'mean_episode_time': np.mean(eval_times),
+            'completion_rate': np.mean(completion_rates),
+            'eval_total_time': eval_total_time
+        }
+
+        if mesh_qualities:
+            # Calculate average mesh quality metrics
+            quality_keys = mesh_qualities[0].keys()
+            for key in quality_keys:
+                values = [q[key] for q in mesh_qualities if key in q]
+                if values:
+                    results[f'mean_{key}'] = np.mean(values)
+                    results[f'std_{key}'] = np.std(values)
+
+        print(f"✅ Evaluation completed in {eval_total_time:.1f}s")
+        self.eval_count += 1
+        return results
+
     def _save_evaluation_mesh_visualization(self, timestep: int, boundary: np.ndarray,
                                             elements: List[np.ndarray], reward: float):
         """
