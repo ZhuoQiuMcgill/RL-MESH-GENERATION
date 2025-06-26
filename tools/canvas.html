@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式画板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans SC', 'Inter', sans-serif;
+        }
+
+        .btn {
+            @apply px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 ease-in-out disabled:bg-gray-400 disabled:cursor-not-allowed;
+        }
+
+        .btn-secondary {
+            @apply bg-gray-600 hover:bg-gray-700 focus:ring-gray-500;
+        }
+
+        .btn-success {
+            @apply bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500;
+        }
+
+        .btn-danger {
+            @apply bg-red-600 hover:bg-red-700 focus:ring-red-500;
+        }
+
+        #main-canvas {
+            cursor: crosshair;
+            touch-action: none; /* Prevents browser gestures on touch devices */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex flex-col items-center justify-center h-screen overflow-hidden p-4">
+
+<div class="w-full max-w-6xl h-full flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <!-- Header / Controls -->
+    <header class="flex flex-wrap items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+        <h1 class="text-xl md:text-2xl font-bold text-gray-800">交互式画板</h1>
+        <div class="flex items-center space-x-2 md:space-x-4">
+            <div class="flex items-center space-x-2 bg-indigo-100 text-indigo-800 text-sm font-semibold px-3 py-1.5 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+                <span>点数量: <span id="point-counter">0</span></span>
+            </div>
+            <button id="finish-btn" class="btn btn-success">完成绘制</button>
+            <button id="export-btn" class="btn btn-secondary" disabled>导出.txt</button>
+            <button id="import-btn" class="btn">导入.txt</button>
+            <button id="reset-btn" class="btn btn-danger">重置</button>
+        </div>
+    </header>
+
+    <!-- Canvas Container -->
+    <main class="flex-1 w-full h-full bg-gray-200 overflow-hidden relative">
+        <canvas id="main-canvas"></canvas>
+        <div id="instructions"
+             class="absolute top-4 left-4 bg-white/80 backdrop-blur-sm p-3 rounded-lg text-gray-600 text-sm shadow-md pointer-events-none">
+            <p> - 在画板上点击以添加点。</p>
+            <p> - 按 <kbd
+                    class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Ctrl</kbd>
+                +
+                <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Z</kbd>
+                撤销上一个点。</p>
+        </div>
+        <div id="message-box"
+             class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-xl">
+            <p id="message-text"></p>
+        </div>
+    </main>
+</div>
+
+<input type="file" id="import-file" class="hidden" accept=".txt">
+
+<script>
+    // --- DOM Element Selection ---
+    const canvas = document.getElementById('main-canvas');
+    const ctx = canvas.getContext('2d');
+    const pointCounter = document.getElementById('point-counter');
+    const finishBtn = document.getElementById('finish-btn');
+    const exportBtn = document.getElementById('export-btn');
+    const importBtn = document.getElementById('import-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const importFileInput = document.getElementById('import-file');
+    const instructionsDiv = document.getElementById('instructions');
+    const messageBox = document.getElementById('message-box');
+    const messageText = document.getElementById('message-text');
+
+    // --- State Management ---
+    let points = [];
+    let isFinished = false;
+    let viewTransform = {
+        scale: 1.0,
+        offsetX: 0,
+        offsetY: 0
+    };
+
+    // --- Utility Functions ---
+    /**
+     * Resizes the canvas to fit its container and redraws the content.
+     */
+    function resizeCanvas() {
+        const container = canvas.parentElement;
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+        draw(); // Redraw whenever the size changes
+    }
+
+    /**
+     * Displays a temporary message on the screen.
+     * @param {string} message - The message to display.
+     * @param {number} duration - How long to display the message in milliseconds.
+     */
+    function showMessage(message, duration = 2000) {
+        messageText.textContent = message;
+        messageBox.classList.remove('hidden');
+        setTimeout(() => {
+            messageBox.classList.add('hidden');
+        }, duration);
+    }
+
+    /**
+     * Updates the UI elements based on the current state.
+     */
+    function updateUI() {
+        pointCounter.textContent = points.length;
+
+        // Manage button states
+        finishBtn.disabled = points.length < 3 || isFinished;
+        exportBtn.disabled = !isFinished;
+        importBtn.disabled = isFinished;
+
+        // Hide instructions after first point is drawn
+        instructionsDiv.style.display = points.length > 0 ? 'none' : 'block';
+    }
+
+    /**
+     * Converts screen coordinates (from a mouse event) to world coordinates on the canvas.
+     * @param {number} screenX - The x-coordinate from the event.
+     * @param {number} screenY - The y-coordinate from the event.
+     * @returns {{x: number, y: number}} The world coordinates.
+     */
+    function screenToWorld(screenX, screenY) {
+        return {
+            x: (screenX - viewTransform.offsetX) / viewTransform.scale,
+            y: (screenY - viewTransform.offsetY) / viewTransform.scale,
+        };
+    }
+
+    // --- Core Drawing Function ---
+    /**
+     * Clears the canvas and redraws all points and lines based on the current state.
+     */
+    function draw() {
+        ctx.save(); // Save the default state
+
+        // Clear the canvas with the background color
+        ctx.fillStyle = '#E5E7EB'; // bg-gray-200
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Apply view transformations (for zooming and panning)
+        ctx.translate(viewTransform.offsetX, viewTransform.offsetY);
+        ctx.scale(viewTransform.scale, viewTransform.scale);
+
+        if (points.length === 0) {
+            ctx.restore(); // Restore to default state if no points
+            return;
+        }
+
+        // --- Draw Lines ---
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        // If finished, close the path
+        if (isFinished && points.length > 1) {
+            ctx.lineTo(points[0].x, points[0].y);
+        }
+        ctx.strokeStyle = '#4F46E5'; // indigo-600
+        ctx.lineWidth = 2 / viewTransform.scale; // Keep line width consistent when zoomed
+        ctx.stroke();
+
+        // --- Draw Points ---
+        points.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5 / viewTransform.scale, 0, 2 * Math.PI); // Keep point size consistent
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#3730A3'; // indigo-800
+            ctx.lineWidth = 1.5 / viewTransform.scale;
+            ctx.stroke();
+        });
+
+        ctx.restore(); // Restore to the saved default state
+    }
+
+    // --- State Resets ---
+    /**
+     * Resets the entire application state to its initial values.
+     */
+    function resetState() {
+        points = [];
+        isFinished = false;
+        viewTransform = {scale: 1.0, offsetX: 0, offsetY: 0};
+        importFileInput.value = ''; // Clear file input
+        updateUI();
+        draw();
+        showMessage("画板已重置", 1500);
+    }
+
+    // --- Event Handlers ---
+    /**
+     * Handles clicks on the canvas to add new points.
+     * @param {MouseEvent} event - The mouse click event.
+     */
+    function handleCanvasClick(event) {
+        if (isFinished) {
+            showMessage("已完成绘制，请先重置再开始新的绘制。", 2500);
+            return;
+        }
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+
+        const newPoint = screenToWorld(mouseX, mouseY);
+        points.push(newPoint);
+
+        updateUI();
+        draw();
+    }
+
+    /**
+     * Handles the "Finish" button click.
+     */
+    function handleFinish() {
+        if (points.length < 3) {
+            showMessage("请至少绘制3个点才能完成。", 2000);
+            return;
+        }
+        isFinished = true;
+        updateUI();
+        draw();
+    }
+
+    /**
+     * Handles the "Undo" keyboard shortcut (Ctrl+Z).
+     * @param {KeyboardEvent} event - The keydown event.
+     */
+    function handleUndo(event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+            event.preventDefault();
+            if (points.length > 0 && !isFinished) {
+                points.pop();
+                updateUI();
+                draw();
+            }
+        }
+    }
+
+    /**
+     * Handles the "Export" button click.
+     */
+    function handleExport() {
+        if (!isFinished || points.length === 0) return;
+
+        // Format each coordinate to 3 decimal places
+        const content = points.map(p => `${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join('\n');
+        const blob = new Blob([content], {type: 'text/plain;charset=utf-8'});
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'points.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Handles file import, parsing, and auto-zooming.
+     * @param {Event} event - The change event from the file input.
+     */
+    function handleImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                const content = e.target.result;
+                // Filter out comment lines (starting with #) and empty lines before processing
+                const lines = content.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0 && !line.startsWith('#'));
+
+                if (lines.length === 0) {
+                    throw new Error("文件内容为空或只包含注释。");
+                }
+
+                const importedPoints = lines.map(line => {
+                    const parts = line.split(/\s+/);
+                    if (parts.length !== 2) throw new Error("文件格式错误：每一行应包含两个由空格分隔的数字。");
+                    const x = parseFloat(parts[0]);
+                    const y = parseFloat(parts[1]);
+                    if (isNaN(x) || isNaN(y)) throw new Error("文件内容错误：坐标必须是数字。");
+                    return {x, y};
+                });
+
+                if (importedPoints.length < 2) {
+                    throw new Error("导入失败：文件至少需要包含2个点。");
+                }
+
+                // --- Auto-zoom and Center Logic ---
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                importedPoints.forEach(p => {
+                    minX = Math.min(minX, p.x);
+                    minY = Math.min(minY, p.y);
+                    maxX = Math.max(maxX, p.x);
+                    maxY = Math.max(maxY, p.y);
+                });
+
+                const shapeWidth = maxX - minX;
+                const shapeHeight = maxY - minY;
+                const shapeCenterX = minX + shapeWidth / 2;
+                const shapeCenterY = minY + shapeHeight / 2;
+
+                // Add padding to the viewport
+                const padding = 0.9;
+                const scaleX = canvas.width / shapeWidth;
+                const scaleY = canvas.height / shapeHeight;
+                const scale = Math.min(scaleX, scaleY) * padding;
+
+                const offsetX = canvas.width / 2 - shapeCenterX * scale;
+                const offsetY = canvas.height / 2 - shapeCenterY * scale;
+
+                // --- Update State with Imported Data ---
+                points = importedPoints;
+                isFinished = true;
+                viewTransform = {scale, offsetX, offsetY};
+
+                updateUI();
+                draw();
+                showMessage("文件导入成功！", 2000);
+
+            } catch (error) {
+                resetState(); // Reset if import fails
+                showMessage(error.message, 4000);
+                console.error("Import Error:", error);
+            } finally {
+                // Reset file input to allow re-importing the same file
+                importFileInput.value = '';
+            }
+        };
+
+        reader.onerror = function () {
+            showMessage("读取文件时发生错误。", 3000);
+        };
+
+        reader.readAsText(file);
+    }
+
+    // --- Event Listeners ---
+    window.addEventListener('resize', resizeCanvas);
+    document.addEventListener('keydown', handleUndo);
+    canvas.addEventListener('click', handleCanvasClick);
+    finishBtn.addEventListener('click', handleFinish);
+    exportBtn.addEventListener('click', handleExport);
+    importBtn.addEventListener('click', () => importFileInput.click());
+    importFileInput.addEventListener('change', handleImport);
+    resetBtn.addEventListener('click', resetState);
+
+    // --- Initial Setup ---
+    resizeCanvas();
+    updateUI();
+
+</script>
+</body>
+</html>
