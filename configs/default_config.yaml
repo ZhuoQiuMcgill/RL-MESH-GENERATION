@@ -10,6 +10,9 @@ sac:
   alpha: 0.2
   gradient_steps: 4
   polyak: 0.995
+  # Static alpha mode - set to true to disable automatic alpha tuning
+  use_static_alpha: true
+  static_alpha: 0.1
 
 # Network Architecture
 networks:
@@ -26,6 +29,9 @@ environment:
 
   # Action space
   alpha_action: 2.0
+
+  # Episode settings
+  max_steps: 1000
 
   # Reward function
   v_density: 1.0

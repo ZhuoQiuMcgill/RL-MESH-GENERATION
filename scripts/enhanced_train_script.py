@@ -90,6 +90,13 @@ def parse_arguments():
         help="Override log frequency from config"
     )
 
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=None,
+        help="Override max steps per episode from config"
+    )
+
     return parser.parse_args()
 
 
@@ -133,11 +140,15 @@ def setup_directories(config: dict, experiment_name: str = None):
 def setup_environment(config: dict, multi_domain: bool = False,
                       domain_files: list = None) -> MeshEnv:
     """Setup training environment."""
+    max_steps = config['environment'].get('max_steps', 1000)
+
     if multi_domain and domain_files:
         print(f"🌍 Setting up multi-domain environment with domains: {domain_files}")
+        print(f"   Max steps per episode: {max_steps}")
         env = MultiDomainMeshEnv(config, domain_files)
     else:
         print(f"🌍 Setting up single-domain environment with domain: {config['domain']['training_domain']}")
+        print(f"   Max steps per episode: {max_steps}")
         env = MeshEnv(config)
 
     return env
@@ -152,6 +163,8 @@ def setup_agent(config: dict, device: torch.device) -> SACAgent:
     print(f"   Actor parameters: {network_info['actor_parameters']:,}")
     print(f"   Critic parameters: {network_info['critic_parameters']:,}")
     print(f"   Total parameters: {network_info['total_parameters']:,}")
+    print(f"   Alpha mode: {'static' if network_info['use_static_alpha'] else 'automatic'}")
+    print(f"   Current alpha: {network_info['current_alpha']:.4f}")
 
     return agent
 
@@ -184,14 +197,17 @@ def create_training_summary(results: dict, config: dict, args,
             'total_runtime_hours': results.get('total_training_time', 0) / 3600,
             'device': str(args.device),
             'multi_domain': args.multi_domain,
-            'domain_files': args.domain_files if args.multi_domain else [config['domain']['training_domain']]
+            'domain_files': args.domain_files if args.multi_domain else [config['domain']['training_domain']],
+            'max_steps': config['environment'].get('max_steps', 1000)
         },
         'training_config': {
             'total_timesteps': config['training']['total_timesteps'],
             'batch_size': config['sac']['batch_size'],
             'learning_rate': config['sac']['learning_rate'],
             'buffer_size': config['sac']['buffer_size'],
-            'evaluation_frequency': config['training']['evaluation_freq']
+            'evaluation_frequency': config['training']['evaluation_freq'],
+            'alpha_mode': 'static' if config['sac'].get('use_static_alpha', False) else 'automatic',
+            'alpha_value': config['sac'].get('static_alpha', config['sac']['alpha'])
         },
         'performance_summary': {
             'total_episodes': len(results['episode_rewards']) if results['episode_rewards'] else 0,
@@ -247,6 +263,14 @@ def print_training_header(args, config, experiment_name):
     print(f"📊 Total Timesteps: {config['training']['total_timesteps']:,}")
     print(f"📈 Evaluation Frequency: {config['training']['evaluation_freq']:,}")
     print(f"💾 Save Frequency: {config['training']['save_freq']:,}")
+    print(f"📏 Max Steps per Episode: {config['environment'].get('max_steps', 1000)}")
+
+    # Alpha configuration
+    if config['sac'].get('use_static_alpha', False):
+        print(f"🌡️  Alpha (temperature): {config['sac'].get('static_alpha', 0.1)} (static)")
+    else:
+        print(f"🌡️  Alpha (temperature): {config['sac']['alpha']} (automatic tuning)")
+
     print("=" * 80)
 
 
@@ -266,6 +290,10 @@ def main():
     if args.log_frequency is not None:
         config['training']['log_interval'] = args.log_frequency
         print(f"🔄 Overriding log frequency to: {args.log_frequency}")
+
+    if args.max_steps is not None:
+        config['environment']['max_steps'] = args.max_steps
+        print(f"🔄 Overriding max steps to: {args.max_steps}")
 
     if args.seed is not None:
         config['training']['seed'] = int(args.seed)

@@ -35,10 +35,24 @@ class SACAgent:
         self.lr = float(config['sac']['learning_rate'])
         self.gamma = float(config['sac']['discount_factor'])
         self.tau = float(config['sac']['tau'])
-        self.alpha = float(config['sac']['alpha'])
         self.batch_size = int(config['sac']['batch_size'])
         self.buffer_size = int(config['sac']['buffer_size'])
         self.gradient_steps = int(config['sac']['gradient_steps'])
+
+        # Alpha (temperature) parameter configuration
+        self.use_static_alpha = config['sac'].get('use_static_alpha', False)
+        if self.use_static_alpha:
+            self.alpha = float(config['sac'].get('static_alpha', 0.1))
+            self.log_alpha = None
+            self.alpha_optimizer = None
+            print(f"Using static alpha: {self.alpha}")
+        else:
+            self.alpha = float(config['sac']['alpha'])
+            # Automatic entropy tuning
+            self.target_entropy = -3.0  # For 3D action space
+            self.log_alpha = torch.tensor(np.log(self.alpha), requires_grad=True, device=device)
+            self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr)
+            print(f"Using automatic alpha tuning, initial alpha: {self.alpha}")
 
         # Network parameters (ensure proper types)
         self.n_neighbors = int(config['environment']['n_neighbors'])
@@ -53,11 +67,6 @@ class SACAgent:
 
         # Initialize replay buffer
         self.replay_buffer = MeshReplayBuffer(self.buffer_size, device)
-
-        # Automatic entropy tuning
-        self.target_entropy = -3.0  # For 3D action space
-        self.log_alpha = torch.tensor(np.log(self.alpha), requires_grad=True, device=device)
-        self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr)
 
         # Training statistics
         self.training_stats = defaultdict(list)
@@ -161,9 +170,14 @@ class SACAgent:
             actor_loss = self._update_actor(batch)
             stats['actor_loss'] = actor_loss
 
-            # Update alpha (temperature parameter)
-            alpha_loss = self._update_alpha(batch)
-            stats['alpha_loss'] = alpha_loss
+            # Update alpha (temperature parameter) only if not using static alpha
+            if not self.use_static_alpha:
+                alpha_loss = self._update_alpha(batch)
+                stats['alpha_loss'] = alpha_loss
+            else:
+                # For static alpha, just record the current value
+                stats['alpha_loss'] = 0.0
+
             stats['alpha'] = self.alpha
 
             # Update target networks
@@ -229,7 +243,10 @@ class SACAgent:
         return actor_loss.item()
 
     def _update_alpha(self, batch: Dict) -> float:
-        """Update alpha (temperature parameter)."""
+        """Update alpha (temperature parameter) - only called when not using static alpha."""
+        if self.use_static_alpha:
+            return 0.0
+
         states = batch['states']
 
         with torch.no_grad():
@@ -261,11 +278,16 @@ class SACAgent:
             'target_critic_state_dict': self.target_critic.state_dict(),
             'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
             'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
-            'alpha_optimizer_state_dict': self.alpha_optimizer.state_dict(),
-            'log_alpha': self.log_alpha,
             'total_updates': self.total_updates,
-            'configs': self.config
+            'configs': self.config,
+            'use_static_alpha': self.use_static_alpha,
+            'alpha': self.alpha
         }
+
+        # Only save alpha-related parameters if using automatic tuning
+        if not self.use_static_alpha:
+            checkpoint['alpha_optimizer_state_dict'] = self.alpha_optimizer.state_dict()
+            checkpoint['log_alpha'] = self.log_alpha
 
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         torch.save(checkpoint, filepath)
@@ -284,12 +306,21 @@ class SACAgent:
         self.target_critic.load_state_dict(checkpoint['target_critic_state_dict'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-        self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
-        self.log_alpha = checkpoint['log_alpha']
         self.total_updates = checkpoint['total_updates']
 
-        # Update alpha value
-        self.alpha = self.log_alpha.exp().item()
+        # Load alpha configuration
+        saved_use_static = checkpoint.get('use_static_alpha', False)
+        if saved_use_static and self.use_static_alpha:
+            # Both using static alpha
+            self.alpha = checkpoint.get('alpha', self.alpha)
+        elif not saved_use_static and not self.use_static_alpha:
+            # Both using automatic alpha tuning
+            self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
+            self.log_alpha = checkpoint['log_alpha']
+            self.alpha = self.log_alpha.exp().item()
+        else:
+            # Configuration mismatch - use current configuration
+            print(f"Warning: Alpha configuration mismatch. Using current config: static={self.use_static_alpha}")
 
     def get_training_stats(self) -> Dict:
         """Get training statistics."""
@@ -315,7 +346,9 @@ class SACAgent:
             'actor_parameters': count_parameters(self.actor),
             'critic_parameters': count_parameters(self.critic),
             'total_parameters': count_parameters(self.actor) + count_parameters(self.critic),
-            'total_updates': self.total_updates
+            'total_updates': self.total_updates,
+            'use_static_alpha': self.use_static_alpha,
+            'current_alpha': self.alpha
         }
 
 
@@ -621,7 +654,12 @@ class MeshSACTrainer:
 
         # Agent statistics
         print(f"\n🤖 Agent Status:")
-        print(f"   Alpha (temperature): {recent_alpha:.4f}")
+        alpha_status = f"Alpha: {recent_alpha:.4f}"
+        if self.agent.use_static_alpha:
+            alpha_status += " (static)"
+        else:
+            alpha_status += " (auto)"
+        print(f"   {alpha_status}")
         print(f"   Replay Buffer Size: {len(self.agent.replay_buffer):,}")
         print(f"   Total Updates: {self.agent.total_updates:,}")
 
@@ -646,6 +684,12 @@ class MeshSACTrainer:
         print(f"   Batch Size: {self.config['sac']['batch_size']}")
         print(f"   Learning Rate: {self.config['sac']['learning_rate']}")
         print(f"   Buffer Size: {self.config['sac']['buffer_size']:,}")
+
+        # Alpha configuration info
+        if self.agent.use_static_alpha:
+            print(f"   Alpha: {self.agent.alpha} (static)")
+        else:
+            print(f"   Alpha: {self.agent.alpha} (automatic tuning)")
         print()
 
     def _log_evaluation(self, timestep: int, eval_results: Dict):
@@ -753,5 +797,11 @@ class MeshSACTrainer:
             f.write(f"  Learning Rate: {results['configs']['sac']['learning_rate']}\n")
             f.write(f"  Batch Size: {results['configs']['sac']['batch_size']}\n")
             f.write(f"  Buffer Size: {results['configs']['sac']['buffer_size']:,}\n")
+
+            # Alpha configuration
+            if results['configs']['sac'].get('use_static_alpha', False):
+                f.write(f"  Alpha: {results['configs']['sac'].get('static_alpha', 0.1)} (static)\n")
+            else:
+                f.write(f"  Alpha: {results['configs']['sac']['alpha']} (automatic tuning)\n")
 
         print(f"📄 Text summary saved to: {filepath}")

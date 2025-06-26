@@ -41,6 +41,9 @@ class MeshEnv(gym.Env):
         self.M_angle = float(config['environment']['M_angle'])
         self.nrv = int(config['environment']['nrv'])
 
+        # Episode settings - read from config instead of hardcoding
+        self.max_steps = int(config['environment'].get('max_steps', 1000))
+
         # Domain settings
         self.domain_file = config['domain']['training_domain']
         self.data_dir = config['paths']['data_dir']
@@ -54,7 +57,6 @@ class MeshEnv(gym.Env):
         self.generated_elements = []
         self.current_area_ratio = 1.0
         self.step_count = 0
-        self.max_steps = 1000  # Maximum steps per episode
 
         # Define action and observation spaces
         self._setup_spaces()
@@ -62,6 +64,8 @@ class MeshEnv(gym.Env):
         # Episode tracking
         self.episode_reward = 0.0
         self.episode_length = 0
+
+        print(f"🌍 Environment initialized with max_steps: {self.max_steps}")
 
     def _load_domain(self) -> np.ndarray:
         """Load domain boundary from file."""
@@ -313,7 +317,9 @@ class MeshEnv(gym.Env):
             'left_neighbors': torch.tensor(np.array(relative_points[1:1 + self.n_neighbors]), dtype=torch.float32),
             'right_neighbors': torch.tensor(np.array(relative_points[1 + self.n_neighbors:1 + 2 * self.n_neighbors]),
                                             dtype=torch.float32),
-            'fan_points': torch.tensor(np.array(relative_points[1 + 2 * self.n_neighbors:1 + 2 * self.n_neighbors + self.n_fan_points]), dtype=torch.float32),
+            'fan_points': torch.tensor(
+                np.array(relative_points[1 + 2 * self.n_neighbors:1 + 2 * self.n_neighbors + self.n_fan_points]),
+                dtype=torch.float32),
             'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
         }
 
@@ -335,6 +341,7 @@ class MeshEnv(gym.Env):
             'boundary_vertices': len(self.current_boundary),
             'elements_generated': len(self.generated_elements),
             'step_count': self.step_count,
+            'max_steps': self.max_steps,
             'area_ratio': self.current_area_ratio,
             'episode_reward': self.episode_reward,
             'episode_length': self.episode_length
