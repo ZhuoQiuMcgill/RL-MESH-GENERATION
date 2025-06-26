@@ -1,5 +1,5 @@
-# Training Domain T1 - L-shaped domain with moderate complexity
-# This domain contains sharp angles and bottleneck regions for training diversity
+# Training Domain T1 - Square domain with moderate complexity
+# This domain doesn't contain sharp angles and bottleneck regions for training diversity
 # Coordinates are given as x y pairs, one vertex per line
 # The boundary should be specified in counter-clockwise order
 
