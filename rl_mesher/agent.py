@@ -10,6 +10,7 @@ from collections import defaultdict
 
 from .networks import MeshActor, MeshCritic, soft_update_target_network
 from .replay_buffer import MeshReplayBuffer
+from .utils.visualization import plot_mesh
 
 
 class SACAgent:
@@ -379,6 +380,7 @@ class MeshSACTrainer:
         # Paths
         self.models_dir = config['paths']['models_dir']
         self.logs_dir = config['paths']['logs_dir']
+        self.figures_dir = config['paths']['figures_dir']
 
         # Training tracking with enhanced metrics
         self.episode_rewards = []
@@ -400,8 +402,12 @@ class MeshSACTrainer:
         self.last_log_time = None
         self.episodes_per_hour = 0.0
 
+        # Evaluation counter for mesh visualization
+        self.eval_count = 0
+
         os.makedirs(self.models_dir, exist_ok=True)
         os.makedirs(self.logs_dir, exist_ok=True)
+        os.makedirs(self.figures_dir, exist_ok=True)
 
     def train(self) -> Dict:
         """
@@ -487,7 +493,7 @@ class MeshSACTrainer:
 
             # Evaluation
             if timestep % self.eval_freq == 0:
-                eval_results = self._evaluate()
+                eval_results = self._evaluate(timestep)
                 self.evaluation_results.append(eval_results)
                 self._log_evaluation(timestep, eval_results)
 
@@ -521,11 +527,12 @@ class MeshSACTrainer:
             'total_training_time': time.time() - self.training_start_time
         }
 
-    def _evaluate(self, num_episodes: int = 5) -> Dict:
+    def _evaluate(self, timestep: int, num_episodes: int = 5) -> Dict:
         """
-        Enhanced evaluation with detailed metrics collection.
+        Enhanced evaluation with detailed metrics collection and mesh visualization.
 
         Args:
+            timestep: Current training timestep
             num_episodes: Number of episodes to evaluate
 
         Returns:
@@ -542,6 +549,11 @@ class MeshSACTrainer:
         mesh_qualities = []
         completion_rates = []
 
+        # Track the best episode for visualization
+        best_episode_reward = float('-inf')
+        best_episode_boundary = None
+        best_episode_elements = None
+
         for episode in range(num_episodes):
             episode_start = time.time()
             state_dict, _ = self.env.reset()
@@ -557,6 +569,12 @@ class MeshSACTrainer:
 
                 if terminated or truncated:
                     completion_rates.append(1.0 if terminated else 0.0)
+
+                    # Check if this is the best episode for visualization
+                    if episode_reward > best_episode_reward:
+                        best_episode_reward = episode_reward
+                        best_episode_boundary, best_episode_elements = self.env.get_current_mesh()
+
                     break
 
                 state_dict = next_state_dict
@@ -576,7 +594,12 @@ class MeshSACTrainer:
 
         eval_total_time = time.time() - eval_start_time
 
+        # Create mesh visualization for the best evaluation episode
+        self._save_evaluation_mesh_visualization(timestep, best_episode_boundary,
+                                                 best_episode_elements, best_episode_reward)
+
         results = {
+            'timestep': timestep,
             'mean_reward': np.mean(eval_rewards),
             'std_reward': np.std(eval_rewards),
             'min_reward': np.min(eval_rewards),
@@ -598,7 +621,56 @@ class MeshSACTrainer:
                     results[f'std_{key}'] = np.std(values)
 
         print(f"✅ Evaluation completed in {eval_total_time:.1f}s")
+        self.eval_count += 1
         return results
+
+    def _save_evaluation_mesh_visualization(self, timestep: int, boundary: np.ndarray,
+                                            elements: List[np.ndarray], reward: float):
+        """
+        Save mesh visualization for the current evaluation.
+
+        Args:
+            timestep: Current training timestep
+            boundary: Mesh boundary
+            elements: Generated mesh elements
+            reward: Episode reward for this mesh
+        """
+        try:
+            # Create evaluation mesh visualization directory
+            eval_mesh_dir = os.path.join(self.figures_dir, "evaluation_meshes")
+            os.makedirs(eval_mesh_dir, exist_ok=True)
+
+            # Generate filename with timestep and evaluation count
+            mesh_filename = f"eval_{self.eval_count:03d}_timestep_{timestep:,}_reward_{reward:.2f}.png"
+            mesh_path = os.path.join(eval_mesh_dir, mesh_filename)
+
+            # Get domain info for title
+            domain_info = ""
+            if hasattr(self.env, 'domain_file'):
+                domain_info = f" ({self.env.domain_file})"
+            elif hasattr(self.env, 'get_current_domain_info'):
+                domain_data = self.env.get_current_domain_info()
+                domain_info = f" ({domain_data.get('domain_file', 'Unknown')})"
+
+            # Create the title
+            title = f"Evaluation Mesh - Timestep {timestep:,}{domain_info}\n"
+            title += f"Reward: {reward:.2f} | Elements: {len(elements) if elements else 0}"
+
+            # Plot and save the mesh
+            plot_mesh(
+                boundary=boundary,
+                elements=elements,
+                title=title,
+                save_path=mesh_path,
+                figsize=(10, 8),
+                show_vertices=True,
+                show_element_numbers=False
+            )
+
+            print(f"📸 Evaluation mesh saved: {mesh_filename}")
+
+        except Exception as e:
+            print(f"⚠️  Failed to save evaluation mesh visualization: {e}")
 
     def _log_progress(self, episode: int, timestep: int, reward: float, length: int,
                       episode_time: float, mesh_quality: float, completion_rate: float):
@@ -736,6 +808,12 @@ class MeshSACTrainer:
                     f"   Improvement: {improvement:+.2f} ({(improvement / abs(early_rewards) * 100) if early_rewards != 0 else 0:+.1f}%)")
 
         print(f"{'=' * 70}")
+
+        # Evaluation visualization summary
+        if self.eval_count > 0:
+            eval_mesh_dir = os.path.join(self.figures_dir, "evaluation_meshes")
+            print(f"📸 Evaluation mesh visualizations saved to: {eval_mesh_dir}")
+            print(f"   Total evaluation meshes: {self.eval_count}")
 
     def save_training_results(self, filepath: str):
         """Save comprehensive training results to file."""

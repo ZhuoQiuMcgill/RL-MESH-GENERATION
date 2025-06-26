@@ -7,6 +7,444 @@ import seaborn as sns
 from datetime import datetime
 
 
+def plot_mesh(boundary: np.ndarray, elements: List[np.ndarray] = None,
+              title: str = "Mesh Visualization", save_path: Optional[str] = None,
+              figsize: tuple = (10, 8), show_vertices: bool = True,
+              show_element_numbers: bool = False) -> None:
+    """
+    Plot mesh boundary and generated quadrilateral elements.
+
+    Args:
+        boundary: Boundary vertices [N, 2]
+        elements: List of element vertices, each element is [4, 2] array
+        title: Plot title
+        save_path: Path to save figure
+        figsize: Figure size
+        show_vertices: Whether to show vertex numbers
+        show_element_numbers: Whether to show element numbers
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot boundary
+    if boundary is not None and len(boundary) > 0:
+        # Close the boundary for plotting
+        boundary_closed = np.vstack([boundary, boundary[0]])
+        ax.plot(boundary_closed[:, 0], boundary_closed[:, 1],
+                'k-', linewidth=2, label='Boundary', zorder=3)
+
+        # Plot boundary vertices
+        ax.scatter(boundary[:, 0], boundary[:, 1],
+                   c='red', s=50, zorder=4, label='Boundary Vertices')
+
+        # Show vertex numbers if requested
+        if show_vertices:
+            for i, (x, y) in enumerate(boundary):
+                ax.annotate(f'{i}', (x, y), xytext=(5, 5),
+                            textcoords='offset points', fontsize=8,
+                            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
+
+    # Plot generated elements
+    if elements is not None and len(elements) > 0:
+        for elem_idx, element in enumerate(elements):
+            if element is not None and len(element) == 4:
+                # Create quadrilateral patch
+                quad = patches.Polygon(element, linewidth=1.5,
+                                       edgecolor='blue', facecolor='lightblue',
+                                       alpha=0.3, zorder=1)
+                ax.add_patch(quad)
+
+                # Plot element vertices
+                ax.scatter(element[:, 0], element[:, 1],
+                           c='blue', s=30, zorder=2, alpha=0.7)
+
+                # Show element number if requested
+                if show_element_numbers:
+                    center = np.mean(element, axis=0)
+                    ax.annotate(f'E{elem_idx}', center, ha='center', va='center',
+                                fontsize=10, fontweight='bold',
+                                bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.8))
+
+    # Set equal aspect ratio and adjust limits
+    ax.set_aspect('equal')
+
+    # Set limits with some padding
+    if boundary is not None and len(boundary) > 0:
+        x_min, x_max = boundary[:, 0].min(), boundary[:, 0].max()
+        y_min, y_max = boundary[:, 1].min(), boundary[:, 1].max()
+
+        # Add elements to bounds calculation if they exist
+        if elements is not None and len(elements) > 0:
+            all_element_points = np.vstack([elem for elem in elements if elem is not None])
+            if len(all_element_points) > 0:
+                x_min = min(x_min, all_element_points[:, 0].min())
+                x_max = max(x_max, all_element_points[:, 0].max())
+                y_min = min(y_min, all_element_points[:, 1].min())
+                y_max = max(y_max, all_element_points[:, 1].max())
+
+        # Add padding
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        padding = max(x_range, y_range) * 0.1
+
+        ax.set_xlim(x_min - padding, x_max + padding)
+        ax.set_ylim(y_min - padding, y_max + padding)
+
+    # Labels and title
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_title(title)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    # Add mesh statistics
+    info_text = f"Boundary vertices: {len(boundary) if boundary is not None else 0}\n"
+    info_text += f"Generated elements: {len(elements) if elements is not None else 0}"
+    ax.text(0.02, 0.98, info_text, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+    plt.tight_layout()
+
+    # Save figure if path provided
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()  # Close to prevent memory accumulation
+    else:
+        plt.show()
+
+
+def plot_mesh_generation_progress(boundary_history: List[np.ndarray],
+                                  elements_history: List[List[np.ndarray]],
+                                  title: str = "Mesh Generation Progress",
+                                  save_path: Optional[str] = None,
+                                  max_steps: int = 6) -> None:
+    """
+    Plot mesh generation progress showing multiple steps.
+
+    Args:
+        boundary_history: List of boundary states at each step
+        elements_history: List of element lists at each step
+        title: Plot title
+        save_path: Path to save figure
+        max_steps: Maximum number of steps to show
+    """
+    n_steps = min(len(boundary_history), len(elements_history), max_steps)
+
+    if n_steps <= 1:
+        # If only one step, use regular plot_mesh
+        boundary = boundary_history[0] if boundary_history else None
+        elements = elements_history[0] if elements_history else None
+        plot_mesh(boundary, elements, title, save_path)
+        return
+
+    # Create subplot grid
+    cols = min(3, n_steps)
+    rows = (n_steps + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+    if rows == 1 and cols == 1:
+        axes = [axes]
+    elif rows == 1 or cols == 1:
+        axes = axes.flatten()
+    else:
+        axes = axes.flatten()
+
+    for step in range(n_steps):
+        ax = axes[step] if step < len(axes) else None
+        if ax is None:
+            continue
+
+        boundary = boundary_history[step] if step < len(boundary_history) else None
+        elements = elements_history[step] if step < len(elements_history) else []
+
+        # Plot boundary
+        if boundary is not None and len(boundary) > 0:
+            boundary_closed = np.vstack([boundary, boundary[0]])
+            ax.plot(boundary_closed[:, 0], boundary_closed[:, 1],
+                    'k-', linewidth=2)
+            ax.scatter(boundary[:, 0], boundary[:, 1], c='red', s=50, zorder=4)
+
+        # Plot elements
+        if elements is not None and len(elements) > 0:
+            for element in elements:
+                if element is not None and len(element) == 4:
+                    quad = patches.Polygon(element, linewidth=1.5,
+                                           edgecolor='blue', facecolor='lightblue',
+                                           alpha=0.3)
+                    ax.add_patch(quad)
+                    ax.scatter(element[:, 0], element[:, 1], c='blue', s=30, alpha=0.7)
+
+        ax.set_aspect('equal')
+        ax.set_title(f'Step {step + 1}')
+        ax.grid(True, alpha=0.3)
+
+        # Set consistent limits across all subplots
+        if boundary is not None and len(boundary) > 0:
+            x_min, x_max = boundary[:, 0].min(), boundary[:, 0].max()
+            y_min, y_max = boundary[:, 1].min(), boundary[:, 1].max()
+
+            if elements is not None and len(elements) > 0:
+                all_element_points = np.vstack([elem for elem in elements if elem is not None])
+                if len(all_element_points) > 0:
+                    x_min = min(x_min, all_element_points[:, 0].min())
+                    x_max = max(x_max, all_element_points[:, 0].max())
+                    y_min = min(y_min, all_element_points[:, 1].min())
+                    y_max = max(y_max, all_element_points[:, 1].max())
+
+            x_range = x_max - x_min
+            y_range = y_max - y_min
+            padding = max(x_range, y_range) * 0.1
+
+            ax.set_xlim(x_min - padding, x_max + padding)
+            ax.set_ylim(y_min - padding, y_max + padding)
+
+    # Hide unused subplots
+    for i in range(n_steps, len(axes)):
+        axes[i].set_visible(False)
+
+    plt.suptitle(title, fontsize=16, fontweight='bold')
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+
+def save_mesh_animation_frames(boundary_history: List[np.ndarray],
+                               elements_history: List[List[np.ndarray]],
+                               output_dir: str) -> None:
+    """
+    Save individual frames for mesh generation animation.
+
+    Args:
+        boundary_history: List of boundary states
+        elements_history: List of element lists
+        output_dir: Directory to save frames
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    for step, (boundary, elements) in enumerate(zip(boundary_history, elements_history)):
+        frame_path = os.path.join(output_dir, f"frame_{step:03d}.png")
+        plot_mesh(boundary, elements,
+                  title=f"Mesh Generation - Step {step + 1}",
+                  save_path=frame_path,
+                  show_vertices=False)
+
+    print(f"💾 Animation frames saved to: {output_dir}")
+
+
+def plot_quality_metrics(quality_data: Dict, title: str = "Mesh Quality Metrics",
+                         save_path: Optional[str] = None) -> None:
+    """
+    Plot mesh quality metrics distribution.
+
+    Args:
+        quality_data: Dictionary with metric names as keys and lists of values
+        title: Plot title
+        save_path: Path to save figure
+    """
+    if not quality_data:
+        print("No quality data to plot")
+        return
+
+    n_metrics = len(quality_data)
+    if n_metrics == 0:
+        return
+
+    # Determine subplot layout
+    cols = min(3, n_metrics)
+    rows = (n_metrics + cols - 1) // cols
+
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+
+    if n_metrics == 1:
+        axes = [axes]
+    elif rows == 1 or cols == 1:
+        axes = axes.flatten()
+    else:
+        axes = axes.flatten()
+
+    for idx, (metric_name, values) in enumerate(quality_data.items()):
+        if idx >= len(axes):
+            break
+
+        ax = axes[idx]
+
+        if values and len(values) > 0:
+            ax.hist(values, bins=30, alpha=0.7, edgecolor='black')
+            ax.set_title(f'{metric_name.replace("_", " ").title()}')
+            ax.set_xlabel('Value')
+            ax.set_ylabel('Frequency')
+            ax.grid(True, alpha=0.3)
+
+            # Add statistics
+            mean_val = np.mean(values)
+            std_val = np.std(values)
+            ax.axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_val:.3f}')
+            ax.legend()
+        else:
+            ax.text(0.5, 0.5, 'No data', transform=ax.transAxes, ha='center', va='center')
+            ax.set_title(f'{metric_name.replace("_", " ").title()}')
+
+    # Hide unused subplots
+    for i in range(n_metrics, len(axes)):
+        axes[i].set_visible(False)
+
+    plt.suptitle(title, fontsize=16, fontweight='bold')
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+
+def create_summary_report(results: Dict, save_path: str) -> None:
+    """
+    Create a comprehensive summary report with multiple visualizations.
+
+    Args:
+        results: Training results dictionary
+        save_path: Path to save the report
+    """
+    # This function could be expanded to create a multi-page PDF report
+    # For now, it creates a comprehensive dashboard
+    plot_training_dashboard(results, save_path)
+
+
+def plot_state_visualization(state_dict: Dict, title: str = "Agent State Visualization",
+                             save_path: Optional[str] = None) -> None:
+    """
+    Visualize the agent's state representation.
+
+    Args:
+        state_dict: State dictionary from environment
+        title: Plot title
+        save_path: Path to save figure
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+    # Extract state components
+    ref_vertex = state_dict.get('ref_vertex', None)
+    left_neighbors = state_dict.get('left_neighbors', None)
+    right_neighbors = state_dict.get('right_neighbors', None)
+    fan_points = state_dict.get('fan_points', None)
+    area_ratio = state_dict.get('area_ratio', None)
+
+    # Convert tensors to numpy if needed
+    def to_numpy(tensor):
+        if hasattr(tensor, 'numpy'):
+            return tensor.detach().cpu().numpy()
+        elif hasattr(tensor, 'cpu'):
+            return tensor.cpu().numpy()
+        else:
+            return np.array(tensor)
+
+    # Plot 1: Reference vertex and neighbors
+    ax = axes[0, 0]
+    if ref_vertex is not None:
+        ref_np = to_numpy(ref_vertex)
+        ax.scatter(ref_np[0], ref_np[1], c='red', s=100, label='Reference Vertex', zorder=3)
+
+    if left_neighbors is not None:
+        left_np = to_numpy(left_neighbors)
+        if left_np.ndim == 2:
+            ax.scatter(left_np[:, 0], left_np[:, 1], c='blue', s=50, label='Left Neighbors', zorder=2)
+
+    if right_neighbors is not None:
+        right_np = to_numpy(right_neighbors)
+        if right_np.ndim == 2:
+            ax.scatter(right_np[:, 0], right_np[:, 1], c='green', s=50, label='Right Neighbors', zorder=2)
+
+    ax.set_title('Reference Vertex and Neighbors')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect('equal')
+
+    # Plot 2: Fan points
+    ax = axes[0, 1]
+    if fan_points is not None:
+        fan_np = to_numpy(fan_points)
+        if fan_np.ndim == 2:
+            ax.scatter(fan_np[:, 0], fan_np[:, 1], c='orange', s=50, label='Fan Points')
+
+            # Connect fan points to show the fan structure
+            if ref_vertex is not None:
+                ref_np = to_numpy(ref_vertex)
+                for point in fan_np:
+                    ax.plot([ref_np[0], point[0]], [ref_np[1], point[1]], 'orange', alpha=0.5, linewidth=1)
+                ax.scatter(ref_np[0], ref_np[1], c='red', s=100, label='Reference Vertex', zorder=3)
+
+    ax.set_title('Fan Points')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect('equal')
+
+    # Plot 3: Area ratio
+    ax = axes[1, 0]
+    if area_ratio is not None:
+        ratio_val = to_numpy(area_ratio)
+        if np.isscalar(ratio_val):
+            ratio_val = [ratio_val]
+
+        ax.bar(['Area Ratio'], ratio_val, color='purple', alpha=0.7)
+        ax.set_title('Current Area Ratio')
+        ax.set_ylabel('Ratio')
+        ax.grid(True, alpha=0.3)
+
+        # Add text annotation
+        if len(ratio_val) > 0:
+            ax.text(0, ratio_val[0] + 0.01, f'{ratio_val[0]:.3f}',
+                    ha='center', va='bottom', fontweight='bold')
+
+    # Plot 4: Combined view
+    ax = axes[1, 1]
+    if ref_vertex is not None:
+        ref_np = to_numpy(ref_vertex)
+        ax.scatter(ref_np[0], ref_np[1], c='red', s=100, label='Reference', zorder=4)
+
+    if left_neighbors is not None:
+        left_np = to_numpy(left_neighbors)
+        if left_np.ndim == 2:
+            ax.scatter(left_np[:, 0], left_np[:, 1], c='blue', s=50, label='Left', zorder=3)
+
+    if right_neighbors is not None:
+        right_np = to_numpy(right_neighbors)
+        if right_np.ndim == 2:
+            ax.scatter(right_np[:, 0], right_np[:, 1], c='green', s=50, label='Right', zorder=3)
+
+    if fan_points is not None:
+        fan_np = to_numpy(fan_points)
+        if fan_np.ndim == 2:
+            ax.scatter(fan_np[:, 0], fan_np[:, 1], c='orange', s=50, label='Fan', zorder=2)
+
+    ax.set_title('Combined State View')
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect('equal')
+
+    plt.suptitle(title, fontsize=16, fontweight='bold')
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+    else:
+        plt.show()
+
+
 def plot_enhanced_learning_curve(episode_rewards: List[float],
                                  episode_lengths: List[int],
                                  episode_times: List[float] = None,
@@ -513,4 +951,3 @@ def plot_training_progress(training_stats: Dict, save_path: Optional[str] = None
         print(f"📊 Training progress saved to: {save_path}")
 
     plt.show()
-   
