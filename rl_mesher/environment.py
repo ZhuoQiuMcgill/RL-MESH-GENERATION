@@ -29,8 +29,8 @@ class MeshEnv(Env):
 
         # Original author's action space: [rule_type, x_coord, y_coord]
         self.action_space = spaces.Box(
-            np.array([-1, -1.5, 0]),
-            np.array([1, 1.5, 1.5]),
+            np.array([-1, -1.0, -1.0]),
+            np.array([1, 1.0, 1.0]),
             dtype=np.float32
         )
 
@@ -212,6 +212,7 @@ class MeshEnv(Env):
         self.current_base_length = base_length
         self.current_ref_direction = ref_direction
         self.current_ref_vertex = ref_vertex
+        self.current_ref_idx = ref_idx
 
         # Transform neighbor points to relative coordinates
         for neighbor_idx in neighbors:
@@ -299,8 +300,9 @@ class MeshEnv(Env):
             # Determine action type using original thresholds
             mesh = None
             if rule_type <= -0.5:  # Type -1: Remove 2 vertices
+                # Create quad by connecting 4 consecutive boundary vertices
                 mesh = np.array([
-                    self.current_boundary[ref_idx - 1],
+                    self.current_boundary[(ref_idx - 1) % n_boundary],
                     self.current_boundary[ref_idx],
                     self.current_boundary[(ref_idx + 1) % n_boundary],
                     self.current_boundary[(ref_idx + 2) % n_boundary],
@@ -308,20 +310,23 @@ class MeshEnv(Env):
                 action_type = -1
 
             elif rule_type >= 0.5:  # Type 1: Remove 2 vertices (different direction)
+                # Create quad by connecting 4 consecutive boundary vertices
                 mesh = np.array([
-                    self.current_boundary[ref_idx - 2],
-                    self.current_boundary[ref_idx - 1],
+                    self.current_boundary[(ref_idx - 2) % n_boundary],
+                    self.current_boundary[(ref_idx - 1) % n_boundary],
                     self.current_boundary[ref_idx],
                     self.current_boundary[(ref_idx + 1) % n_boundary],
                 ])
                 action_type = 1
 
             else:  # Type 0: Add new vertex
-                new_point = self._action_to_point(action[1:])
-                if self._is_point_inside_boundary(new_point):
+                new_point = self._action_to_point_constrained(action[1:], ref_idx)
+                if new_point is not None:
+                    # Create quad with new point and 3 boundary vertices
+                    # Order: new_point, left_neighbor, ref_vertex, right_neighbor
                     mesh = np.array([
                         new_point,
-                        self.current_boundary[ref_idx - 1],
+                        self.current_boundary[(ref_idx - 1) % n_boundary],
                         self.current_boundary[ref_idx],
                         self.current_boundary[(ref_idx + 1) % n_boundary],
                     ])
@@ -330,10 +335,22 @@ class MeshEnv(Env):
                     reward = -1.0
                     mesh = None
 
-            # Validate and add mesh
-            if mesh is not None and self._validate_mesh(mesh):
+            # Validate and add mesh - CRITICAL FIX: Only use current boundary vertices
+            if mesh is not None and self._validate_mesh(mesh) and self._validate_mesh_uses_current_boundary(mesh):
+                # Store old boundary for validation
+                old_boundary = self.current_boundary.copy()
+                old_boundary_size = len(old_boundary)
+
                 self.generated_elements.append(mesh)
                 self._update_boundary(ref_idx, mesh, action_type)
+
+                new_boundary_size = len(self.current_boundary)
+
+                # Debug output for boundary updates
+                if self.step_count % 100 == 0:  # Print every 100 steps
+                    print(f"Step {self.step_count}: Action type {action_type}, "
+                          f"Boundary: {old_boundary_size} -> {new_boundary_size} vertices, "
+                          f"Elements: {len(self.generated_elements)}")
 
                 # Calculate reward using original methods
                 reward = self._calculate_reward_original(mesh, action_type)
@@ -354,6 +371,19 @@ class MeshEnv(Env):
             else:
                 reward = -1.0 / len(self.generated_elements) if len(self.generated_elements) else -1.0
                 terminated = False
+                failed = True
+
+                # Log why mesh was rejected
+                if mesh is not None:
+                    if not self._validate_mesh(mesh):
+                        if self.step_count % 100 == 0:
+                            print(f"Step {self.step_count}: Mesh rejected - failed basic validation")
+                    elif not self._validate_mesh_uses_current_boundary(mesh):
+                        print(f"Step {self.step_count}: Mesh rejected - uses vertices not in current boundary")
+                        print(f"  Action type: {action_type}, Current boundary size: {len(self.current_boundary)}")
+                else:
+                    if self.step_count % 100 == 0:
+                        print(f"Step {self.step_count}: No mesh generated")
 
         except Exception as e:
             print(f"Error in step: {e}")
@@ -378,32 +408,187 @@ class MeshEnv(Env):
 
         return observation, reward, terminated, False, info
 
-    def _action_to_point(self, action: np.ndarray) -> np.ndarray:
-        """Convert action to world coordinates following original approach."""
+    def _validate_mesh_uses_current_boundary(self, mesh: np.ndarray) -> bool:
+        """
+        Critical validation: ensure all mesh vertices come from current boundary.
+        This prevents elements from using vertices from previous boundary states.
+        """
+        tolerance = 1e-6
+
+        # Check each mesh vertex
+        for mesh_vertex in mesh:
+            # Check if this vertex is in current boundary
+            found_in_boundary = False
+            for boundary_vertex in self.current_boundary:
+                if np.linalg.norm(mesh_vertex - boundary_vertex) < tolerance:
+                    found_in_boundary = True
+                    break
+
+            # If it's not in current boundary, it might be a newly generated point
+            # For action_type 0, the first vertex is the new point
+            if not found_in_boundary:
+                # Check if it's inside the current boundary (valid new point)
+                if not self._is_point_inside_boundary(mesh_vertex):
+                    return False
+
+        return True
+
+    def _action_to_point_constrained(self, action: np.ndarray, ref_idx: int) -> Optional[np.ndarray]:
+        """
+        Convert action to world coordinates with boundary constraints.
+
+        This is the key fix - ensure generated points are always inside the boundary.
+        """
         x, y = action[0], action[1]
 
-        # Transform using current reference frame
-        if hasattr(self, 'current_base_length'):
-            # Scale by base length and max radius
-            x_world = x * self.current_base_length * self.max_radius
-            y_world = y * self.current_base_length * self.max_radius
+        if not hasattr(self, 'current_base_length'):
+            return None
 
-            # Rotate by reference direction
-            cos_theta = self.current_ref_direction[0]
-            sin_theta = self.current_ref_direction[1]
+        # Get local boundary constraints
+        max_distance = self._get_max_valid_distance(ref_idx, x, y)
 
-            rotation_matrix = np.array([
-                [cos_theta, -sin_theta],
-                [sin_theta, cos_theta]
-            ])
+        # Constrain the action to valid range
+        action_distance = np.sqrt(x * x + y * y)
+        if action_distance > 1e-8:
+            # Scale down if needed to stay within boundary
+            scale_factor = min(1.0, max_distance / (action_distance * self.current_base_length * self.max_radius))
+            x *= scale_factor
+            y *= scale_factor
 
-            local_coords = np.array([x_world, y_world])
-            world_coords = self.current_ref_vertex + rotation_matrix @ local_coords
+        # Scale by base length and max radius
+        x_world = x * self.current_base_length * self.max_radius
+        y_world = y * self.current_base_length * self.max_radius
 
-            return world_coords
-        else:
-            # Fallback
-            return self.current_ref_vertex + np.array([x, y])
+        # Rotate by reference direction
+        cos_theta = self.current_ref_direction[0]
+        sin_theta = self.current_ref_direction[1]
+
+        rotation_matrix = np.array([
+            [cos_theta, -sin_theta],
+            [sin_theta, cos_theta]
+        ])
+
+        local_coords = np.array([x_world, y_world])
+        world_coords = self.current_ref_vertex + rotation_matrix @ local_coords
+
+        # Final safety check - if still outside, project to nearest valid point
+        if not self._is_point_inside_boundary(world_coords):
+            world_coords = self._project_point_inside(world_coords, ref_idx)
+
+        return world_coords
+
+    def _get_max_valid_distance(self, ref_idx: int, x: float, y: float) -> float:
+        """
+        Calculate maximum valid distance in the direction of (x, y) from reference vertex.
+        """
+        if abs(x) < 1e-8 and abs(y) < 1e-8:
+            return self.current_base_length * self.max_radius
+
+        # Normalize direction
+        direction = np.array([x, y])
+        direction = direction / np.linalg.norm(direction)
+
+        # Rotate direction to world coordinates
+        cos_theta = self.current_ref_direction[0]
+        sin_theta = self.current_ref_direction[1]
+        rotation_matrix = np.array([
+            [cos_theta, -sin_theta],
+            [sin_theta, cos_theta]
+        ])
+        world_direction = rotation_matrix @ direction
+
+        # Find intersection with boundary edges
+        min_distance = self.current_base_length * self.max_radius
+        ref_vertex = self.current_ref_vertex
+
+        n_vertices = len(self.current_boundary)
+        for i in range(n_vertices):
+            p1 = self.current_boundary[i]
+            p2 = self.current_boundary[(i + 1) % n_vertices]
+
+            # Check intersection with edge p1-p2
+            intersection_distance = self._ray_edge_intersection(ref_vertex, world_direction, p1, p2)
+            if intersection_distance is not None and intersection_distance > 1e-8:
+                min_distance = min(min_distance, intersection_distance * 0.9)  # Safety margin
+
+        return max(min_distance, self.current_base_length * 0.1)  # Minimum distance
+
+    def _ray_edge_intersection(self, ray_origin: np.ndarray, ray_direction: np.ndarray,
+                               edge_p1: np.ndarray, edge_p2: np.ndarray) -> Optional[float]:
+        """
+        Calculate intersection distance between a ray and an edge.
+        Returns None if no intersection or intersection is behind ray origin.
+        """
+        edge_vector = edge_p2 - edge_p1
+        edge_length = np.linalg.norm(edge_vector)
+        if edge_length < 1e-8:
+            return None
+
+        # Solve ray-line intersection
+        # ray: ray_origin + t * ray_direction
+        # edge: edge_p1 + s * edge_vector
+        # Solve: ray_origin + t * ray_direction = edge_p1 + s * edge_vector
+
+        A = np.column_stack([ray_direction, -edge_vector])
+        b = edge_p1 - ray_origin
+
+        try:
+            params = np.linalg.solve(A, b)
+            t, s = params[0], params[1]
+
+            # Check if intersection is valid
+            if t > 1e-8 and 0 <= s <= 1:  # t > 0 (forward ray), 0 <= s <= 1 (on edge)
+                return t
+        except np.linalg.LinAlgError:
+            pass
+
+        return None
+
+    def _project_point_inside(self, point: np.ndarray, ref_idx: int) -> np.ndarray:
+        """
+        Project a point to the nearest valid location inside the boundary.
+        """
+        if self._is_point_inside_boundary(point):
+            return point
+
+        # Find closest point on boundary
+        min_distance = float('inf')
+        closest_point = self.current_ref_vertex
+
+        n_vertices = len(self.current_boundary)
+        for i in range(n_vertices):
+            p1 = self.current_boundary[i]
+            p2 = self.current_boundary[(i + 1) % n_vertices]
+
+            # Project point onto edge
+            projected = self._project_point_on_edge(point, p1, p2)
+            distance = np.linalg.norm(projected - point)
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_point = projected
+
+        # Move slightly inside from boundary
+        direction = closest_point - point
+        if np.linalg.norm(direction) > 1e-8:
+            direction = direction / np.linalg.norm(direction)
+            closest_point = closest_point - direction * (self.current_base_length * 0.01)  # Small offset
+
+        return closest_point
+
+    def _project_point_on_edge(self, point: np.ndarray, edge_p1: np.ndarray, edge_p2: np.ndarray) -> np.ndarray:
+        """Project a point onto an edge (line segment)."""
+        edge_vector = edge_p2 - edge_p1
+        edge_length_sq = np.dot(edge_vector, edge_vector)
+
+        if edge_length_sq < 1e-8:
+            return edge_p1
+
+        # Calculate projection parameter
+        t = np.dot(point - edge_p1, edge_vector) / edge_length_sq
+        t = np.clip(t, 0.0, 1.0)  # Clamp to edge
+
+        return edge_p1 + t * edge_vector
 
     def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
         """Check if point is inside current boundary using ray casting."""
@@ -444,25 +629,44 @@ class MeshEnv(Env):
         return True
 
     def _update_boundary(self, ref_idx: int, mesh: np.ndarray, action_type: int):
-        """Update boundary following original logic."""
+        """Update boundary following original logic with proper element integration."""
         n_boundary = len(self.current_boundary)
 
         if action_type == -1:  # Remove current and next vertex
+            # Remove vertices that are now interior to the generated quad
+            indices_to_remove = {ref_idx, (ref_idx + 1) % n_boundary}
             new_boundary = []
             for i in range(n_boundary):
-                if i != ref_idx and i != (ref_idx + 1) % n_boundary:
+                if i not in indices_to_remove:
                     new_boundary.append(self.current_boundary[i])
             self.current_boundary = np.array(new_boundary)
 
         elif action_type == 1:  # Remove previous and current vertex
+            # Remove vertices that are now interior to the generated quad
+            indices_to_remove = {(ref_idx - 1) % n_boundary, ref_idx}
             new_boundary = []
             for i in range(n_boundary):
-                if i != (ref_idx - 1) % n_boundary and i != ref_idx:
+                if i not in indices_to_remove:
                     new_boundary.append(self.current_boundary[i])
             self.current_boundary = np.array(new_boundary)
 
-        else:  # action_type == 0: Replace current vertex with new point
-            self.current_boundary[ref_idx] = mesh[0]  # New point is first in mesh
+        else:  # action_type == 0: Add new vertex and properly update boundary
+            # For type 0, we created a quad: [new_point, left_neighbor, ref_vertex, right_neighbor]
+            # The ref_vertex is now interior to the quad and should be removed from boundary
+            # The new_point becomes part of the boundary
+
+            new_point = mesh[0]
+
+            # Create new boundary by replacing ref_vertex with new_point
+            new_boundary = []
+            for i in range(n_boundary):
+                if i == ref_idx:
+                    # Replace reference vertex with new point
+                    new_boundary.append(new_point)
+                else:
+                    new_boundary.append(self.current_boundary[i])
+
+            self.current_boundary = np.array(new_boundary)
 
         # Update area ratio
         current_area = calculate_polygon_area(self.current_boundary)
