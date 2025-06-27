@@ -12,8 +12,8 @@ sac:
   gradient_steps: 1
   polyak: 0.995
   # Static alpha mode - set to true to disable automatic alpha tuning
-  use_static_alpha: false
-  static_alpha: 0.1
+  use_static_alpha: true
+  static_alpha: 0.85
   target_entropy: -1.5
   learning_starts: 10000  # Original parameter
 
@@ -51,9 +51,9 @@ environment:
 
 # Training Parameters
 training:
-  total_timesteps: 4000000  # Original uses 4M timesteps
+  total_timesteps: 800000
   evaluation_freq: 1000  # Original evaluates more frequently
-  seed: 999  # Original uses 999
+  seed: 4396
   log_interval: 10  # Log every 10 episodes
   save_freq: 50000
 

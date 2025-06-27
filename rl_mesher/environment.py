@@ -63,7 +63,7 @@ class MeshEnv(Env):
         self.not_valid_points = []
         self.TYPE_THRESHOLD = 0.3  # Original threshold for action type decision
 
-        # print(f"Environment initialized with neighbor_num={self.neighbor_num}, radius_num={self.radius_num}")
+        print(f"Environment initialized with neighbor_num={self.neighbor_num}, radius_num={self.radius_num}")
 
     def _ensure_clockwise(self, boundary: np.ndarray) -> np.ndarray:
         """Ensure boundary vertices are in clockwise order."""
@@ -110,7 +110,7 @@ class MeshEnv(Env):
             return np.array(state, dtype=np.float32)
 
         except Exception as e:
-            # print(f"Error in observation: {e}")
+            print(f"Error in observation: {e}")
             return np.zeros(self.observation_space.shape[0], dtype=np.float32)
 
     def _find_reference_point(self) -> Optional[int]:
@@ -259,44 +259,9 @@ class MeshEnv(Env):
 
         return state
 
-    def _check_intersection_with_boundary(self, mesh: np.ndarray, reference_point: np.ndarray) -> bool:
-        """
-        Check if mesh intersects with boundary following original author's approach.
-        Returns True if there are intersections (mesh should be rejected).
-        """
-        # This is a simplified version of the original author's intersection check
-        # The original implementation was more complex but this captures the key idea
-
-        # For now, just check basic validity
-        # The original author's method was more sophisticated but we'll use a simpler approach
-        return False  # Allow all meshes for now to restore training
-        """
-        Critical validation: ensure all mesh vertices come from current boundary.
-        This prevents elements from using vertices from previous boundary states.
-        """
-        tolerance = 1e-6
-
-        # Check each mesh vertex
-        for mesh_vertex in mesh:
-            # Check if this vertex is in current boundary
-            found_in_boundary = False
-            for boundary_vertex in self.current_boundary:
-                if np.linalg.norm(mesh_vertex - boundary_vertex) < tolerance:
-                    found_in_boundary = True
-                    break
-
-            # If it's not in current boundary, it might be a newly generated point
-            # For action_type 0, the first vertex is the new point
-            if not found_in_boundary:
-                # Check if it's inside the current boundary (valid new point)
-                if not self._is_point_inside_boundary(mesh_vertex):
-                    return False
-
-        return True
-
     def step(self, action: np.ndarray, global_timestep: Optional[int] = None) -> Tuple[
         np.ndarray, float, bool, bool, Dict]:
-        """Take a step in the environment following original logic."""
+        """Take a step in the environment following original logic with simplified intersection check."""
         self.step_count += 1
 
         if self.step_count >= self.max_steps:
@@ -334,6 +299,8 @@ class MeshEnv(Env):
 
             # Determine action type using original thresholds
             mesh = None
+            action_type = None
+
             if rule_type <= -0.5:  # Type -1: Remove 2 vertices
                 # Create quad by connecting 4 consecutive boundary vertices
                 mesh = np.array([
@@ -370,43 +337,91 @@ class MeshEnv(Env):
                     reward = -1.0
                     mesh = None
 
-            # Validate and add mesh - Use original author's approach
-            if (mesh is not None and
-                    self._validate_mesh(mesh) and
-                    not self._check_intersection_with_boundary(mesh, self.current_boundary[ref_idx])):
+            # Validate mesh and check for boundary self-intersection after potential update
+            if mesh is not None and self._validate_mesh_simple(mesh):
+                # Temporarily update boundary to check for self-intersection
+                temp_boundary = self._get_updated_boundary(ref_idx, mesh, action_type)
 
-                # Store old boundary for validation
-                old_boundary = self.current_boundary.copy()
-                old_boundary_size = len(old_boundary)
+                if (temp_boundary is not None and
+                        not self._check_intersection_with_boundary(mesh, ref_idx, action_type) and
+                        not self._check_mesh_intersection_with_existing_meshes(mesh) and
+                        not self._check_mesh_self_intersection(mesh) and
+                        not self._check_boundary_self_intersection(temp_boundary)):
 
-                self.generated_elements.append(mesh)
-                self._update_boundary(ref_idx, mesh, action_type)
+                    # Store old boundary for validation
+                    old_boundary = self.current_boundary.copy()
+                    old_boundary_size = len(old_boundary)
 
-                new_boundary_size = len(self.current_boundary)
+                    self.generated_elements.append(mesh)
+                    self.current_boundary = temp_boundary  # Use the pre-validated boundary
+                    self._update_boundary(ref_idx, mesh, action_type)  # Update area ratio
 
-                # Calculate reward using original methods
-                reward = self._calculate_reward_original(mesh, action_type)
-                failed = False
+                    new_boundary_size = len(self.current_boundary)
 
-                self.episode_reward += reward
-                self.failed_num = 0
+                    # Debug output for boundary updates
+                    if self.step_count % 100 == 0:  # Print every 100 steps
+                        print(f"Step {self.step_count}: Action type {action_type}, "
+                              f"Boundary: {old_boundary_size} -> {new_boundary_size} vertices, "
+                              f"Elements: {len(self.generated_elements)}, Valid mesh generated")
 
-                # Check if completed
-                if len(self.current_boundary) <= 5:
-                    reward += 10
-                    terminated = True
-                    if len(self.current_boundary) == 4:
-                        final_element = self.current_boundary.copy()
-                        self.generated_elements.append(final_element)
+                    # Calculate reward using original methods
+                    reward = self._calculate_reward_original(mesh, action_type)
+                    failed = False
+
+                    self.episode_reward += reward
+                    self.failed_num = 0
+
+                    # Check if completed
+                    if len(self.current_boundary) <= 5:
+                        reward += 10
+                        terminated = True
+                        if len(self.current_boundary) == 4:
+                            final_element = self.current_boundary.copy()
+                            self.generated_elements.append(final_element)
+                    else:
+                        terminated = False
                 else:
+                    reward = -1.0 / len(self.generated_elements) if len(self.generated_elements) else -1.0
                     terminated = False
+                    failed = True
+
+                    # Log why mesh was rejected
+                    temp_boundary = self._get_updated_boundary(ref_idx, mesh, action_type)
+                    if temp_boundary is None:
+                        if self.step_count % 100 == 0:
+                            print(f"Step {self.step_count}: Mesh rejected - invalid boundary update")
+                    elif self._check_intersection_with_boundary(mesh, ref_idx, action_type):
+                        if self.step_count % 100 == 0:
+                            print(
+                                f"Step {self.step_count}: Mesh rejected - mesh-boundary intersection (action_type: {action_type})")
+                    elif self._check_mesh_intersection_with_existing_meshes(mesh):
+                        if self.step_count % 100 == 0:
+                            print(
+                                f"Step {self.step_count}: Mesh rejected - mesh-mesh intersection (action_type: {action_type})")
+                    elif self._check_mesh_self_intersection(mesh):
+                        if self.step_count % 100 == 0:
+                            print(
+                                f"Step {self.step_count}: Mesh rejected - mesh self-intersection (action_type: {action_type})")
+                    elif self._check_boundary_self_intersection(temp_boundary):
+                        if self.step_count % 100 == 0:
+                            print(
+                                f"Step {self.step_count}: Mesh rejected - boundary self-intersection after update (action_type: {action_type})")
             else:
                 reward = -1.0 / len(self.generated_elements) if len(self.generated_elements) else -1.0
                 terminated = False
                 failed = True
 
+                # Log why mesh was rejected
+                if mesh is not None:
+                    if not self._validate_mesh_simple(mesh):
+                        if self.step_count % 100 == 0:
+                            print(f"Step {self.step_count}: Mesh rejected - failed basic validation")
+                else:
+                    if self.step_count % 100 == 0:
+                        print(f"Step {self.step_count}: No mesh generated")
+
         except Exception as e:
-            # print(f"Error in step: {e}")
+            print(f"Error in step: {e}")
             reward = -0.1
             terminated = False
             failed = True
@@ -428,27 +443,199 @@ class MeshEnv(Env):
 
         return observation, reward, terminated, False, info
 
+    def _check_intersection_with_boundary(self, mesh: np.ndarray, ref_idx: int, action_type: int) -> bool:
+        """
+        Check if mesh intersects with current boundary.
+        Simplified but comprehensive approach for all action types.
+
+        Args:
+            mesh: Generated mesh vertices
+            ref_idx: Reference vertex index
+            action_type: Type of action (-1, 0, 1)
+
+        Returns:
+            True if intersection detected, False otherwise
+        """
+        if len(mesh) < 3:
+            return False
+
+        # Get mesh edges
+        mesh_edges = []
+        for i in range(len(mesh)):
+            mesh_edges.append((mesh[i], mesh[(i + 1) % len(mesh)]))
+
+        # Get current boundary edges
+        n_boundary = len(self.current_boundary)
+        boundary_edges = []
+        for i in range(n_boundary):
+            boundary_edges.append((self.current_boundary[i], self.current_boundary[(i + 1) % n_boundary]))
+
+        # Check each mesh edge against each boundary edge
+        for mesh_edge in mesh_edges:
+            mesh_start, mesh_end = mesh_edge
+
+            for boundary_edge in boundary_edges:
+                boundary_start, boundary_end = boundary_edge
+
+                # Skip if the boundary edge shares vertices with the mesh
+                # This is important for avoiding false positives
+                shares_vertex = False
+                for mesh_vertex in mesh:
+                    if (np.allclose(boundary_start, mesh_vertex, atol=1e-6) or
+                            np.allclose(boundary_end, mesh_vertex, atol=1e-6)):
+                        shares_vertex = True
+                        break
+
+                if shares_vertex:
+                    continue
+
+                # Check for proper intersection (not just touching at endpoints)
+                if self._line_segments_intersect_proper(mesh_start, mesh_end,
+                                                        boundary_start, boundary_end):
+                    return True
+
+        # Additional check for action_type 0: ensure new vertex doesn't create invalid geometry
+        if action_type == 0:
+            new_vertex = mesh[0]  # First vertex is the new one for type 0
+
+            # Check if new vertex is too close to existing boundary (might cause numerical issues)
+            for i in range(n_boundary):
+                boundary_start = self.current_boundary[i]
+                boundary_end = self.current_boundary[(i + 1) % n_boundary]
+
+                # Skip edges that are part of the mesh
+                skip_edge = False
+                for mesh_vertex in mesh[1:]:  # Skip the new vertex itself
+                    if (np.allclose(boundary_start, mesh_vertex, atol=1e-6) or
+                            np.allclose(boundary_end, mesh_vertex, atol=1e-6)):
+                        skip_edge = True
+                        break
+
+                if skip_edge:
+                    continue
+
+                # Check distance from new vertex to boundary edge
+                dist = self._point_to_line_distance(new_vertex, boundary_start, boundary_end)
+                if dist < 1e-3:  # Too close to boundary edge
+                    return True
+
+        return False
+
+    def _line_segments_intersect_proper(self, p1: np.ndarray, p2: np.ndarray,
+                                        p3: np.ndarray, p4: np.ndarray) -> bool:
+        """
+        Check if two line segments intersect properly (not just touching at endpoints).
+
+        Args:
+            p1, p2: First line segment endpoints
+            p3, p4: Second line segment endpoints
+
+        Returns:
+            True if segments intersect properly, False otherwise
+        """
+
+        def orientation(p, q, r):
+            """Find orientation of ordered triplet (p, q, r).
+            Returns:
+            0 --> p, q and r are colinear
+            1 --> Clockwise
+            2 --> Counterclockwise
+            """
+            val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
+            if abs(val) < 1e-10:
+                return 0
+            return 1 if val > 0 else 2
+
+        def on_segment(p, q, r):
+            """Check if point q lies on segment pr"""
+            return (q[0] <= max(p[0], r[0]) and q[0] >= min(p[0], r[0]) and
+                    q[1] <= max(p[1], r[1]) and q[1] >= min(p[1], r[1]))
+
+        o1 = orientation(p1, p2, p3)
+        o2 = orientation(p1, p2, p4)
+        o3 = orientation(p3, p4, p1)
+        o4 = orientation(p3, p4, p2)
+
+        # General case - proper intersection
+        if o1 != o2 and o3 != o4:
+            return True
+
+        # Special cases - we want to avoid these as they might be valid touching
+        # Check if endpoints are the same (valid connection)
+        if (np.allclose(p1, p3, atol=1e-6) or np.allclose(p1, p4, atol=1e-6) or
+                np.allclose(p2, p3, atol=1e-6) or np.allclose(p2, p4, atol=1e-6)):
+            return False
+
+        # Colinear cases
+        if (o1 == 0 and on_segment(p1, p3, p2)) or \
+                (o2 == 0 and on_segment(p1, p4, p2)) or \
+                (o3 == 0 and on_segment(p3, p1, p4)) or \
+                (o4 == 0 and on_segment(p3, p2, p4)):
+            return True
+
+        return False
+
+    def _point_to_line_distance(self, point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> float:
+        """
+        Calculate the distance from a point to a line segment.
+
+        Args:
+            point: The point
+            line_start, line_end: Line segment endpoints
+
+        Returns:
+            Distance from point to line segment
+        """
+        line_vec = line_end - line_start
+        point_vec = point - line_start
+
+        line_length_sq = np.dot(line_vec, line_vec)
+
+        if line_length_sq < 1e-10:
+            # Line segment is actually a point
+            return np.linalg.norm(point_vec)
+
+        # Project point onto line
+        t = np.dot(point_vec, line_vec) / line_length_sq
+
+        if t < 0:
+            # Closest point is line_start
+            return np.linalg.norm(point_vec)
+        elif t > 1:
+            # Closest point is line_end
+            return np.linalg.norm(point - line_end)
+        else:
+            # Closest point is on the line segment
+            projection = line_start + t * line_vec
+            return np.linalg.norm(point - projection)
+
+    def _validate_mesh_simple(self, mesh: np.ndarray) -> bool:
+        """Simple mesh validation following original criteria."""
+        if mesh is None or len(mesh) < 3:
+            return False
+
+        # Check area
+        area = calculate_polygon_area(mesh)
+        if area < 1e-6:
+            return False
+
+        # Check for duplicate vertices
+        for i in range(len(mesh)):
+            for j in range(i + 1, len(mesh)):
+                if np.linalg.norm(mesh[i] - mesh[j]) < 1e-6:
+                    return False
+
+        return True
+
     def _action_to_point_constrained(self, action: np.ndarray, ref_idx: int) -> Optional[np.ndarray]:
         """
         Convert action to world coordinates with boundary constraints.
-
-        This is the key fix - ensure generated points are always inside the boundary.
+        Simplified approach following original author.
         """
         x, y = action[0], action[1]
 
         if not hasattr(self, 'current_base_length'):
             return None
-
-        # Get local boundary constraints
-        max_distance = self._get_max_valid_distance(ref_idx, x, y)
-
-        # Constrain the action to valid range
-        action_distance = np.sqrt(x * x + y * y)
-        if action_distance > 1e-8:
-            # Scale down if needed to stay within boundary
-            scale_factor = min(1.0, max_distance / (action_distance * self.current_base_length * self.max_radius))
-            x *= scale_factor
-            y *= scale_factor
 
         # Scale by base length and max radius
         x_world = x * self.current_base_length * self.max_radius
@@ -466,124 +653,36 @@ class MeshEnv(Env):
         local_coords = np.array([x_world, y_world])
         world_coords = self.current_ref_vertex + rotation_matrix @ local_coords
 
-        # Final safety check - if still outside, project to nearest valid point
+        # Simple check - if outside boundary, project inside
         if not self._is_point_inside_boundary(world_coords):
-            world_coords = self._project_point_inside(world_coords, ref_idx)
+            world_coords = self._project_point_inside_simple(world_coords)
 
         return world_coords
 
-    def _get_max_valid_distance(self, ref_idx: int, x: float, y: float) -> float:
+    def _project_point_inside_simple(self, point: np.ndarray) -> np.ndarray:
         """
-        Calculate maximum valid distance in the direction of (x, y) from reference vertex.
-        """
-        if abs(x) < 1e-8 and abs(y) < 1e-8:
-            return self.current_base_length * self.max_radius
-
-        # Normalize direction
-        direction = np.array([x, y])
-        direction = direction / np.linalg.norm(direction)
-
-        # Rotate direction to world coordinates
-        cos_theta = self.current_ref_direction[0]
-        sin_theta = self.current_ref_direction[1]
-        rotation_matrix = np.array([
-            [cos_theta, -sin_theta],
-            [sin_theta, cos_theta]
-        ])
-        world_direction = rotation_matrix @ direction
-
-        # Find intersection with boundary edges
-        min_distance = self.current_base_length * self.max_radius
-        ref_vertex = self.current_ref_vertex
-
-        n_vertices = len(self.current_boundary)
-        for i in range(n_vertices):
-            p1 = self.current_boundary[i]
-            p2 = self.current_boundary[(i + 1) % n_vertices]
-
-            # Check intersection with edge p1-p2
-            intersection_distance = self._ray_edge_intersection(ref_vertex, world_direction, p1, p2)
-            if intersection_distance is not None and intersection_distance > 1e-8:
-                min_distance = min(min_distance, intersection_distance * 0.9)  # Safety margin
-
-        return max(min_distance, self.current_base_length * 0.1)  # Minimum distance
-
-    def _ray_edge_intersection(self, ray_origin: np.ndarray, ray_direction: np.ndarray,
-                               edge_p1: np.ndarray, edge_p2: np.ndarray) -> Optional[float]:
-        """
-        Calculate intersection distance between a ray and an edge.
-        Returns None if no intersection or intersection is behind ray origin.
-        """
-        edge_vector = edge_p2 - edge_p1
-        edge_length = np.linalg.norm(edge_vector)
-        if edge_length < 1e-8:
-            return None
-
-        # Solve ray-line intersection
-        # ray: ray_origin + t * ray_direction
-        # edge: edge_p1 + s * edge_vector
-        # Solve: ray_origin + t * ray_direction = edge_p1 + s * edge_vector
-
-        A = np.column_stack([ray_direction, -edge_vector])
-        b = edge_p1 - ray_origin
-
-        try:
-            params = np.linalg.solve(A, b)
-            t, s = params[0], params[1]
-
-            # Check if intersection is valid
-            if t > 1e-8 and 0 <= s <= 1:  # t > 0 (forward ray), 0 <= s <= 1 (on edge)
-                return t
-        except np.linalg.LinAlgError:
-            pass
-
-        return None
-
-    def _project_point_inside(self, point: np.ndarray, ref_idx: int) -> np.ndarray:
-        """
-        Project a point to the nearest valid location inside the boundary.
+        Simple projection method to move point inside boundary.
         """
         if self._is_point_inside_boundary(point):
             return point
 
-        # Find closest point on boundary
+        # Find closest boundary vertex and move towards it
         min_distance = float('inf')
-        closest_point = self.current_ref_vertex
+        closest_vertex = self.current_ref_vertex
 
-        n_vertices = len(self.current_boundary)
-        for i in range(n_vertices):
-            p1 = self.current_boundary[i]
-            p2 = self.current_boundary[(i + 1) % n_vertices]
-
-            # Project point onto edge
-            projected = self._project_point_on_edge(point, p1, p2)
-            distance = np.linalg.norm(projected - point)
-
+        for vertex in self.current_boundary:
+            distance = np.linalg.norm(vertex - point)
             if distance < min_distance:
                 min_distance = distance
-                closest_point = projected
+                closest_vertex = vertex
 
-        # Move slightly inside from boundary
-        direction = closest_point - point
+        # Move point towards closest vertex by small amount
+        direction = closest_vertex - point
         if np.linalg.norm(direction) > 1e-8:
             direction = direction / np.linalg.norm(direction)
-            closest_point = closest_point - direction * (self.current_base_length * 0.01)  # Small offset
+            return point + direction * (self.current_base_length * 0.1)
 
-        return closest_point
-
-    def _project_point_on_edge(self, point: np.ndarray, edge_p1: np.ndarray, edge_p2: np.ndarray) -> np.ndarray:
-        """Project a point onto an edge (line segment)."""
-        edge_vector = edge_p2 - edge_p1
-        edge_length_sq = np.dot(edge_vector, edge_vector)
-
-        if edge_length_sq < 1e-8:
-            return edge_p1
-
-        # Calculate projection parameter
-        t = np.dot(point - edge_p1, edge_vector) / edge_length_sq
-        t = np.clip(t, 0.0, 1.0)  # Clamp to edge
-
-        return edge_p1 + t * edge_vector
+        return closest_vertex
 
     def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
         """Check if point is inside current boundary using ray casting."""
@@ -605,64 +704,173 @@ class MeshEnv(Env):
 
         return inside
 
-    def _validate_mesh(self, mesh: np.ndarray) -> bool:
-        """Validate mesh following original criteria."""
-        if mesh is None or len(mesh) < 3:
+    def _check_mesh_intersection_with_existing_meshes(self, new_mesh: np.ndarray) -> bool:
+        """
+        Check if new mesh intersects with any existing generated meshes.
+        This is crucial to prevent the mesh crossing issues shown in the training images.
+
+        Args:
+            new_mesh: New mesh vertices to check
+
+        Returns:
+            True if intersection detected, False otherwise
+        """
+        if len(new_mesh) < 3 or not self.generated_elements:
             return False
 
-        # Check area
-        area = calculate_polygon_area(mesh)
-        if area < 1e-6:
+        # Get edges of new mesh
+        new_mesh_edges = []
+        for i in range(len(new_mesh)):
+            new_mesh_edges.append((new_mesh[i], new_mesh[(i + 1) % len(new_mesh)]))
+
+        # Check against all existing meshes
+        for existing_mesh in self.generated_elements:
+            if len(existing_mesh) < 3:
+                continue
+
+            # Get edges of existing mesh
+            existing_edges = []
+            for i in range(len(existing_mesh)):
+                existing_edges.append((existing_mesh[i], existing_mesh[(i + 1) % len(existing_mesh)]))
+
+            # Check each new mesh edge against each existing mesh edge
+            for new_edge in new_mesh_edges:
+                new_start, new_end = new_edge
+
+                for existing_edge in existing_edges:
+                    existing_start, existing_end = existing_edge
+
+                    # Skip if edges share vertices (valid adjacency)
+                    shares_vertex = False
+                    for new_vertex in [new_start, new_end]:
+                        for existing_vertex in [existing_start, existing_end]:
+                            if np.allclose(new_vertex, existing_vertex, atol=1e-6):
+                                shares_vertex = True
+                                break
+                        if shares_vertex:
+                            break
+
+                    if shares_vertex:
+                        continue
+
+                    # Check for proper intersection
+                    if self._line_segments_intersect_proper(new_start, new_end,
+                                                            existing_start, existing_end):
+                        return True
+
+        return False
+
+    def _check_mesh_self_intersection(self, mesh: np.ndarray) -> bool:
+        """
+        Check if a mesh has self-intersecting edges.
+
+        Args:
+            mesh: Mesh vertices to check
+
+        Returns:
+            True if mesh self-intersects, False otherwise
+        """
+        if len(mesh) < 4:  # Triangles cannot self-intersect
             return False
 
-        # Check for duplicate vertices
-        for i in range(len(mesh)):
-            for j in range(i + 1, len(mesh)):
-                if np.linalg.norm(mesh[i] - mesh[j]) < 1e-6:
-                    return False
+        n = len(mesh)
 
-        return True
+        # Check each edge against all non-adjacent edges
+        for i in range(n):
+            edge1_start = mesh[i]
+            edge1_end = mesh[(i + 1) % n]
 
-    def _update_boundary(self, ref_idx: int, mesh: np.ndarray, action_type: int):
-        """Update boundary following original logic with proper element integration."""
+            # Check against non-adjacent edges
+            for j in range(i + 2, n):
+                # Skip the closing edge (last edge with first edge)
+                if j == n - 1 and i == 0:
+                    continue
+
+                edge2_start = mesh[j]
+                edge2_end = mesh[(j + 1) % n]
+
+                if self._line_segments_intersect_proper(edge1_start, edge1_end, edge2_start, edge2_end):
+                    return True
+
+        return False
+
+    def _get_updated_boundary(self, ref_idx: int, mesh: np.ndarray, action_type: int) -> Optional[np.ndarray]:
+        """
+        Get the updated boundary without modifying the current state.
+
+        Args:
+            ref_idx: Reference vertex index
+            mesh: Generated mesh vertices
+            action_type: Type of action (-1, 0, 1)
+
+        Returns:
+            Updated boundary or None if invalid
+        """
         n_boundary = len(self.current_boundary)
 
         if action_type == -1:  # Remove current and next vertex
-            # Remove vertices that are now interior to the generated quad
             indices_to_remove = {ref_idx, (ref_idx + 1) % n_boundary}
             new_boundary = []
             for i in range(n_boundary):
                 if i not in indices_to_remove:
                     new_boundary.append(self.current_boundary[i])
-            self.current_boundary = np.array(new_boundary)
+            return np.array(new_boundary) if len(new_boundary) >= 3 else None
 
         elif action_type == 1:  # Remove previous and current vertex
-            # Remove vertices that are now interior to the generated quad
             indices_to_remove = {(ref_idx - 1) % n_boundary, ref_idx}
             new_boundary = []
             for i in range(n_boundary):
                 if i not in indices_to_remove:
                     new_boundary.append(self.current_boundary[i])
-            self.current_boundary = np.array(new_boundary)
+            return np.array(new_boundary) if len(new_boundary) >= 3 else None
 
-        else:  # action_type == 0: Add new vertex and properly update boundary
-            # For type 0, we created a quad: [new_point, left_neighbor, ref_vertex, right_neighbor]
-            # The ref_vertex is now interior to the quad and should be removed from boundary
-            # The new_point becomes part of the boundary
-
+        else:  # action_type == 0: Add new vertex
             new_point = mesh[0]
-
-            # Create new boundary by replacing ref_vertex with new_point
             new_boundary = []
             for i in range(n_boundary):
                 if i == ref_idx:
-                    # Replace reference vertex with new point
                     new_boundary.append(new_point)
                 else:
                     new_boundary.append(self.current_boundary[i])
+            return np.array(new_boundary)
 
-            self.current_boundary = np.array(new_boundary)
+    def _check_boundary_self_intersection(self, boundary: np.ndarray) -> bool:
+        """
+        Check if a boundary has self-intersections.
 
+        Args:
+            boundary: Boundary vertices to check
+
+        Returns:
+            True if boundary self-intersects, False otherwise
+        """
+        if len(boundary) < 4:  # Need at least 4 vertices to have self-intersection
+            return False
+
+        n = len(boundary)
+
+        # Check each edge against all non-adjacent edges
+        for i in range(n):
+            edge1_start = boundary[i]
+            edge1_end = boundary[(i + 1) % n]
+
+            # Check against non-adjacent edges
+            for j in range(i + 2, n):
+                # Skip adjacent edges and the edge that closes the boundary
+                if j == (i + n - 1) % n:
+                    continue
+
+                edge2_start = boundary[j]
+                edge2_end = boundary[(j + 1) % n]
+
+                if self._line_segments_intersect_proper(edge1_start, edge1_end, edge2_start, edge2_end):
+                    return True
+
+        return False
+
+    def _update_boundary(self, ref_idx: int, mesh: np.ndarray, action_type: int):
+        """Update boundary following original logic with proper element integration."""
+        # This method is now simplified since boundary is pre-validated in step()
         # Update area ratio
         current_area = calculate_polygon_area(self.current_boundary)
         self.current_area_ratio = current_area / self.original_area if self.original_area > 0 else 0.0
