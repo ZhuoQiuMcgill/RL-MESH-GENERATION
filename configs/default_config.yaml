@@ -4,11 +4,11 @@
 # SAC Algorithm Parameters (matching original)
 sac:
   learning_rate: 3e-4  # Original uses 3e-4
-  discount_factor: 0.5  # Original uses 0.5 instead of 0.99
+  discount_factor: 0.99
   buffer_size: 1000000
   batch_size: 256  # Original uses 100 instead of 256
   tau: 0.005
-  alpha: 10.0
+  alpha: 5.0
   gradient_steps: 1
   polyak: 0.995
   # Static alpha mode - set to true to disable automatic alpha tuning
@@ -67,4 +67,4 @@ paths:
 
 # Domain settings (original author tested on multiple domains)
 domain:
-  training_domain: "T1.txt"  # Original author's primary training domain
+  training_domain: "T3.txt"  # Original author's primary training domain

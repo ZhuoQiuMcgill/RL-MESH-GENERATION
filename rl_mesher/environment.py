@@ -514,27 +514,56 @@ class MeshEnv(Env):
 
         return inside
 
-    def _is_segment_inside_polygon(self,
-                                   p1: np.ndarray,
-                                   p2: np.ndarray,
-                                   polygon: np.ndarray) -> bool:
-        """Edge lies inside polygon: both endpoints inside and no forbidden crossings."""
-        if not self._is_point_inside_polygon(p1, polygon) or \
-                not self._is_point_inside_polygon(p2, polygon):
+    def _is_segment_inside_polygon(
+            self,
+            p1: np.ndarray,
+            p2: np.ndarray,
+            polygon: np.ndarray,
+            eps: float = 1e-8,
+    ) -> bool:
+        """
+        Return True only if the entire segment p1–p2 lies inside (or on) *polygon*.
+
+        Logic
+        -----
+        1. Both endpoints must be inside the polygon or on its boundary.
+        2. The segment must not intersect any polygon edge that does not share an
+           endpoint with the segment.
+        3. Sample interior points at 0.25, 0.5, and 0.75 of the segment; each of
+           these points must also be inside the polygon or on its boundary.
+        """
+        # 1) Endpoint containment check
+        if (
+                not self._is_point_inside_polygon(p1, polygon, eps)
+                or not self._is_point_inside_polygon(p2, polygon, eps)
+        ):
             return False
 
+        # 2) Intersection check against all polygon edges
         n = len(polygon)
         for i in range(n):
             q1 = polygon[i]
             q2 = polygon[(i + 1) % n]
 
-            # skip edges sharing endpoints
-            if (np.allclose(p1, q1) or np.allclose(p1, q2) or
-                    np.allclose(p2, q1) or np.allclose(p2, q2)):
+            # Skip edges that share any endpoint with the segment
+            if (
+                    np.allclose(p1, q1, atol=eps)
+                    or np.allclose(p1, q2, atol=eps)
+                    or np.allclose(p2, q1, atol=eps)
+                    or np.allclose(p2, q2, atol=eps)
+            ):
                 continue
 
             if self._segments_intersect(p1, p2, q1, q2):
                 return False
+
+        # 3) Interior sampling check (handles concave-polygon chord cases)
+        direction = p2 - p1
+        for t in (0.25, 0.5, 0.75):
+            sample_pt = p1 + t * direction
+            if not self._is_point_inside_polygon(sample_pt, polygon, eps):
+                return False
+
         return True
 
     def _is_polygon_inside_original(self, poly: np.ndarray) -> bool:

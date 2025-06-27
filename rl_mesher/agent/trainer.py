@@ -151,10 +151,9 @@ class MeshSACTrainer:
             else:
                 state_dict = next_state_dict
 
-            # Evaluation (event-driven + periodic)
+            # Evaluation
             if self._should_evaluate(timestep, done, terminated):
                 eval_results = self._evaluate(timestep)
-                self.last_eval_step = timestep
                 self.evaluation_results.append(eval_results)
                 self._log_evaluation(timestep, eval_results)
 
