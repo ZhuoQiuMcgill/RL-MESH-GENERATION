@@ -339,73 +339,21 @@ class MeshEnv(Env):
 
             # Validate mesh and check for boundary self-intersection after potential update
             if mesh is not None and self._validate_mesh_simple(mesh):
-                # Temporarily update boundary to check for self-intersection
-                temp_boundary = self._get_updated_boundary(ref_idx, mesh, action_type)
-
-                if (temp_boundary is not None and
-                        not self._check_intersection_with_boundary(mesh, ref_idx, action_type) and
-                        not self._check_mesh_intersection_with_existing_meshes(mesh) and
-                        not self._check_mesh_self_intersection(mesh) and
-                        not self._check_boundary_self_intersection(temp_boundary)):
-
-                    # Store old boundary for validation
-                    old_boundary = self.current_boundary.copy()
-                    old_boundary_size = len(old_boundary)
-
-                    self.generated_elements.append(mesh)
-                    self.current_boundary = temp_boundary  # Use the pre-validated boundary
-                    self._update_boundary(ref_idx, mesh, action_type)  # Update area ratio
-
-                    new_boundary_size = len(self.current_boundary)
-
-                    # Debug output for boundary updates
-                    if self.step_count % 100 == 0:  # Print every 100 steps
-                        print(f"Step {self.step_count}: Action type {action_type}, "
-                              f"Boundary: {old_boundary_size} -> {new_boundary_size} vertices, "
-                              f"Elements: {len(self.generated_elements)}, Valid mesh generated")
-
-                    # Calculate reward using original methods
-                    reward = self._calculate_reward_original(mesh, action_type)
-                    failed = False
-
-                    self.episode_reward += reward
-                    self.failed_num = 0
-
-                    # Check if completed
-                    if len(self.current_boundary) <= 5:
-                        reward += 10
-                        terminated = True
-                        if len(self.current_boundary) == 4:
-                            final_element = self.current_boundary.copy()
-                            self.generated_elements.append(final_element)
-                    else:
+                # Additional validation for action_type 0: ensure new vertex is inside boundary
+                if action_type == 0:
+                    new_vertex = mesh[0]  # First vertex is the new one for type 0
+                    if not self._is_point_inside_boundary_robust(new_vertex):
+                        reward = -1.0 / len(self.generated_elements) if len(self.generated_elements) else -1.0
                         terminated = False
+                        failed = True
+                        if self.step_count % 100 == 0:
+                            print(f"Step {self.step_count}: Mesh rejected - new vertex outside boundary")
+                    else:
+                        # Continue with normal validation
+                        reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type)
                 else:
-                    reward = -1.0 / len(self.generated_elements) if len(self.generated_elements) else -1.0
-                    terminated = False
-                    failed = True
-
-                    # Log why mesh was rejected
-                    temp_boundary = self._get_updated_boundary(ref_idx, mesh, action_type)
-                    if temp_boundary is None:
-                        if self.step_count % 100 == 0:
-                            print(f"Step {self.step_count}: Mesh rejected - invalid boundary update")
-                    elif self._check_intersection_with_boundary(mesh, ref_idx, action_type):
-                        if self.step_count % 100 == 0:
-                            print(
-                                f"Step {self.step_count}: Mesh rejected - mesh-boundary intersection (action_type: {action_type})")
-                    elif self._check_mesh_intersection_with_existing_meshes(mesh):
-                        if self.step_count % 100 == 0:
-                            print(
-                                f"Step {self.step_count}: Mesh rejected - mesh-mesh intersection (action_type: {action_type})")
-                    elif self._check_mesh_self_intersection(mesh):
-                        if self.step_count % 100 == 0:
-                            print(
-                                f"Step {self.step_count}: Mesh rejected - mesh self-intersection (action_type: {action_type})")
-                    elif self._check_boundary_self_intersection(temp_boundary):
-                        if self.step_count % 100 == 0:
-                            print(
-                                f"Step {self.step_count}: Mesh rejected - boundary self-intersection after update (action_type: {action_type})")
+                    # For action_type -1 and 1, proceed with normal validation
+                    reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type)
             else:
                 reward = -1.0 / len(self.generated_elements) if len(self.generated_elements) else -1.0
                 terminated = False
@@ -442,6 +390,161 @@ class MeshEnv(Env):
         })
 
         return observation, reward, terminated, False, info
+
+    def _action_to_point_constrained(self, action: np.ndarray, ref_idx: int) -> Optional[np.ndarray]:
+        """
+        Convert action to world coordinates with strict boundary constraints.
+        Uses multiple attempts with decreasing radius to ensure point stays inside.
+        """
+        x, y = action[0], action[1]
+
+        if not hasattr(self, 'current_base_length'):
+            return None
+
+        # Calculate reference direction rotation matrix
+        cos_theta = self.current_ref_direction[0]
+        sin_theta = self.current_ref_direction[1]
+        rotation_matrix = np.array([
+            [cos_theta, -sin_theta],
+            [sin_theta, cos_theta]
+        ])
+
+        # Try multiple scales to find a valid point inside boundary
+        max_attempts = 5
+        scale_factors = [0.15, 0.25, 0.4, 0.6, 0.8]  # Even more conservative scaling
+
+        for attempt in range(max_attempts):
+            scale = scale_factors[min(attempt, len(scale_factors) - 1)]
+
+            # Scale by base length with conservative scaling
+            x_world = x * self.current_base_length * self.max_radius * scale
+            y_world = y * self.current_base_length * self.max_radius * scale
+
+            local_coords = np.array([x_world, y_world])
+            world_coords = self.current_ref_vertex + rotation_matrix @ local_coords
+
+            # Check if point is inside boundary
+            if self._is_point_inside_boundary_robust(world_coords):
+                # Additional check: ensure point is not too close to boundary edges
+                if self._is_point_safe_distance_from_boundary(world_coords):
+                    return world_coords
+
+        # If all attempts fail, try constrained projection
+        # Use very small scale as fallback
+        x_world = x * self.current_base_length * self.max_radius * 0.1
+        y_world = y * self.current_base_length * self.max_radius * 0.1
+        local_coords = np.array([x_world, y_world])
+        fallback_coords = self.current_ref_vertex + rotation_matrix @ local_coords
+
+        if self._is_point_inside_boundary_robust(fallback_coords):
+            return fallback_coords
+
+        # Final fallback: project to safe interior point
+        safe_point = self._find_safe_interior_point(ref_idx)
+        return safe_point
+
+    def _is_point_inside_boundary_robust(self, point: np.ndarray) -> bool:
+        """
+        Robust point-in-polygon test using winding number algorithm.
+        More reliable than simple ray casting for edge cases.
+        """
+        if len(self.current_boundary) < 3:
+            return False
+
+        x, y = point
+        vertices = self.current_boundary
+        n = len(vertices)
+
+        # Winding number algorithm
+        winding_number = 0
+
+        for i in range(n):
+            x1, y1 = vertices[i]
+            x2, y2 = vertices[(i + 1) % n]
+
+            if y1 <= y:
+                if y2 > y:  # Upward crossing
+                    if self._is_left(x1, y1, x2, y2, x, y) > 0:
+                        winding_number += 1
+            else:
+                if y2 <= y:  # Downward crossing
+                    if self._is_left(x1, y1, x2, y2, x, y) < 0:
+                        winding_number -= 1
+
+        return winding_number != 0
+
+    def _is_left(self, x1: float, y1: float, x2: float, y2: float, px: float, py: float) -> float:
+        """
+        Test if point P is left/on/right of line P1P2.
+        Returns: >0 for P left of the line, =0 for P on the line, <0 for P right of the line
+        """
+        return (x2 - x1) * (py - y1) - (px - x1) * (y2 - y1)
+
+    def _is_point_safe_distance_from_boundary(self, point: np.ndarray, min_distance_factor: float = 0.02) -> bool:
+        """
+        Check if point is at safe distance from boundary edges.
+
+        Args:
+            point: Point to check
+            min_distance_factor: Minimum distance as factor of base_length
+
+        Returns:
+            True if point is at safe distance from all boundary edges
+        """
+        min_distance = self.current_base_length * min_distance_factor
+
+        n = len(self.current_boundary)
+        for i in range(n):
+            edge_start = self.current_boundary[i]
+            edge_end = self.current_boundary[(i + 1) % n]
+
+            # Calculate distance from point to edge
+            dist = self._point_to_line_distance(point, edge_start, edge_end)
+            if dist < min_distance:
+                return False
+
+        return True
+
+    def _find_safe_interior_point(self, ref_idx: int) -> np.ndarray:
+        """
+        Find a safe interior point near the reference vertex.
+        Uses centroid of local triangle as fallback.
+        """
+        n = len(self.current_boundary)
+
+        # Create a small triangle around reference vertex
+        ref_vertex = self.current_boundary[ref_idx]
+        left_vertex = self.current_boundary[(ref_idx - 1) % n]
+        right_vertex = self.current_boundary[(ref_idx + 1) % n]
+
+        # Calculate centroid of triangle formed by ref and neighbors
+        # Move it slightly towards interior
+        centroid = (ref_vertex + left_vertex + right_vertex) / 3.0
+
+        # Move centroid towards ref_vertex to ensure it's safe
+        direction = ref_vertex - centroid
+        if np.linalg.norm(direction) > 1e-8:
+            direction = direction / np.linalg.norm(direction)
+            # Create point that's 10% of base_length towards ref_vertex (more conservative)
+            safe_point = centroid + direction * (self.current_base_length * 0.1)
+        else:
+            safe_point = ref_vertex
+
+        # Final verification - if still outside, use reference vertex
+        if not self._is_point_inside_boundary_robust(safe_point):
+            # Create a very conservative point very close to reference vertex
+            offset = np.array([self.current_base_length * 0.005, 0])  # Even smaller offset
+            safe_point = ref_vertex + offset
+
+            # If still outside, just use reference vertex (this should never happen)
+            if not self._is_point_inside_boundary_robust(safe_point):
+                safe_point = ref_vertex
+
+        return safe_point
+
+    def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
+        """Wrapper for backward compatibility - use robust version."""
+        return self._is_point_inside_boundary_robust(point)
 
     def _check_intersection_with_boundary(self, mesh: np.ndarray, ref_idx: int, action_type: int) -> bool:
         """
@@ -627,83 +730,6 @@ class MeshEnv(Env):
 
         return True
 
-    def _action_to_point_constrained(self, action: np.ndarray, ref_idx: int) -> Optional[np.ndarray]:
-        """
-        Convert action to world coordinates with boundary constraints.
-        Simplified approach following original author.
-        """
-        x, y = action[0], action[1]
-
-        if not hasattr(self, 'current_base_length'):
-            return None
-
-        # Scale by base length and max radius
-        x_world = x * self.current_base_length * self.max_radius
-        y_world = y * self.current_base_length * self.max_radius
-
-        # Rotate by reference direction
-        cos_theta = self.current_ref_direction[0]
-        sin_theta = self.current_ref_direction[1]
-
-        rotation_matrix = np.array([
-            [cos_theta, -sin_theta],
-            [sin_theta, cos_theta]
-        ])
-
-        local_coords = np.array([x_world, y_world])
-        world_coords = self.current_ref_vertex + rotation_matrix @ local_coords
-
-        # Simple check - if outside boundary, project inside
-        if not self._is_point_inside_boundary(world_coords):
-            world_coords = self._project_point_inside_simple(world_coords)
-
-        return world_coords
-
-    def _project_point_inside_simple(self, point: np.ndarray) -> np.ndarray:
-        """
-        Simple projection method to move point inside boundary.
-        """
-        if self._is_point_inside_boundary(point):
-            return point
-
-        # Find closest boundary vertex and move towards it
-        min_distance = float('inf')
-        closest_vertex = self.current_ref_vertex
-
-        for vertex in self.current_boundary:
-            distance = np.linalg.norm(vertex - point)
-            if distance < min_distance:
-                min_distance = distance
-                closest_vertex = vertex
-
-        # Move point towards closest vertex by small amount
-        direction = closest_vertex - point
-        if np.linalg.norm(direction) > 1e-8:
-            direction = direction / np.linalg.norm(direction)
-            return point + direction * (self.current_base_length * 0.1)
-
-        return closest_vertex
-
-    def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
-        """Check if point is inside current boundary using ray casting."""
-        x, y = point
-        n = len(self.current_boundary)
-        inside = False
-
-        p1x, p1y = self.current_boundary[0]
-        for i in range(1, n + 1):
-            p2x, p2y = self.current_boundary[i % n]
-            if y > min(p1y, p2y) and y <= max(p1y, p2y) and x <= max(p1x, p2x):
-                if p1y != p2y:
-                    xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                else:
-                    xinters = x
-                if p1x == p2x or x <= xinters:
-                    inside = not inside
-            p1x, p1y = p2x, p2y
-
-        return inside
-
     def _check_mesh_intersection_with_existing_meshes(self, new_mesh: np.ndarray) -> bool:
         """
         Check if new mesh intersects with any existing generated meshes.
@@ -874,6 +900,88 @@ class MeshEnv(Env):
         # Update area ratio
         current_area = calculate_polygon_area(self.current_boundary)
         self.current_area_ratio = current_area / self.original_area if self.original_area > 0 else 0.0
+
+    def _validate_and_apply_mesh(self, ref_idx: int, mesh: np.ndarray, action_type: int) -> Tuple[float, bool, bool]:
+        """
+        Validate mesh and apply it if valid.
+
+        Args:
+            ref_idx: Reference vertex index
+            mesh: Generated mesh vertices
+            action_type: Type of action (-1, 0, 1)
+
+        Returns:
+            Tuple of (reward, terminated, failed)
+        """
+        temp_boundary = self._get_updated_boundary(ref_idx, mesh, action_type)
+
+        if (temp_boundary is not None and
+                not self._check_intersection_with_boundary(mesh, ref_idx, action_type) and
+                not self._check_mesh_intersection_with_existing_meshes(mesh) and
+                not self._check_mesh_self_intersection(mesh) and
+                not self._check_boundary_self_intersection(temp_boundary)):
+
+            # Store old boundary for validation
+            old_boundary = self.current_boundary.copy()
+            old_boundary_size = len(old_boundary)
+
+            self.generated_elements.append(mesh)
+            self.current_boundary = temp_boundary  # Use the pre-validated boundary
+            self._update_boundary(ref_idx, mesh, action_type)  # Update area ratio
+
+            new_boundary_size = len(self.current_boundary)
+
+            # Debug output for boundary updates
+            if self.step_count % 100 == 0:  # Print every 100 steps
+                print(f"Step {self.step_count}: Action type {action_type}, "
+                      f"Boundary: {old_boundary_size} -> {new_boundary_size} vertices, "
+                      f"Elements: {len(self.generated_elements)}, Valid mesh generated")
+
+            # Calculate reward using original methods
+            reward = self._calculate_reward_original(mesh, action_type)
+            failed = False
+
+            self.episode_reward += reward
+            self.failed_num = 0
+
+            # Check if completed
+            if len(self.current_boundary) <= 5:
+                reward += 10
+                terminated = True
+                if len(self.current_boundary) == 4:
+                    final_element = self.current_boundary.copy()
+                    self.generated_elements.append(final_element)
+            else:
+                terminated = False
+
+            return reward, terminated, failed
+        else:
+            reward = -1.0 / len(self.generated_elements) if len(self.generated_elements) else -1.0
+            terminated = False
+            failed = True
+
+            # Log why mesh was rejected
+            if temp_boundary is None:
+                if self.step_count % 100 == 0:
+                    print(f"Step {self.step_count}: Mesh rejected - invalid boundary update")
+            elif self._check_intersection_with_boundary(mesh, ref_idx, action_type):
+                if self.step_count % 100 == 0:
+                    print(
+                        f"Step {self.step_count}: Mesh rejected - mesh-boundary intersection (action_type: {action_type})")
+            elif self._check_mesh_intersection_with_existing_meshes(mesh):
+                if self.step_count % 100 == 0:
+                    print(
+                        f"Step {self.step_count}: Mesh rejected - mesh-mesh intersection (action_type: {action_type})")
+            elif self._check_mesh_self_intersection(mesh):
+                if self.step_count % 100 == 0:
+                    print(
+                        f"Step {self.step_count}: Mesh rejected - mesh self-intersection (action_type: {action_type})")
+            elif self._check_boundary_self_intersection(temp_boundary):
+                if self.step_count % 100 == 0:
+                    print(
+                        f"Step {self.step_count}: Mesh rejected - boundary self-intersection after update (action_type: {action_type})")
+
+            return reward, terminated, failed
 
     def _calculate_reward_original(self, mesh: np.ndarray, action_type: int) -> float:
         """Calculate reward using original author's methods."""
