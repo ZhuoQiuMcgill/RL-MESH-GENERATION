@@ -128,6 +128,75 @@ class MeshEnv(Env):
 
         return observation, info
 
+    def _get_observation(self) -> Dict:
+        """
+        Get the current observation by calculating state components and transforming
+        them into the agent's relative coordinate system.
+        """
+        if len(self.current_boundary) < 3:
+            return self._get_default_observation()
+
+        # Get reference vertex
+        try:
+            ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
+        except Exception:
+            ref_idx = 0
+
+        # Get state components based on the reference vertex
+        try:
+            state_components = get_state_components(
+                self.current_boundary, ref_idx, self.n_neighbors,
+                self.n_fan_points, self.beta_obs
+            )
+        except Exception:
+            return self._get_default_observation()
+
+        # Transform all points to a relative coordinate system
+        ref_vertex = state_components['ref_vertex']
+        reference_direction = state_components['reference_direction']
+
+        all_points_to_transform = [ref_vertex]
+        all_points_to_transform.extend(state_components['left_neighbors'])
+        all_points_to_transform.extend(state_components['right_neighbors'])
+        all_points_to_transform.extend(state_components['fan_points'])
+
+        try:
+            relative_points = transform_to_relative_coords(
+                all_points_to_transform, ref_vertex, reference_direction
+            )
+        except Exception:
+            return self._get_default_observation()
+
+        # Ensure the number of points is consistent, padding if necessary
+        expected_points = 1 + 2 * self.n_neighbors + self.n_fan_points
+        while len(relative_points) < expected_points:
+            relative_points.append(np.zeros(2))
+
+        # Build the final observation dictionary with tensors
+        obs_ref_vertex = torch.tensor(relative_points[0], dtype=torch.float32)
+
+        start_idx = 1
+        end_idx = 1 + self.n_neighbors
+        obs_left_neighbors = torch.tensor(np.array(relative_points[start_idx:end_idx]), dtype=torch.float32)
+
+        start_idx = end_idx
+        end_idx = start_idx + self.n_neighbors
+        obs_right_neighbors = torch.tensor(np.array(relative_points[start_idx:end_idx]), dtype=torch.float32)
+
+        start_idx = end_idx
+        end_idx = start_idx + self.n_fan_points
+        obs_fan_points = torch.tensor(np.array(relative_points[start_idx:end_idx]), dtype=torch.float32)
+
+        observation = {
+            'ref_vertex': obs_ref_vertex,
+            'left_neighbors': obs_left_neighbors,
+            'right_neighbors': obs_right_neighbors,
+            'fan_points': obs_fan_points,
+            'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
+        }
+
+        return observation
+
     def step(self, action: np.ndarray, global_timestep: Optional[int] = None) -> Tuple[Dict, float, bool, bool, Dict]:
         """Execute one environment step following the paper's algorithm."""
         self.step_count += 1
