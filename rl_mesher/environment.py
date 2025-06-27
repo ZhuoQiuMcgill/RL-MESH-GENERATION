@@ -21,23 +21,21 @@ class MeshEnv(Env):
         super(MeshEnv, self).__init__()
         self.config = config
 
-        # Core parameters matching original implementation
-        self.neighbor_num = config['environment'].get('neighbor_num', 6)  # Original uses 6
-        self.radius_num = config['environment'].get('radius_num', 3)  # Original uses 3
-        self.max_radius = config['environment'].get('max_radius', 2)  # Original uses 2
-        self.radius = config['environment'].get('observation_radius', 4)  # Original uses 4
+        # Parameters for state representation based on the paper (Section 2.2)
+        self.n_neighbors = self.config['environment'].get('n_neighbors', 2)  # n in the paper
+        self.n_fan_points = self.config['environment'].get('n_fan_points', 3)  # g in the paper
+        self.beta_obs = self.config['environment'].get('beta_obs', 6.0)  # β in paper for radius calc
+        self.alpha_action = self.config['environment'].get('alpha_action', 2.0)  # α in paper for action radius
 
-        # Original author's action space: [rule_type, x_coord, y_coord]
+        # Action space is now 5D to accommodate type 2 actions
         self.action_space = spaces.Box(
-            np.array([-1, -1.0, -1.0]),
-            np.array([1, 1.0, 1.0]),
-            dtype=np.float32
+            low=-1.0, high=1.0, shape=(5,), dtype=np.float32
         )
 
-        # Original author's observation space: flat array
-        obs_dim = 2 * (self.neighbor_num + self.radius_num)
+        # Observation space based on the paper's state representation
+        obs_dim = (self.n_neighbors * 2 + self.n_fan_points) * 2 + 1
         self.observation_space = spaces.Box(
-            low=-999, high=999,
+            low=-np.inf, high=np.inf,
             shape=(obs_dim,),
             dtype=np.float32
         )
@@ -55,15 +53,12 @@ class MeshEnv(Env):
         self.episode_reward = 0.0
         self.max_steps = int(config['environment'].get('max_steps', 1000))
 
-        # Original author's reward method selection
+        # Reward method selection
         self.reward_method = config['environment'].get('reward_method', 10)
 
-        # Additional tracking variables from original
+        # Additional tracking variables
         self.failed_num = 0
         self.not_valid_points = []
-        self.TYPE_THRESHOLD = 0.3  # Original threshold for action type decision
-
-        print(f"Environment initialized with neighbor_num={self.neighbor_num}, radius_num={self.radius_num}")
 
     def _ensure_clockwise(self, boundary: np.ndarray) -> np.ndarray:
         """Ensure boundary vertices are in clockwise order."""
@@ -133,33 +128,149 @@ class MeshEnv(Env):
         return ref_idx
 
     def _get_observation(self) -> np.ndarray:
-        """Get current state observation using correct dimensions."""
         if self.current_boundary is None or len(self.current_boundary) < 3:
-            return np.zeros(self.observation_space.shape[0], dtype=np.float32)
+            return np.zeros(self.observation_space.shape, dtype=np.float32)
 
         try:
             ref_idx = self._find_reference_point()
             if ref_idx is None:
-                return np.zeros(self.observation_space.shape[0], dtype=np.float32)
+                return np.zeros(self.observation_space.shape, dtype=np.float32)
 
-            # Use the corrected state generation method
-            state = self._get_state_from_boundary(ref_idx)
+            n_boundary = len(self.current_boundary)
+            V0 = self.current_boundary[ref_idx]
 
-            # Ensure correct length
-            expected_len = self.observation_space.shape[0]
-            if len(state) != expected_len:
-                print(f"Warning: State length mismatch. Expected {expected_len}, got {len(state)}")
-                # Pad or truncate to match expected length
-                if len(state) < expected_len:
-                    state.extend([0.0] * (expected_len - len(state)))
-                else:
-                    state = state[:expected_len]
+            # 1. Get Neighboring Vertices
+            left_neighbors = np.array(
+                [self.current_boundary[(ref_idx - i) % n_boundary] for i in range(1, self.n_neighbors + 1)])
+            right_neighbors = np.array(
+                [self.current_boundary[(ref_idx + i) % n_boundary] for i in range(1, self.n_neighbors + 1)])
 
-            return np.array(state, dtype=np.float32)
+            # 2. Get Fan Points (as described in Paper Figure 6)
+            Vl1 = left_neighbors[0]
+            Vr1 = right_neighbors[0]
+
+            # Base length L for radius calculation (Eq. 2)
+            L = 0.0
+            n_L = min(self.n_neighbors, n_boundary // 2)
+            if n_L > 0:
+                len_sum = 0
+                for i in range(n_L):
+                    len_sum += np.linalg.norm(self.current_boundary[(ref_idx - i) % n_boundary] - self.current_boundary[
+                        (ref_idx - i - 1) % n_boundary])
+                    len_sum += np.linalg.norm(self.current_boundary[(ref_idx + i) % n_boundary] - self.current_boundary[
+                        (ref_idx + i + 1) % n_boundary])
+                L = len_sum / (2 * n_L)
+            if L < 1e-6: L = 1.0
+
+            Lr = self.beta_obs * L  # Radius Lr for fan area (Eq. 3)
+
+            # Define fan area
+            vec_l = Vl1 - V0
+            vec_r = Vr1 - V0
+            angle_l = np.arctan2(vec_l[1], vec_l[0])
+            angle_r = np.arctan2(vec_r[1], vec_r[0])
+
+            # Handle angle wrapping
+            if angle_l < angle_r:
+                angle_l += 2 * np.pi
+
+            slice_angle = (angle_l - angle_r) / self.n_fan_points
+            fan_points = []
+
+            for i in range(self.n_fan_points):
+                start_angle = angle_r + i * slice_angle
+                end_angle = start_angle + slice_angle
+
+                closest_point = None
+                min_dist = float('inf')
+
+                # Find closest vertex within the slice
+                for j in range(n_boundary):
+                    if j == ref_idx: continue
+                    point = self.current_boundary[j]
+                    dist = np.linalg.norm(point - V0)
+                    if dist <= Lr:
+                        vec_p = point - V0
+                        p_angle = np.arctan2(vec_p[1], vec_p[0])
+                        if p_angle < angle_r: p_angle += 2 * np.pi
+
+                        if start_angle <= p_angle <= end_angle:
+                            if dist < min_dist:
+                                min_dist = dist
+                                closest_point = point
+
+                # If no point in slice, find intersection with boundary (as per paper)
+                if closest_point is None:
+                    bisector_angle = start_angle + slice_angle / 2
+                    ray_dir = np.array([np.cos(bisector_angle), np.sin(bisector_angle)])
+
+                    intersect_dist = float('inf')
+                    intersect_point = None
+
+                    for j in range(n_boundary):
+                        p1 = self.current_boundary[j]
+                        p2 = self.current_boundary[(j + 1) % n_boundary]
+                        edge_dir = p2 - p1
+
+                        if np.cross(ray_dir, edge_dir) != 0:
+                            t = np.cross(p1 - V0, edge_dir) / np.cross(ray_dir, edge_dir)
+                            u = np.cross(p1 - V0, ray_dir) / np.cross(ray_dir, edge_dir)
+                            if t > 0 and 0 <= u <= 1:
+                                if t < intersect_dist:
+                                    intersect_dist = t
+                                    intersect_point = V0 + t * ray_dir
+
+                    if intersect_point is not None and intersect_dist <= Lr:
+                        closest_point = intersect_point
+                    else:
+                        # Fallback: furthest point along bisector
+                        closest_point = V0 + Lr * ray_dir
+
+                fan_points.append(closest_point)
+
+            fan_points = np.array(fan_points)
+
+            # 3. Calculate Area Ratio
+            current_area = calculate_polygon_area(self.current_boundary)
+            self.current_area_ratio = current_area / self.original_area if self.original_area > 0 else 0.0
+
+            # 4. Convert to relative polar coordinates and create state vector
+            # Reference direction is V0 -> Vr1 (as per paper page 9)
+            ref_direction = Vr1 - V0
+            ref_angle = np.arctan2(ref_direction[1], ref_direction[0])
+
+            def to_polar_relative(p):
+                vec = p - V0
+                dist = np.linalg.norm(vec)
+                angle = np.arctan2(vec[1], vec[0])
+                relative_angle = angle - ref_angle
+                # Normalize angle to [-pi, pi]
+                relative_angle = (relative_angle + np.pi) % (2 * np.pi) - np.pi
+                return [dist, relative_angle]
+
+            state_components = []
+            all_points = np.concatenate([left_neighbors, right_neighbors, fan_points])
+            for p in all_points:
+                state_components.extend(to_polar_relative(p))
+
+            state_components.append(self.current_area_ratio)
+
+            observation = np.array(state_components, dtype=np.float32)
+
+            # Final check for dimension consistency
+            if observation.shape[0] != self.observation_space.shape[0]:
+                # Fallback to zero vector if something went wrong
+                print(
+                    f"Error: Observation dimension mismatch. Expected {self.observation_space.shape[0]}, got {observation.shape[0]}.")
+                return np.zeros(self.observation_space.shape, dtype=np.float32)
+
+            return observation
 
         except Exception as e:
-            print(f"Error in observation: {e}")
-            return np.zeros(self.observation_space.shape[0], dtype=np.float32)
+            print(f"Error during observation generation: {e}")
+            import traceback
+            traceback.print_exc()
+            return np.zeros(self.observation_space.shape, dtype=np.float32)
 
     def _get_state_from_boundary(self, ref_idx: int) -> np.ndarray:
         """Get state representation from boundary with fixed-length vector."""
@@ -238,135 +349,239 @@ class MeshEnv(Env):
 
     def step(self, action: np.ndarray, global_timestep: Optional[int] = None) -> Tuple[
         np.ndarray, float, bool, bool, Dict]:
-        """Take a step in the environment following original logic with simplified intersection check."""
         self.step_count += 1
+        reward = 0.0
+        terminated = False
+        truncated = False
+        failed = True
 
         if self.step_count >= self.max_steps:
-            observation = self._get_observation()
-            info = self._get_info()
-            info.update({'termination_reason': 'max_steps_reached'})
-            return observation, -1.0, False, True, info
-
-        # Parse action following original approach
-        rule_type = action[0]  # First component determines action type
-        failed = True
-        reward = 0.0
-
-        try:
-            ref_idx = self._find_reference_point()
-            if ref_idx is None:
-                observation = self._get_observation()
-                info = self._get_info()
-                return observation, -0.1, False, False, info
-
-            n_boundary = len(self.current_boundary)
-
-            # Check termination condition
-            if n_boundary <= 5:
-                reward = 10
-                terminated = True
-                if n_boundary == 4:
-                    # Add final quadrilateral
-                    final_element = self.current_boundary.copy()
-                    self.generated_elements.append(final_element)
-                observation = self._get_observation()
-                info = self._get_info()
-                info.update({'termination_reason': 'boundary_complete'})
-                return observation, reward, terminated, False, info
-
-            # Determine action type using original thresholds and generate mesh
-            mesh = None
-            action_type = None
-
-            if rule_type <= -self.TYPE_THRESHOLD:
-                # Create quad by connecting 4 consecutive boundary vertices
-                mesh = np.array([
-                    self.current_boundary[(ref_idx - 1) % n_boundary],
-                    self.current_boundary[ref_idx],
-                    self.current_boundary[(ref_idx + 1) % n_boundary],
-                    self.current_boundary[(ref_idx + 2) % n_boundary],
-                ])
-                action_type = -1
-
-            elif rule_type >= self.TYPE_THRESHOLD:
-                # Create quad by connecting 4 consecutive boundary vertices
-                mesh = np.array([
-                    self.current_boundary[(ref_idx - 2) % n_boundary],
-                    self.current_boundary[(ref_idx - 1) % n_boundary],
-                    self.current_boundary[ref_idx],
-                    self.current_boundary[(ref_idx + 1) % n_boundary],
-                ])
-                action_type = 1
-
-            else:  # Type 0: Add new vertex
-                new_point = self._action_to_point_constrained(action[1:], ref_idx)
-                if new_point is not None:
-                    # Create quad with new point and 3 boundary vertices
-                    # Order: new_point, left_neighbor, ref_vertex, right_neighbor
-                    mesh = np.array([
-                        new_point,
-                        self.current_boundary[(ref_idx - 1) % n_boundary],
-                        self.current_boundary[ref_idx],
-                        self.current_boundary[(ref_idx + 1) % n_boundary],
-                    ])
-                    action_type = 0
-                else:
-                    reward = -1.0
-                    mesh = None
-
-            # Validate mesh and check for boundary self-intersection after potential update
-            if mesh is not None and self._validate_mesh_simple(mesh):
-                # Additional validation for action_type 0: ensure new vertex is inside boundary
-                if action_type == 0:
-                    new_vertex = mesh[0]  # First vertex is the new one for type 0
-                    if not self._is_point_inside_boundary_robust(new_vertex):
-                        reward = -1.0 / max(len(self.generated_elements), 1)
-                        terminated = False
-                        failed = True
-                        if self.step_count % 100 == 0:
-                            print(f"Step {self.step_count}: Mesh rejected - new vertex outside boundary")
-                    else:
-                        # Continue with normal validation
-                        reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type)
-                else:
-                    # For action_type -1 and 1, proceed with normal validation
-                    reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type)
-            else:
-                reward = -1.0 / max(len(self.generated_elements), 1)
-                terminated = False
-                failed = True
-
-                # Log why mesh was rejected
-                if mesh is not None:
-                    if not self._validate_mesh_simple(mesh):
-                        if self.step_count % 100 == 0:
-                            print(f"Step {self.step_count}: Mesh rejected - failed basic validation")
-                else:
-                    if self.step_count % 100 == 0:
-                        print(f"Step {self.step_count}: No mesh generated")
-
-        except Exception as e:
-            print(f"Error in step: {e}")
-            reward = -0.1
-            terminated = False
+            truncated = True
+            reward = -1.0
             failed = True
 
-        # Handle failed actions
+        elif len(self.current_boundary) <= 5:
+            reward = 10.0
+            terminated = True
+            if len(self.current_boundary) == 4:
+                self.generated_elements.append(self.current_boundary.copy())
+            failed = False
+
+        else:
+            try:
+                ref_idx = self._find_reference_point()
+                if ref_idx is not None:
+                    n_boundary = len(self.current_boundary)
+
+                    # Rule type thresholds for 4 distinct actions
+                    rule_type = action[0]
+                    TYPE2_THRESHOLD = 0.5
+                    TYPE0_THRESHOLD = 0.0
+                    TYPEM1_THRESHOLD = -0.5
+
+                    mesh = None
+                    action_type_code = None
+
+                    if rule_type >= TYPE2_THRESHOLD:  # Type 2 action
+                        action_type_code = 2
+                        V0 = self.current_boundary[ref_idx]
+                        V1 = self.current_boundary[(ref_idx + 1) % n_boundary]
+                        V2, V3 = self._action_to_points_type2(action[1:], V0, V1)
+                        mesh = np.array([V0, V1, V2, V3])
+                        reward, terminated, failed = self._validate_and_apply_type2(ref_idx, mesh)
+
+                    elif rule_type >= TYPE0_THRESHOLD:  # Type 1 action
+                        action_type_code = 1
+                        mesh = np.array([
+                            self.current_boundary[(ref_idx - 2) % n_boundary],
+                            self.current_boundary[(ref_idx - 1) % n_boundary],
+                            self.current_boundary[ref_idx],
+                            self.current_boundary[(ref_idx + 1) % n_boundary],
+                        ])
+                        reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type_code)
+
+                    elif rule_type >= TYPEM1_THRESHOLD:  # Type 0 action
+                        action_type_code = 0
+                        new_point = self._action_to_point_type0(action[1:3], ref_idx)
+                        if new_point is not None:
+                            mesh = np.array([
+                                new_point,
+                                self.current_boundary[(ref_idx - 1) % n_boundary],
+                                self.current_boundary[ref_idx],
+                                self.current_boundary[(ref_idx + 1) % n_boundary],
+                            ])
+                            reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type_code)
+                        else:  # new_point generation failed
+                            failed = True
+
+                    else:  # Type -1 action
+                        action_type_code = -1
+                        mesh = np.array([
+                            self.current_boundary[(ref_idx - 1) % n_boundary],
+                            self.current_boundary[ref_idx],
+                            self.current_boundary[(ref_idx + 1) % n_boundary],
+                            self.current_boundary[(ref_idx + 2) % n_boundary],
+                        ])
+                        reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type_code)
+
+                else:  # ref_idx is None
+                    failed = True
+
+            except Exception as e:
+                print(f"Error in step: {e}")
+                failed = True
+
         if failed:
             self.failed_num += 1
-            if self.failed_num >= 100:  # Original uses 100
-                terminated = True
+            reward = -0.1  # Penalty for any failed action
+            if self.failed_num >= 100:
+                terminated = True  # Terminate if stuck
 
         observation = self._get_observation()
         info = self._get_info()
         info.update({
             'is_valid_element': not failed,
             'element_count': len(self.generated_elements),
-            'boundary_vertices': len(self.current_boundary),
-            'termination_reason': 'boundary_complete' if terminated and not failed else None
+            'boundary_vertices': len(self.current_boundary) if self.current_boundary is not None else 0,
         })
 
-        return observation, reward, terminated, False, info
+        return observation, reward, terminated, truncated, info
+
+    def _action_to_point_type0(self, action_vec: np.ndarray, ref_idx: int) -> Optional[np.ndarray]:
+        if len(self.current_boundary) < 3: return None
+        ref_vertex = self.current_boundary[ref_idx]
+
+        # Base length L (Eq. 2)
+        L = np.linalg.norm(self.current_boundary[(ref_idx + 1) % len(self.current_boundary)] - self.current_boundary[
+            (ref_idx - 1) % len(self.current_boundary)]) / 2.0
+        if L < 1e-6: L = 1.0
+        radius = self.alpha_action * L
+
+        relative_coords = action_vec * radius
+        new_point = ref_vertex + relative_coords
+
+        if self._is_point_inside_polygon(new_point, self.current_boundary):
+            return new_point
+        return None
+
+    def _action_to_points_type2(self, action_vec: np.ndarray, V0: np.ndarray, V1: np.ndarray) -> Tuple[
+        np.ndarray, np.ndarray]:
+        L = np.linalg.norm(V1 - V0)
+        radius = self.alpha_action * L
+
+        # Action vector gives coords relative to the midpoint of V0-V1 edge
+        midpoint = (V0 + V1) / 2.0
+
+        # First point from action[0:2]
+        x1_rel, y1_rel = action_vec[0] * radius, action_vec[1] * radius
+        V2 = midpoint + np.array([x1_rel, y1_rel])
+
+        # Second point from action[2:4]
+        x2_rel, y2_rel = action_vec[2] * radius, action_vec[3] * radius
+        V3 = midpoint + np.array([x2_rel, y2_rel])
+
+        return V2, V3
+
+    def _validate_and_apply_type2(self, ref_idx: int, mesh: np.ndarray) -> Tuple[float, bool, bool]:
+        V0, V1, V2, V3 = mesh[0], mesh[1], mesh[2], mesh[3]
+
+        # Validation 1: New points must be inside the current boundary
+        if not self._is_point_inside_polygon(V2, self.current_boundary) or \
+                not self._is_point_inside_polygon(V3, self.current_boundary):
+            return -0.1, False, True  # Failed
+
+        # Validation 2: New internal edge V3-V2 must be inside and not intersect boundary
+        new_internal_edges = [np.array([V0, V3]), np.array([V3, V2]), np.array([V2, V1])]
+        for edge in new_internal_edges:
+            if not self._is_segment_inside_polygon(edge[0], edge[1], self.current_boundary, ref_idx):
+                return -0.1, False, True  # Failed
+
+        # Validation 3: Update boundary and check for self-intersection
+        new_boundary = self._update_boundary_type2(ref_idx, V2, V3)
+        if new_boundary is None or self._check_boundary_self_intersection(new_boundary):
+            return -0.1, False, True  # Failed
+
+        # All checks passed, commit the changes
+        self.current_boundary = new_boundary
+        self.generated_elements.append(mesh)
+        reward = self._calculate_reward_original(mesh, 2)
+        self.episode_reward += reward
+        self.failed_num = 0
+
+        terminated = len(self.current_boundary) <= 5
+        if terminated:
+            reward += 10.0
+
+        return reward, terminated, False  # Success
+
+    def _update_boundary_type2(self, ref_idx: int, V2: np.ndarray, V3: np.ndarray) -> Optional[np.ndarray]:
+        n = len(self.current_boundary)
+        v1_idx = (ref_idx + 1) % n
+
+        new_boundary_list = []
+        # Iterate from V1's next vertex up to V0
+        curr_idx = (v1_idx + 1) % n
+        while curr_idx != ref_idx:
+            new_boundary_list.append(self.current_boundary[curr_idx])
+            curr_idx = (curr_idx + 1) % n
+
+        # Add V0, then V3, then V2, then V1
+        new_boundary_list.append(self.current_boundary[ref_idx])  # V0
+        new_boundary_list.append(V3)
+        new_boundary_list.append(V2)
+        new_boundary_list.append(self.current_boundary[v1_idx])  # V1
+
+        if len(new_boundary_list) < 3:
+            return None
+        return np.array(new_boundary_list)
+
+    def _segments_intersect(self, p1, p2, p3, p4, tol=1e-9) -> bool:
+        def cross_product(a, b):
+            return a[0] * b[1] - a[1] * b[0]
+
+        r = p2 - p1
+        s = p4 - p3
+        q_minus_p = p3 - p1
+
+        r_cross_s = cross_product(r, s)
+        q_minus_p_cross_r = cross_product(q_minus_p, r)
+
+        if abs(r_cross_s) < tol:  # Collinear or parallel
+            return abs(q_minus_p_cross_r) < tol  # Check if they are on the same line
+
+        t = cross_product(q_minus_p, s) / r_cross_s
+        u = q_minus_p_cross_r / r_cross_s
+
+        return (0 <= t <= 1) and (0 <= u <= 1)
+
+    def _is_segment_inside_polygon(self, p1: np.ndarray, p2: np.ndarray, polygon: np.ndarray, ref_idx: int) -> bool:
+        # 1. Check if endpoints are inside
+        if not self._is_point_inside_polygon(p1, polygon) or \
+                not self._is_point_inside_polygon(p2, polygon):
+            return False
+
+        # 2. Check if midpoint is inside
+        if not self._is_point_inside_polygon((p1 + p2) / 2.0, polygon):
+            return False
+
+        # 3. Check for intersection with boundary edges
+        n = len(polygon)
+        v1_idx = (ref_idx + 1) % n
+        for i in range(n):
+            q1 = polygon[i]
+            q2 = polygon[(i + 1) % n]
+
+            # Skip the edge this action is based on
+            if (i == ref_idx and (i + 1) % n == v1_idx) or (i == v1_idx and (i + 1) % n == ref_idx):
+                continue
+
+            # If the new segment intersects a boundary edge, it's invalid
+            if self._segments_intersect(p1, p2, q1, q2):
+                # Allow intersection only at shared endpoints
+                if not (np.allclose(p1, q1) or np.allclose(p1, q2) or np.allclose(p2, q1) or np.allclose(p2, q2)):
+                    return False
+
+        return True
 
     def _action_to_point_constrained(self, action: np.ndarray, ref_idx: int) -> Optional[np.ndarray]:
         """

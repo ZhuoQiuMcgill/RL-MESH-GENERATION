@@ -68,4 +68,4 @@ paths:
 
 # Domain settings (original author tested on multiple domains)
 domain:
-  training_domain: "T3.txt"  # Original author's primary training domain
+  training_domain: "T4.txt"  # Original author's primary training domain

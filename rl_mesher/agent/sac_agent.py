@@ -41,18 +41,19 @@ class SACAgent:
         else:
             self.alpha = float(config['sac']['alpha'])
             # Automatic entropy tuning
-            self.target_entropy = float(config['sac'].get('target_entropy', -3.0))
+            self.target_entropy = float(config['sac'].get('target_entropy', -5.0))  # Adjusted for larger action space
             self.log_alpha = torch.tensor(np.log(self.alpha), requires_grad=True, device=device)
             self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr)
             print(f"Using automatic alpha tuning, initial alpha: {self.alpha}, target entropy: {self.target_entropy}")
 
-        # Environment parameters for network sizing
-        self.neighbor_num = config['environment'].get('neighbor_num', 6)
-        self.radius_num = config['environment'].get('radius_num', 3)
+        # Environment parameters for network sizing (based on paper's state representation)
+        self.n_neighbors = config['environment'].get('n_neighbors', 2)
+        self.n_fan_points = config['environment'].get('n_fan_points', 3)
 
-        # Calculate state dimension (flat array)
-        self.state_dim = 2 * (self.neighbor_num + self.radius_num)
-        self.action_dim = 3  # [rule_type, x, y]
+        # Calculate state dimension (flat array) matching the environment's observation space
+        # (n_left + n_right + g) * 2 (polar coords) + 1 (area_ratio)
+        self.state_dim = (self.n_neighbors * 2 + self.n_fan_points) * 2 + 1
+        self.action_dim = 5  # [rule_type, x1, y1, x2, y2]
 
         # Network architecture parameters
         self.hidden_layers = config['networks'].get('actor_hidden_layers', [128, 128, 128])
