@@ -8,7 +8,7 @@ from collections import deque
 class ReplayBuffer:
     """
     Replay buffer for storing and sampling experience tuples.
-    Optimized for SAC algorithm with state dictionaries.
+    Simplified for flat array states matching original author's approach.
     """
 
     def __init__(self, capacity: int, state_shape: Tuple, action_dim: int,
@@ -18,7 +18,7 @@ class ReplayBuffer:
 
         Args:
             capacity: Maximum number of transitions to store
-            state_shape: Shape of state observations
+            state_shape: Shape of state observations (flat array)
             action_dim: Dimension of action space
             device: Device to store tensors on
         """
@@ -27,7 +27,7 @@ class ReplayBuffer:
         self.position = 0
         self.size = 0
 
-        # Pre-allocate memory for efficient storage
+        # Pre-allocate memory for efficient storage (flat arrays)
         self.states = torch.zeros((capacity, *state_shape), dtype=torch.float32, device=device)
         self.actions = torch.zeros((capacity, action_dim), dtype=torch.float32, device=device)
         self.rewards = torch.zeros((capacity, 1), dtype=torch.float32, device=device)

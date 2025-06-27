@@ -1,11 +1,12 @@
 # Configuration file for RL-Mesh-Generation project
+# Modified to match original author's implementation for better reproducibility
 
-# SAC Algorithm Parameters
+# SAC Algorithm Parameters (matching original)
 sac:
-  learning_rate: 3e-4
-  discount_factor: 0.99
+  learning_rate: 3e-4  # Original uses 3e-4
+  discount_factor: 0.5  # Original uses 0.5 instead of 0.99
   buffer_size: 1000000
-  batch_size: 256
+  batch_size: 100  # Original uses 100 instead of 256
   tau: 0.005
   alpha: 1.0
   gradient_steps: 1
@@ -14,39 +15,46 @@ sac:
   use_static_alpha: false
   static_alpha: 0.1
   target_entropy: -1.5
+  learning_starts: 10000  # Original parameter
 
-# Network Architecture
+# Network Architecture (simplified to match original)
 networks:
   actor_hidden_layers: [128, 128, 128]
   critic_hidden_layers: [128, 128, 128]
   activation: relu
 
-# Environment Parameters
-environment:
-  # State representation
-  n_neighbors: 2
-  n_fan_points: 3
-  beta_obs: 6.0
+# Use simplified networks matching original author
+use_simple_networks: true
 
-  # Action space
-  alpha_action: 2.0
+# Environment Parameters (matching original author's approach)
+environment:
+  # State representation (original author's parameters)
+  neighbor_num: 6  # Original uses 6 neighbors
+  radius_num: 3    # Original uses 3 radius points
+  observation_radius: 4  # Original uses radius 4
+  max_radius: 2    # Original uses max_radius 2
 
   # Episode settings
   max_steps: 1000
 
   # Reward function
+  reward_method: 10  # Original author's reward method 10
   v_density: 1.0
   M_angle: 60.0
 
-  # Reference vertex selection
+  # Legacy parameters (kept for compatibility)
+  n_neighbors: 2
+  n_fan_points: 3
+  beta_obs: 6.0
+  alpha_action: 2.0
   nrv: 2
 
 # Training Parameters
 training:
-  total_timesteps: 100000
-  evaluation_freq: 2500
-  seed: 356
-  log_interval: 1
+  total_timesteps: 4000000  # Original uses 4M timesteps
+  evaluation_freq: 1000  # Original evaluates more frequently
+  seed: 999  # Original uses 999
+  log_interval: 10  # Log every 10 episodes
   save_freq: 50000
 
 # Paths
@@ -57,6 +65,6 @@ paths:
   logs_dir: "results/logs"
   figures_dir: "results/figures"
 
-# Domain settings
+# Domain settings (original author tested on multiple domains)
 domain:
-  training_domain: "T3.txt"
+  training_domain: "T4.txt"  # Original author's primary training domain
