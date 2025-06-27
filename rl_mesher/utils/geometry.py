@@ -269,47 +269,128 @@ def calculate_element_quality(vertices: np.ndarray) -> float:
 
 
 def calculate_boundary_quality(element_vertices: np.ndarray,
-                               boundary: np.ndarray, M_angle: float) -> float:
+                               boundary_before: np.ndarray,
+                               action_type: int,
+                               ref_idx: int,
+                               M_angle: float) -> float:
     """
-    Calculate boundary quality following paper's Equation 8.
+    Calculate boundary quality following the paper's Equation 8.
+    This implementation is a faithful reproduction of the paper's formula.
 
     Args:
-        element_vertices: Generated element vertices
-        boundary: Updated boundary
-        M_angle: Angle threshold (typically 60 degrees)
+        element_vertices: Vertices of the generated element.
+        boundary_before: Boundary vertices before the update.
+        action_type: The type of action taken (0 for insert, 1/-1 for cut).
+        ref_idx: The index of the reference vertex on the boundary_before.
+        M_angle: Angle threshold in degrees (typically 60).
 
     Returns:
-        Boundary quality score [-1, 0]
+        Boundary quality score, typically in [-1, 0].
     """
-    if len(boundary) < 3:
+    if len(boundary_before) < 4:
+        return 0.0
+
+    n = len(boundary_before)
+    q_dist = 1.0
+
+    # Identify the vertices involved in forming the new boundary angles.
+    # These are the vertices of the old boundary that connect to the new element.
+    if action_type == 0:  # Type 0 (insert) corresponds to paper's Type 1
+        # New vertex is the first vertex of the element.
+        V_new = element_vertices[0]
+        # Connecting vertices on the old boundary are V_i-1 and V_i+1
+        V_prev = boundary_before[(ref_idx - 1) % n]
+        V_next = boundary_before[(ref_idx + 1) % n]
+
+        # New angles are formed at V_prev and V_next.
+        # Angle at V_prev is formed by (V_i-2, V_i-1, V_new)
+        p1 = boundary_before[(ref_idx - 2) % n]
+        p2 = V_prev
+        p3 = V_new
+        zeta1 = calculate_angle(p1, p2, p3)
+
+        # Angle at V_next is formed by (V_new, V_i+1, V_i+2)
+        p1 = V_new
+        p2 = V_next
+        p3 = boundary_before[(ref_idx + 2) % n]
+        zeta2 = calculate_angle(p1, p2, p3)
+
+        angles = [zeta1, zeta2]
+
+        # Calculate q_dist for the new vertex V_new
+        d1 = np.linalg.norm(V_new - V_prev)
+        d2 = np.linalg.norm(V_new - V_next)
+
+        min_dist_to_edge = float('inf')
+        # Find shortest distance from V_new to all other boundary edges.
+        for i in range(n):
+            # Skip edges connected to the reference vertex
+            if i == (ref_idx - 1) % n or i == ref_idx:
+                continue
+
+            p_edge1 = boundary_before[i]
+            p_edge2 = boundary_before[(i + 1) % n]
+
+            # Calculate distance from point to line segment
+            l2 = np.sum((p_edge1 - p_edge2) ** 2)
+            if l2 == 0.0:
+                dist = np.linalg.norm(V_new - p_edge1)
+            else:
+                t = max(0, min(1, np.dot(V_new - p_edge1, p_edge2 - p_edge1) / l2))
+                projection = p_edge1 + t * (p_edge2 - p_edge1)
+                dist = np.linalg.norm(V_new - projection)
+            min_dist_to_edge = min(min_dist_to_edge, dist)
+
+        d_min = min_dist_to_edge
+        avg_d = (d1 + d2) / 2.0
+        if avg_d > 1e-8 and d_min < avg_d:
+            q_dist = d_min / avg_d
+        else:
+            q_dist = 1.0
+
+    else:  # Type 1 or -1 (cut) corresponds to paper's Type 0
+        q_dist = 1.0  # As per paper Figure 8a caption
+        if action_type == 1:  # backward cut
+            # Element is (Vi-2, Vi-1, Vi, Vi+1)
+            # New edge is (Vi-2, Vi+1)
+            # New angles are at Vi-2 and Vi+1
+            p1 = boundary_before[(ref_idx - 3) % n]
+            p2 = boundary_before[(ref_idx - 2) % n]
+            p3 = boundary_before[(ref_idx + 1) % n]
+            zeta1 = calculate_angle(p1, p2, p3)
+
+            p1 = boundary_before[(ref_idx - 2) % n]
+            p2 = boundary_before[(ref_idx + 1) % n]
+            p3 = boundary_before[(ref_idx + 2) % n]
+            zeta2 = calculate_angle(p1, p2, p3)
+            angles = [zeta1, zeta2]
+        elif action_type == -1:  # forward cut
+            # Element is (Vi-1, Vi, Vi+1, Vi+2)
+            # New edge is (Vi-1, Vi+2)
+            # New angles are at Vi-1 and Vi+2
+            p1 = boundary_before[(ref_idx - 2) % n]
+            p2 = boundary_before[(ref_idx - 1) % n]
+            p3 = boundary_before[(ref_idx + 2) % n]
+            zeta1 = calculate_angle(p1, p2, p3)
+
+            p1 = boundary_before[(ref_idx - 1) % n]
+            p2 = boundary_before[(ref_idx + 2) % n]
+            p3 = boundary_before[(ref_idx + 3) % n]
+            zeta2 = calculate_angle(p1, p2, p3)
+            angles = [zeta1, zeta2]
+        else:  # Should not happen
+            angles = [M_angle]
+
+    if not angles:
         return -1.0
 
-    # Calculate angles in the updated boundary
-    n_boundary = len(boundary)
-    boundary_angles = []
+    # From paper's Equation 8
+    # Using min_angle_quality from just one of the new angles, as per formula `min_{k in {1,2}}`
+    min_angle_term = min(min(angles), M_angle)
+    angle_quality = min_angle_term / M_angle
 
-    for i in range(n_boundary):
-        p1 = boundary[(i - 1) % n_boundary]
-        p2 = boundary[i]
-        p3 = boundary[(i + 1) % n_boundary]
-        angle = calculate_angle(p1, p2, p3)
-        boundary_angles.append(angle)
-
-    if not boundary_angles:
-        return -1.0
-
-    # Find minimum angles
-    min_angles = [min(angle, M_angle) for angle in boundary_angles]
-
-    if not min_angles:
-        return -1.0
-
-    # Calculate boundary quality
-    # According to paper: sqrt(min{ζk, M_angle}/M_angle) * q_dist - 1
-    min_angle_quality = min(min_angles) / M_angle
-    q_dist = 1.0  # Distance quality (simplified)
-
-    eta_b = math.sqrt(max(0, min_angle_quality)) * q_dist - 1
+    # Final eta_b calculation
+    eta_b = math.sqrt(max(0, angle_quality * q_dist)) - 1
 
     return max(-1.0, min(0.0, eta_b))
 

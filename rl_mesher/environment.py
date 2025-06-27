@@ -7,7 +7,7 @@ from .utils.geometry import (
     calculate_polygon_area, generate_action_coordinates,
     calculate_reward_components, calculate_reference_vertex,
     get_state_components, calculate_element_quality, load_domain_from_file,
-    transform_to_relative_coords
+    transform_to_relative_coords, calculate_boundary_quality
 )
 
 
@@ -21,18 +21,15 @@ class MeshEnv(Env):
         super(MeshEnv, self).__init__()
         self.config = config
 
-        # Parameters for state representation based on the paper (Section 2.2)
-        self.n_neighbors = self.config['environment'].get('n_neighbors', 2)  # n in the paper
-        self.n_fan_points = self.config['environment'].get('n_fan_points', 3)  # g in the paper
-        self.beta_obs = self.config['environment'].get('beta_obs', 6.0)  # β in paper for radius calc
-        self.alpha_action = self.config['environment'].get('alpha_action', 2.0)  # α in paper for action radius
+        self.n_neighbors = self.config['environment'].get('n_neighbors', 2)
+        self.n_fan_points = self.config['environment'].get('n_fan_points', 3)
+        self.beta_obs = self.config['environment'].get('beta_obs', 6.0)
+        self.alpha_action = self.config['environment'].get('alpha_action', 2.0)
 
-        # Action space is now 5D to accommodate type 2 actions
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(5,), dtype=np.float32
         )
 
-        # Observation space based on the paper's state representation
         obs_dim = (self.n_neighbors * 2 + self.n_fan_points) * 2 + 1
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf,
@@ -40,12 +37,25 @@ class MeshEnv(Env):
             dtype=np.float32
         )
 
-        # Environment setup
-        self.domain_file = config['domain']['training_domain']
+        # --- MODIFICATION START ---
+        # Ensure domain_file is always a string for initialization
+        domain_setting = config['domain']['training_domain']
+        if isinstance(domain_setting, list):
+            # If it's a list, just pick the first one for the initial setup.
+            # The MultiDomainEnv will handle switching later.
+            self.domain_file = domain_setting[0]
+        else:
+            self.domain_file = domain_setting
+        # --- MODIFICATION END ---
+
         self.data_dir = config['paths']['data_dir']
         self.original_boundary = self._load_domain()
-        self.original_area = calculate_polygon_area(self.original_boundary)
-        self.original_boundary = self._ensure_clockwise(self.original_boundary)
+        if self.original_boundary is not None:
+            self.original_area = calculate_polygon_area(self.original_boundary)
+            self.original_boundary = self._ensure_clockwise(self.original_boundary)
+        else:
+            self.original_area = 0.0
+
         self.current_boundary = None
         self.generated_elements = []
         self.current_area_ratio = 1.0
@@ -53,10 +63,7 @@ class MeshEnv(Env):
         self.episode_reward = 0.0
         self.max_steps = int(config['environment'].get('max_steps', 1000))
 
-        # Reward method selection
         self.reward_method = config['environment'].get('reward_method', 10)
-
-        # Additional tracking variables
         self.failed_num = 0
         self.not_valid_points = []
 
@@ -347,95 +354,128 @@ class MeshEnv(Env):
 
         return np.array(state, dtype=np.float32)
 
-    def step(self, action: np.ndarray, global_timestep: Optional[int] = None) -> Tuple[
+    def step(self, action: np.ndarray, global_timestep: Optional[int] = None, block_validation: bool = False) -> Tuple[
         np.ndarray, float, bool, bool, Dict]:
         self.step_count += 1
         reward = 0.0
         terminated = False
         truncated = False
         failed = True
+        successful_termination = False
 
         if self.step_count >= self.max_steps:
             truncated = True
             reward = -1.0
             failed = True
 
-        elif len(self.current_boundary) <= 5:
+        elif self.current_boundary is not None and len(self.current_boundary) <= 5:
             reward = 10.0
             terminated = True
+            successful_termination = True
             if len(self.current_boundary) == 4:
                 self.generated_elements.append(self.current_boundary.copy())
             failed = False
 
         else:
-            try:
-                ref_idx = self._find_reference_point()
-                if ref_idx is not None:
-                    n_boundary = len(self.current_boundary)
+            ref_idx = self._find_reference_point()
+            mesh = None
+            action_type_code = -99  # Default to an invalid code
 
-                    # Rule type thresholds for 4 distinct actions
-                    rule_type = action[0]
-                    TYPE2_THRESHOLD = 0.5
-                    TYPE0_THRESHOLD = 0.0
-                    TYPEM1_THRESHOLD = -0.5
+            if ref_idx is not None:
+                n_boundary = len(self.current_boundary)
+                rule_type = action[0]
+                TYPE2_THRESHOLD, TYPE0_THRESHOLD, TYPEM1_THRESHOLD = 0.5, 0.0, -0.5
 
-                    mesh = None
-                    action_type_code = None
-
-                    if rule_type >= TYPE2_THRESHOLD:  # Type 2 action
-                        action_type_code = 2
-                        V0 = self.current_boundary[ref_idx]
-                        V1 = self.current_boundary[(ref_idx + 1) % n_boundary]
-                        V2, V3 = self._action_to_points_type2(action[1:], V0, V1)
-                        mesh = np.array([V0, V1, V2, V3])
-                        reward, terminated, failed = self._validate_and_apply_type2(ref_idx, mesh)
-
-                    elif rule_type >= TYPE0_THRESHOLD:  # Type 1 action
-                        action_type_code = 1
+                if rule_type >= TYPE2_THRESHOLD:
+                    action_type_code = 2
+                    V0, V1 = self.current_boundary[ref_idx], self.current_boundary[(ref_idx + 1) % n_boundary]
+                    V2, V3 = self._action_to_points_type2(action[1:], V0, V1)
+                    mesh = np.array([V0, V1, V2, V3])
+                elif rule_type >= TYPE0_THRESHOLD:
+                    action_type_code = 1
+                    mesh = np.array([
+                        self.current_boundary[(ref_idx - 2) % n_boundary],
+                        self.current_boundary[(ref_idx - 1) % n_boundary],
+                        self.current_boundary[ref_idx], self.current_boundary[(ref_idx + 1) % n_boundary]
+                    ])
+                elif rule_type >= TYPEM1_THRESHOLD:
+                    action_type_code = 0
+                    new_point = self._action_to_point_type0(action[1:3], ref_idx)
+                    if new_point is not None:
                         mesh = np.array([
-                            self.current_boundary[(ref_idx - 2) % n_boundary],
-                            self.current_boundary[(ref_idx - 1) % n_boundary],
-                            self.current_boundary[ref_idx],
-                            self.current_boundary[(ref_idx + 1) % n_boundary],
+                            new_point, self.current_boundary[(ref_idx - 1) % n_boundary],
+                            self.current_boundary[ref_idx], self.current_boundary[(ref_idx + 1) % n_boundary]
                         ])
-                        reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type_code)
+                else:
+                    action_type_code = -1
+                    mesh = np.array([
+                        self.current_boundary[(ref_idx - 1) % n_boundary], self.current_boundary[ref_idx],
+                        self.current_boundary[(ref_idx + 1) % n_boundary],
+                        self.current_boundary[(ref_idx + 2) % n_boundary]
+                    ])
 
-                    elif rule_type >= TYPEM1_THRESHOLD:  # Type 0 action
-                        action_type_code = 0
-                        new_point = self._action_to_point_type0(action[1:3], ref_idx)
-                        if new_point is not None:
-                            mesh = np.array([
-                                new_point,
-                                self.current_boundary[(ref_idx - 1) % n_boundary],
-                                self.current_boundary[ref_idx],
-                                self.current_boundary[(ref_idx + 1) % n_boundary],
-                            ])
+            # --- MODIFICATION START ---
+            # This is the new logic branch that handles validation blocking
+            if block_validation:
+                failed = False  # Force failure to false to prevent failed_num from incrementing
+                try:
+                    if mesh is not None and ref_idx is not None:
+                        # Attempt to update the boundary directly, without validation
+                        temp_boundary = None
+                        if action_type_code == 2:
+                            V2, V3 = mesh[2], mesh[3]
+                            temp_boundary = self._update_boundary_type2(ref_idx, V2, V3)
+                        else:
+                            temp_boundary = self._update_boundary(ref_idx, mesh, action_type_code)
+
+                        # Even if the update returns None (degenerate), we proceed
+                        if temp_boundary is not None:
+                            self.current_boundary = temp_boundary
+
+                        # We always add the element to visualize the agent's raw action
+                        self.generated_elements.append(mesh)
+                        reward = self._calculate_reward_original(ref_idx, mesh, action_type_code)
+
+                        # Check for successful termination only
+                        if self.current_boundary is not None and len(self.current_boundary) <= 5:
+                            terminated = True
+                            successful_termination = True
+                            reward += 10.0
+                    else:
+                        # Action was invalid from the start (e.g., could not find ref_idx)
+                        reward = -1.0  # Assign penalty but continue
+
+                except Exception as e:
+                    # A crash happened during the unvalidated update.
+                    # Log it, assign a penalty, but DO NOT terminate or mark as failed.
+                    print(f"  [Eval-NoBlock Mode] Caught exception during unvalidated step: {e}. Continuing.")
+                    reward = -1.0  # Give a penalty for the crash
+                    # Keep the old boundary and continue the episode
+
+            # This is the original logic for normal training/evaluation
+            else:
+                try:
+                    if mesh is not None and ref_idx is not None:
+                        if action_type_code == 2:
+                            reward, terminated, failed = self._validate_and_apply_type2(ref_idx, mesh)
+                        else:
                             reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type_code)
-                        else:  # new_point generation failed
-                            failed = True
-
-                    else:  # Type -1 action
-                        action_type_code = -1
-                        mesh = np.array([
-                            self.current_boundary[(ref_idx - 1) % n_boundary],
-                            self.current_boundary[ref_idx],
-                            self.current_boundary[(ref_idx + 1) % n_boundary],
-                            self.current_boundary[(ref_idx + 2) % n_boundary],
-                        ])
-                        reward, terminated, failed = self._validate_and_apply_mesh(ref_idx, mesh, action_type_code)
-
-                else:  # ref_idx is None
+                        if terminated and not failed:
+                            successful_termination = True
+                    else:
+                        failed = True
+                except Exception as e:
+                    print(f"Error in step validation: {e}")
                     failed = True
+            # --- MODIFICATION END ---
 
-            except Exception as e:
-                print(f"Error in step: {e}")
-                failed = True
-
-        if failed:
+        # This block now only runs if validation is ON
+        if failed and not block_validation and not terminated and not truncated:
             self.failed_num += 1
-            reward = -0.1  # Penalty for any failed action
+            reward = -0.1
             if self.failed_num >= 100:
-                terminated = True  # Terminate if stuck
+                terminated = True
+                successful_termination = False
 
         observation = self._get_observation()
         info = self._get_info()
@@ -443,6 +483,7 @@ class MeshEnv(Env):
             'is_valid_element': not failed,
             'element_count': len(self.generated_elements),
             'boundary_vertices': len(self.current_boundary) if self.current_boundary is not None else 0,
+            'successful_termination': successful_termination
         })
 
         return observation, reward, terminated, truncated, info
@@ -504,7 +545,11 @@ class MeshEnv(Env):
         # All checks passed, commit the changes
         self.current_boundary = new_boundary
         self.generated_elements.append(mesh)
-        reward = self._calculate_reward_original(mesh, 2)
+
+        # --- THIS IS THE MODIFIED LINE ---
+        reward = self._calculate_reward_original(ref_idx, mesh, 2)
+        # ---------------------------------
+
         self.episode_reward += reward
         self.failed_num = 0
 
@@ -515,24 +560,68 @@ class MeshEnv(Env):
         return reward, terminated, False  # Success
 
     def _update_boundary_type2(self, ref_idx: int, V2: np.ndarray, V3: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Update the boundary for a type 2 action.
+        This corrected version replaces the edge (V0, V1) on the boundary
+        with the new path (V0, V3, V2, V1).
+
+        Args:
+            ref_idx: The index of the reference vertex (V0).
+            V2: The second new vertex.
+            V3: The first new vertex.
+
+        Returns:
+            The new boundary as a numpy array, or None if the update is degenerate.
+        """
         n = len(self.current_boundary)
+        if n < 3:
+            return None
+
+        v0_idx = ref_idx
         v1_idx = (ref_idx + 1) % n
 
-        new_boundary_list = []
-        # Iterate from V1's next vertex up to V0
-        curr_idx = (v1_idx + 1) % n
-        while curr_idx != ref_idx:
-            new_boundary_list.append(self.current_boundary[curr_idx])
-            curr_idx = (curr_idx + 1) % n
+        # Convert the numpy array to a list for easier manipulation (insertion)
+        boundary_list = list(self.current_boundary)
 
-        # Add V0, then V3, then V2, then V1
-        new_boundary_list.append(self.current_boundary[ref_idx])  # V0
-        new_boundary_list.append(V3)
-        new_boundary_list.append(V2)
-        new_boundary_list.append(self.current_boundary[v1_idx])  # V1
+        # The new path from V0 to V1 is via V3 and V2. The element created is (V0, V1, V2, V3).
+        # We need to insert V3 and V2 between V0 and V1 in the boundary list.
+        # The correct insertion point is at the index of V1.
+
+        # Create a new list to build the updated boundary
+        new_boundary_list = []
+
+        # Iterate through the original boundary list to construct the new one
+        for i in range(n):
+            # Add the current vertex
+            new_boundary_list.append(boundary_list[i])
+
+            # When we are at V0 (ref_idx), insert the new path points (V3, V2)
+            # before moving on. V1 will be added later in its original turn.
+            if i == v0_idx:
+                new_boundary_list.append(V3)
+                new_boundary_list.append(V2)
+
+        # A quick validation to ensure the length is correct.
+        # The new boundary should have n+2 vertices.
+        if len(new_boundary_list) != n + 2:
+            # This case might happen with complex indexing, fallback to a more robust method
+            # This robust method rebuilds the list from scratch.
+            new_boundary_list = []
+            # 1. Add all points up to and including V0
+            for i in range(v0_idx + 1):
+                new_boundary_list.append(self.current_boundary[i])
+
+            # 2. Add the new points that form the new part of the boundary
+            new_boundary_list.append(V3)
+            new_boundary_list.append(V2)
+
+            # 3. Add all points from V1 to the end of the original boundary
+            for i in range(v1_idx, n):
+                new_boundary_list.append(self.current_boundary[i])
 
         if len(new_boundary_list) < 3:
             return None
+
         return np.array(new_boundary_list)
 
     def _segments_intersect(self, p1, p2, p3, p4, tol=1e-9) -> bool:
@@ -818,10 +907,14 @@ class MeshEnv(Env):
 
         if valid:
             # commit
+            boundary_before_update = self.current_boundary
             self.current_boundary = temp_boundary
             self.generated_elements.append(mesh)
 
-            reward = self._calculate_reward_original(mesh, action_type)
+            # --- THIS IS THE MODIFIED LINE ---
+            reward = self._calculate_reward_original(ref_idx, mesh, action_type)
+            # ---------------------------------
+
             self.episode_reward += reward
             self.failed_num = 0
             terminated = len(self.current_boundary) <= 5
@@ -922,61 +1015,57 @@ class MeshEnv(Env):
 
         return ccw(p1, p3, p4) != ccw(p2, p3, p4) and ccw(p1, p2, p3) != ccw(p1, p2, p4)
 
-    def _calculate_reward_original(self, mesh: np.ndarray, action_type: int) -> float:
+    def _calculate_reward_original(self, ref_idx: int, mesh: np.ndarray, action_type: int) -> float:
         """
-        Paper-consistent reward:
-            m_t = η_e + η_b + μ_t
-        Invalid element → -0.1   (paper Fig. 5)
+        Paper-consistent reward calculation.
+        This version is modified to call the new geometry.calculate_boundary_quality function.
+        m_t = eta_e + eta_b + mu_t
+        Invalid element -> -0.1
         """
-        # ---------- invalid element ----------
         if mesh is None:
             return -0.1
 
-        # ---------- η_e : element quality ----------
-        eta_e = calculate_element_quality(mesh)  # ∈ [0, 1]
+        # eta_e: element quality (Equation 7)
+        eta_e = calculate_element_quality(mesh)
 
-        # ---------- η_b : remaining boundary quality ----------
-        n = len(self.current_boundary)
-        if n <= 4:
-            eta_b = 0.0
-        else:
-            angles = []
-            for i in range(n):
-                p_prev = self.current_boundary[(i - 1) % n]
-                p_curr = self.current_boundary[i]
-                p_next = self.current_boundary[(i + 1) % n]
-                v1 = p_prev - p_curr
-                v2 = p_next - p_curr
-                cos_a = np.dot(v1, v2) / (
-                        np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8
-                )
-                angle = np.arccos(np.clip(cos_a, -1.0, 1.0))
-                angles.append(angle)
-            mean_dev = np.mean(np.abs(np.array(angles) - np.pi / 2) / (np.pi / 2))
-            eta_b = -float(np.clip(mean_dev, 0.0, 1.0))  # ∈ [-1, 0]
+        # eta_b: remaining boundary quality (Equation 8)
+        # This now calls the detailed implementation from geometry.py
+        boundary_before = self.current_boundary
+        M_angle = float(self.config['environment'].get('M_angle', 60.0))
+        eta_b = calculate_boundary_quality(
+            element_vertices=mesh,
+            boundary_before=boundary_before,
+            action_type=action_type,
+            ref_idx=ref_idx,
+            M_angle=M_angle
+        )
 
-        # ---------- μ_t : density term ----------
+        # mu_t: density term (Equation 9)
         v_density = float(self.config['environment'].get('v_density', 1.0))
 
         edges = np.linalg.norm(
             self.current_boundary - np.roll(self.current_boundary, -1, axis=0),
             axis=1,
         )
+        if len(edges) == 0:
+            return eta_e + eta_b  # Cannot calculate density term
+
         e_min, e_max = edges.min(), edges.max()
         kappa = 4.0
         A_min = v_density * (e_min ** 2)
         A_max = v_density * (((e_max - e_min) / kappa) + e_min) ** 2
         A_t = calculate_polygon_area(mesh)
 
-        if A_t < A_min:
-            mu_t = -1.0
-        elif A_t < A_max:
-            mu_t = (A_t - A_min) / (A_max - A_min)
-        else:
-            mu_t = 0.0
+        mu_t = 0.0
+        if A_max > A_min:
+            if A_t < A_min:
+                mu_t = -1.0
+            elif A_t < A_max:
+                mu_t = (A_t - A_min) / (A_max - A_min)
+
         mu_t = float(np.clip(mu_t, -1.0, 1.0))
 
-        # ---------- total reward ----------
+        # total reward
         return eta_e + eta_b + mu_t
 
     def _get_info(self) -> Dict:
@@ -1029,21 +1118,29 @@ class MultiDomainMeshEnv(MeshEnv):
     """Multi-domain environment for curriculum learning."""
 
     def __init__(self, config: Dict, domain_files: List[str]):
+        """
+        Initializes the multi-domain environment.
+
+        Args:
+            config: The main configuration dictionary.
+            domain_files: A list of domain file names to be used for training.
+        """
         self.domain_files = domain_files
         self.current_domain_idx = 0
+
+        # --- MODIFICATION START ---
+        # Crucially, we must pass the modified config with a SINGLE domain file
+        # to the parent constructor to ensure it initializes correctly.
+        # We can store a copy of the original config if needed, but for now,
+        # modifying it before the super() call is sufficient.
+
+        # We set 'training_domain' to the first file in the list for the initial
+        # super() call. The `reset` method will then handle randomizing the domain.
+        config['domain']['training_domain'] = domain_files[0]
+
         super().__init__(config)
 
-    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
-        """Reset with random domain selection."""
-        if len(self.domain_files) > 1:
-            self.current_domain_idx = np.random.randint(0, len(self.domain_files))
-            self.set_domain(self.domain_files[self.current_domain_idx])
-        return super().reset(seed, options)
-
-    def get_current_domain_info(self) -> Dict:
-        """Get current domain information."""
-        return {
-            'domain_file': self.domain_files[self.current_domain_idx],
-            'domain_index': self.current_domain_idx,
-            'total_domains': len(self.domain_files)
-        }
+        # After the parent is initialized, we restore the list of domains
+        # for this instance's use in the `reset` method.
+        self.config['domain']['training_domain'] = domain_files
+        # --- MODIFICATION END ---

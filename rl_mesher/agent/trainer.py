@@ -34,6 +34,15 @@ class MeshSACTrainer:
         self.save_freq = int(config['training']['save_freq'])
         self.eval_freq = int(config['training']['eval_freq_episode'])
 
+        # --- MODIFICATION START ---
+        # Read the crucial learning_starts parameter from the config
+        self.learning_starts = int(config['sac'].get('learning_starts', 10000))
+        # --- MODIFICATION END ---
+
+        self.block_eval_validation = self.config['training'].get('evaluation_action_block', False)
+        if self.block_eval_validation:
+            print("INFO: Action validation will be BLOCKED during evaluation.")
+
         # Paths
         self.models_dir = config['paths']['models_dir']
         self.logs_dir = config['paths']['logs_dir']
@@ -66,16 +75,13 @@ class MeshSACTrainer:
         os.makedirs(self.logs_dir, exist_ok=True)
         os.makedirs(self.figures_dir, exist_ok=True)
 
-        # evaluation scheduling
         self.min_eval_interval = int(self.config['training'].get('min_eval_interval', 500))
         self.last_eval_step = 0
 
     def train(self) -> Dict:
         """
-        Enhanced training method with comprehensive monitoring.
-
-        Returns:
-            Training results dictionary
+        Enhanced training method. This version is modified to trigger a single evaluation
+        episode at the specified frequency, using the agent's current state.
         """
         print("Starting SAC training for mesh generation...")
         print("=" * 70)
@@ -89,41 +95,31 @@ class MeshSACTrainer:
         timestep = 0
         episode = 0
 
-        # Start first episode timer
         self.episode_start_time = time.time()
 
         while timestep < self.total_timesteps:
-            # Select action
             action = self.agent.select_action(state_dict, deterministic=False)
-
-            # Take step in environment
             next_state_dict, reward, terminated, truncated, info = self.env.step(action, timestep)
             done = terminated or truncated
 
-            # Store transition
             self.agent.store_transition(state_dict, action, reward, next_state_dict, done)
-
-            # Track timestep rewards
             self.timestep_rewards.append(reward)
-
-            # Update tracking
             episode_reward += reward
             episode_length += 1
             timestep += 1
 
-            # Update agent
             if timestep > self.config['sac']['batch_size']:
                 training_stats = self.agent.update()
                 if training_stats:
                     self.training_losses.append(training_stats)
 
-            # Handle episode end
             if done:
                 episode_time = time.time() - self.episode_start_time
+                successful_termination = terminated and info.get('successful_termination', False)
+                completion_rate = 1.0 if successful_termination else 0.0
 
                 mesh_quality_metrics = self.env.get_mesh_quality_metrics()
                 mesh_quality = mesh_quality_metrics.get('mean_element_quality', 0.0) if mesh_quality_metrics else 0.0
-                completion_rate = 1.0 if terminated else 0.0
 
                 self.episode_rewards.append(episode_reward)
                 self.episode_lengths.append(episode_length)
@@ -138,16 +134,18 @@ class MeshSACTrainer:
                 if episode % self.log_interval == 0:
                     self._log_progress(
                         episode, timestep, episode_reward, episode_length,
-                        episode_time, mesh_quality, completion_rate
+                        episode_time, mesh_quality, completion_rate,
+                        terminated, successful_termination
                     )
 
-                # Evaluate at episode intervals
-                if episode % self.eval_freq == 0:
-                    eval_results = self._evaluate(timestep)
+                # --- MODIFICATION START ---
+                # Evaluate the current policy every eval_freq_episode by running just ONE episode.
+                if episode > 0 and episode % self.eval_freq == 0:
+                    eval_results = self._evaluate(timestep, num_episodes=1)
                     self.evaluation_results.append(eval_results)
                     self._log_evaluation(timestep, eval_results)
+                # --- MODIFICATION END ---
 
-                # Reset for next episode
                 state_dict, _ = self.env.reset()
                 episode_reward = 0.0
                 episode_length = 0
@@ -156,21 +154,15 @@ class MeshSACTrainer:
             else:
                 state_dict = next_state_dict
 
-            # Save model
             if timestep % self.save_freq == 0:
                 model_path = os.path.join(self.models_dir, f"model_{timestep}.pt")
                 self.agent.save(model_path)
                 print(f"Model saved: {model_path}")
 
-        # Final save
         final_model_path = os.path.join(self.models_dir, "final_model.pt")
         self.agent.save(final_model_path)
-
-        # Training completion summary
         self._print_training_summary()
-
         print("Training completed!")
-
         return {
             'episode_rewards': self.episode_rewards,
             'episode_lengths': self.episode_lengths,
@@ -186,72 +178,52 @@ class MeshSACTrainer:
             'total_training_time': time.time() - self.training_start_time
         }
 
-    def _evaluate(self, timestep: int, num_episodes: int = 5) -> Dict:
+    def _evaluate(self, timestep: int, num_episodes: int = 1) -> Dict:
         """
-        Enhanced evaluation with detailed, step-by-step logging to debug
-        premature termination. This is the complete function.
+        Evaluate the agent's current policy for a specified number of episodes.
+        Default is now a single episode evaluation.
         """
-        print(f"\n--- Starting Evaluation at Timestep {timestep:,} ({num_episodes} episodes) ---")
+        # --- MODIFICATION START ---
+        # Updated log message for clarity
+        print(f"\n--- Starting Evaluation at Timestep {timestep:,} (Running for {num_episodes} episode(s)) ---")
+        if self.block_eval_validation:
+            print("    WARNING: Action validation is disabled for this evaluation.")
+        # --- MODIFICATION END ---
+
         eval_start_time = time.time()
-
         self.agent.set_training_mode(False)
-
-        eval_rewards = []
-        eval_lengths = []
-        eval_times = []
-        mesh_qualities = []
-        completion_rates = []
-
-        best_episode_reward = float('-inf')
-        best_episode_boundary = None
-        best_episode_elements = None
+        eval_rewards, eval_lengths, eval_times, mesh_qualities, completion_rates = [], [], [], [], []
+        self.eval_count += 1
 
         for episode in range(num_episodes):
-            print(f"  --- Running Eval Episode {episode + 1}/{num_episodes} ---")
+            print(f"  --- Running Eval Episode {episode + 1}/{num_episodes} (Batch {self.eval_count}) ---")
             episode_start = time.time()
             state_dict, _ = self.env.reset()
-            initial_boundary_size = len(self.env.current_boundary)
-            print(f"    [Step 00] Env reset. Initial boundary size: {initial_boundary_size}")
-
-            episode_reward = 0.0
-            episode_length = 0
+            episode_reward, episode_length = 0.0, 0
 
             while True:
-                step_num = episode_length + 1
                 try:
-                    boundary_size_before = len(self.env.current_boundary)
-
                     action = self.agent.select_action(state_dict, deterministic=True)
-
-                    # During evaluation, global_timestep is not relevant, so we pass None.
-                    next_state_dict, reward, terminated, truncated, info = self.env.step(action, None)
-
-                    boundary_size_after = info.get('boundary_vertices', 0)
-                    is_valid_element = info.get('is_valid_element', False)
-
+                    next_state_dict, reward, terminated, truncated, info = self.env.step(
+                        action, global_timestep=None, block_validation=self.block_eval_validation
+                    )
                     episode_reward += reward
                     episode_length += 1
-
                     if terminated or truncated:
-                        # print(f"  --- Eval Episode {episode + 1} Ended at Step {step_num} ---")
-                        # print(f"    Reason: {'Terminated' if terminated else 'Truncated'}")
-                        # print(f"    Final Info Dict: {info}")
-                        completion_rates.append(1.0 if terminated else 0.0)
-
-                        if episode_reward > best_episode_reward:
-                            best_episode_reward = episode_reward
-                            best_episode_boundary, best_episode_elements = self.env.get_current_mesh()
+                        successful_termination = terminated and info.get('successful_termination', False)
+                        completion_rates.append(1.0 if successful_termination else 0.0)
+                        final_boundary, final_elements = self.env.get_current_mesh()
+                        self._save_evaluation_mesh_visualization(
+                            timestep=timestep, eval_episode_num=episode + 1,
+                            boundary=final_boundary, elements=final_elements, reward=episode_reward
+                        )
                         break
-
                     state_dict = next_state_dict
-
                 except Exception as e:
-                    print(f"    !!!!!! CRASH DETECTED IN EVAL EPISODE {episode + 1} AT STEP {step_num} !!!!!!")
-                    print(f"      Error Type: {type(e).__name__}")
+                    print(f"    !!!!!! CRASH DETECTED IN EVAL EPISODE {episode + 1} !!!!!!")
                     print(f"      Error Message: {e}")
                     import traceback
                     traceback.print_exc()
-                    terminated = True  # Force stop this episode
                     break
 
             episode_time = time.time() - episode_start
@@ -265,16 +237,10 @@ class MeshSACTrainer:
         self.agent.set_training_mode(True)
         eval_total_time = time.time() - eval_start_time
 
-        if best_episode_boundary is not None:
-            self._save_evaluation_mesh_visualization(timestep, best_episode_boundary,
-                                                     best_episode_elements, best_episode_reward)
-
         results = {
             'timestep': timestep,
             'mean_reward': np.mean(eval_rewards) if eval_rewards else 0.0,
             'std_reward': np.std(eval_rewards) if eval_rewards else 0.0,
-            'min_reward': np.min(eval_rewards) if eval_rewards else 0.0,
-            'max_reward': np.max(eval_rewards) if eval_rewards else 0.0,
             'mean_length': np.mean(eval_lengths) if eval_lengths else 0.0,
             'std_length': np.std(eval_lengths) if eval_lengths else 0.0,
             'mean_episode_time': np.mean(eval_times) if eval_times else 0.0,
@@ -283,7 +249,6 @@ class MeshSACTrainer:
         }
 
         if mesh_qualities and any(mq for mq in mesh_qualities):
-            # Gracefully find the keys from the first valid quality dict
             quality_keys = next((item.keys() for item in mesh_qualities if item), [])
             for key in quality_keys:
                 values = [q[key] for q in mesh_qualities if q and key in q]
@@ -292,7 +257,6 @@ class MeshSACTrainer:
                     results[f'std_{key}'] = np.std(values)
 
         print(f"--- Evaluation at Timestep {timestep:,} Finished in {eval_total_time:.1f}s ---")
-        self.eval_count += 1
         return results
 
     def _should_evaluate(self,
@@ -317,37 +281,38 @@ class MeshSACTrainer:
         # Periodic trigger
         return (timestep - self.last_eval_step) >= self.eval_freq
 
-    def _save_evaluation_mesh_visualization(self, timestep: int, boundary: np.ndarray,
+    def _save_evaluation_mesh_visualization(self, timestep: int, eval_episode_num: int, boundary: np.ndarray,
                                             elements: List[np.ndarray], reward: float):
         """
-        Save mesh visualization for the current evaluation.
+        Save mesh visualization for a specific evaluation episode.
 
         Args:
-            timestep: Current training timestep
-            boundary: Mesh boundary
-            elements: Generated mesh elements
-            reward: Episode reward for this mesh
+            timestep: Current training timestep.
+            eval_episode_num: The number of the episode within the evaluation batch (e.g., 1 to 5).
+            boundary: Mesh boundary.
+            elements: Generated mesh elements.
+            reward: Episode reward for this mesh.
         """
         try:
             # Create evaluation mesh visualization directory
             eval_mesh_dir = os.path.join(self.figures_dir, "evaluation_meshes")
             os.makedirs(eval_mesh_dir, exist_ok=True)
 
-            # Generate filename with timestep and evaluation count
-            mesh_filename = f"eval_{self.eval_count:03d}_timestep_{timestep:,}_reward_{reward:.2f}.png"
+            # Generate filename with timestep, evaluation count, and now the specific episode number
+            mesh_filename = f"eval_{self.eval_count:03d}_ts_{timestep}_ep_{eval_episode_num}_reward_{reward:.2f}.png"
             mesh_path = os.path.join(eval_mesh_dir, mesh_filename)
 
             # Get domain info for title
             domain_info = ""
             if hasattr(self.env, 'domain_file'):
-                domain_info = f" ({self.env.domain_file})"
+                domain_info = f" ({os.path.basename(self.env.domain_file)})"
             elif hasattr(self.env, 'get_current_domain_info'):
                 domain_data = self.env.get_current_domain_info()
-                domain_info = f" ({domain_data.get('domain_file', 'Unknown')})"
+                domain_info = f" ({os.path.basename(domain_data.get('domain_file', 'Unknown'))})"
 
             # Create the title
             title = f"Evaluation Mesh - Timestep {timestep:,}{domain_info}\n"
-            title += f"Reward: {reward:.2f} | Elements: {len(elements) if elements else 0}"
+            title += f"Eval Batch {self.eval_count}, Episode {eval_episode_num} | Reward: {reward:.2f}"
 
             # Plot and save the mesh
             plot_mesh(
@@ -360,14 +325,13 @@ class MeshSACTrainer:
                 show_element_numbers=False
             )
 
-            print(f"Evaluation mesh saved: {mesh_filename}")
-
         except Exception as e:
             print(f"Failed to save evaluation mesh visualization: {e}")
 
     def _log_progress(self, episode: int, timestep: int, reward: float, length: int,
-                      episode_time: float, mesh_quality: float, completion_rate: float):
-        """Enhanced progress logging with detailed information."""
+                      episode_time: float, mesh_quality: float, completion_rate: float,
+                      terminated: bool, successful_termination: bool):
+        """Enhanced progress logging with detailed completion status."""
 
         # Calculate statistics
         recent_episodes = min(100, len(self.episode_rewards))
@@ -392,6 +356,18 @@ class MeshSACTrainer:
         if training_hours > 0:
             self.episodes_per_hour = episode / training_hours
 
+        # --- MODIFICATION START ---
+        # Determine the detailed completion status for logging
+        completion_status = "No"
+        if terminated:
+            if successful_termination:
+                completion_status = "Yes (Success)"
+            else:
+                completion_status = "Yes (Failed - Terminated)"
+        elif length >= self.env.max_steps:  # Check for truncation
+            completion_status = "No (Truncated - Max Steps)"
+        # --- MODIFICATION END ---
+
         print(f"\n{'=' * 70}")
         print(f"EPISODE {episode:,} | TIMESTEP {timestep:,} ({progress:.1f}%)")
         print(f"{'=' * 70}")
@@ -399,13 +375,14 @@ class MeshSACTrainer:
         # Current episode info
         print(f"Current Episode:")
         print(f"   Reward: {reward:8.2f} | Length: {length:4d} steps | Time: {episode_time:6.2f}s")
-        print(f"   Quality: {mesh_quality:.3f} | Completed: {'Yes' if completion_rate > 0 else 'No'}")
+        # Use the new detailed completion status
+        print(f"   Quality: {mesh_quality:.3f} | Status: {completion_status}")
 
         # Recent performance (last 100 episodes)
         print(f"\nRecent Performance (last {recent_episodes} episodes):")
         print(f"   Avg Reward: {avg_reward:8.2f} | Avg Length: {avg_length:6.1f} steps")
         print(f"   Avg Time: {avg_time:8.2f}s | Avg Quality: {avg_quality:.3f}")
-        print(f"   Completion Rate: {avg_completion:.1%}")
+        print(f"   Success Rate: {avg_completion:.1%}")  # Changed from Completion Rate to Success Rate
 
         # Best performance tracking
         print(f"\nBest Performance:")
@@ -458,13 +435,27 @@ class MeshSACTrainer:
         print()
 
     def _log_evaluation(self, timestep: int, eval_results: Dict):
-        """Log evaluation results."""
+        """Log evaluation results. Displays direct values for single-run evals."""
         print(f"\nEVALUATION at timestep {timestep:,}")
-        print(f"   Mean Reward: {eval_results['mean_reward']:8.2f} ± {eval_results['std_reward']:.2f}")
-        print(f"   Mean Length: {eval_results['mean_length']:8.1f} ± {eval_results['std_length']:.1f}")
+
+        # --- MODIFICATION START ---
+        # If std_reward is 0, it was likely a single run. Log direct values.
+        is_single_run = eval_results.get('std_reward', -1) == 0.0
+
+        if is_single_run:
+            print(f"   Evaluation Reward: {eval_results['mean_reward']:8.2f}")
+            print(f"   Evaluation Length: {eval_results['mean_length']:8.1f}")
+        else:
+            print(f"   Mean Reward: {eval_results['mean_reward']:8.2f} ± {eval_results['std_reward']:.2f}")
+            print(f"   Mean Length: {eval_results['mean_length']:8.1f} ± {eval_results['std_length']:.1f}")
+
         if 'mean_mean_element_quality' in eval_results:
             print(f"   Mean Quality: {eval_results['mean_mean_element_quality']:.3f}")
-        print(f"   Completion Rate: {eval_results['completion_rate']:.1%}")
+
+        completion_rate = eval_results.get('completion_rate', 0.0)
+        # Use success rate for clarity, assuming completion_rate reflects success
+        print(f"   Success Rate: {completion_rate:.1%}")
+        # --- MODIFICATION END ---
 
     def _print_training_summary(self):
         """Print comprehensive training summary."""

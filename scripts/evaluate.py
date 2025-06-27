@@ -126,8 +126,9 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
                            save_meshes: bool = False, save_animation: bool = False,
                            output_dir: str = "") -> Dict:
     """
-    Evaluate agent on a single domain with enhanced step-by-step logging
-    to debug premature termination. This is the complete function.
+    Evaluate agent on a single domain.
+    This modified version saves a mesh visualization for *every* evaluation episode
+    if save_meshes is enabled.
     """
     print(f"Evaluating on domain: {domain_file}")
 
@@ -139,21 +140,23 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
     episode_lengths = []
     mesh_qualities = []
     completion_rates = []
-    all_meshes = []
 
     # Animation tracking
     boundary_histories = []
     elements_histories = []
 
+    # Prepare directories for saving meshes
+    domain_name = os.path.splitext(domain_file)[0]
+    mesh_dir = os.path.join(output_dir, "meshes", domain_name)
+    if save_meshes:
+        os.makedirs(mesh_dir, exist_ok=True)
+        print(f"  Saving all evaluation meshes to: {mesh_dir}")
+
     for episode in range(num_episodes):
-        print(f"\n--- Starting Standalone Eval Episode {episode + 1}/{num_episodes} ---")
+        print(f"\n--- Running Standalone Eval Episode {episode + 1}/{num_episodes} ---")
 
         # Reset environment
         state_dict, _ = env.reset()
-        initial_boundary_size = len(env.current_boundary)
-        # print(f"  [Step 00] Environment reset. Initial boundary size: {initial_boundary_size}")
-
-        # Episode tracking
         episode_reward = 0.0
         episode_length = 0
         completed = False
@@ -165,26 +168,11 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
         while True:
             step_num = episode_length + 1
             try:
-                # --- Pre-Step Logging ---
-                boundary_size_before = len(env.current_boundary)
-
                 # Select action
                 action = agent.select_action(state_dict, deterministic=deterministic)
 
-                # --- Take Step ---
-                # Pass None for global_timestep as it's not relevant in standalone eval
+                # Take Step
                 next_state_dict, reward, terminated, truncated, info = env.step(action, None)
-
-                # --- Post-Step Logging ---
-                boundary_size_after = info.get('boundary_vertices', 0)
-                is_valid_element = info.get('is_valid_element', False)
-
-                # print(f"  [Step {step_num:02d}] "
-                #       f"Boundary: {boundary_size_before} -> {boundary_size_after}, "
-                #       f"Valid: {is_valid_element}, "
-                #       f"Reward: {reward:+.3f}, "
-                #       f"Term: {terminated}, "
-                #       f"Trunc: {truncated}")
 
                 # Update tracking
                 episode_reward += reward
@@ -199,7 +187,6 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
                 if terminated or truncated:
                     print(f"--- Episode {episode + 1} Ended at Step {step_num} ---")
                     print(f"  Reason: {'Terminated' if terminated else 'Truncated'}")
-                    print(f"  Final Info: {info}")
                     completed = terminated
                     break
 
@@ -214,13 +201,22 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
                 terminated = True
                 break
 
+        # --- MODIFICATION START ---
+        # Save mesh for the current episode if requested
+        final_boundary, final_elements = env.get_current_mesh()
+        if save_meshes:
+            mesh_path = os.path.join(mesh_dir, f"episode_{episode + 1}_reward_{episode_reward:.2f}.png")
+            plot_mesh(final_boundary, final_elements,
+                      title=f"Evaluation Mesh - {domain_name}\nEpisode {episode + 1} - Reward: {episode_reward:.2f}",
+                      save_path=mesh_path)
+            print(f"  Saved mesh for episode {episode + 1} to {mesh_path}")
+        # --- MODIFICATION END ---
+
         # Store episode results
         episode_rewards.append(episode_reward)
         episode_lengths.append(episode_length)
         completion_rates.append(1.0 if completed else 0.0)
 
-        final_boundary, final_elements = env.get_current_mesh()
-        all_meshes.append((final_boundary, final_elements))
         quality_metrics = env.get_mesh_quality_metrics()
         mesh_qualities.append(quality_metrics)
 
@@ -263,30 +259,8 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
                     'values': values
                 }
 
-    # Save visualizations if requested
-    if save_meshes and any(all_meshes):
-        domain_name = os.path.splitext(domain_file)[0]
-        mesh_dir = os.path.join(output_dir, "meshes", domain_name)
-        os.makedirs(mesh_dir, exist_ok=True)
-
-        if episode_rewards:
-            best_episode = np.argmax(episode_rewards)
-            best_boundary, best_elements = all_meshes[best_episode]
-            mesh_path = os.path.join(mesh_dir, f"best_mesh_episode_{best_episode}.png")
-            plot_mesh(best_boundary, best_elements,
-                      title=f"Best Mesh - {domain_name} (Episode {best_episode})",
-                      save_path=mesh_path)
-
-            worst_episode = np.argmin(episode_rewards)
-            worst_boundary, worst_elements = all_meshes[worst_episode]
-            mesh_path = os.path.join(mesh_dir, f"worst_mesh_episode_{worst_episode}.png")
-            plot_mesh(worst_boundary, worst_elements,
-                      title=f"Worst Mesh - {domain_name} (Episode {worst_episode})",
-                      save_path=mesh_path)
-
     # Save animation if requested
     if save_animation and boundary_histories:
-        domain_name = os.path.splitext(domain_file)[0]
         anim_dir = os.path.join(output_dir, "animations", domain_name)
         save_mesh_animation_frames(boundary_histories, elements_histories, anim_dir)
 

@@ -137,18 +137,24 @@ def setup_directories(config: dict, experiment_name: str = None):
         print(f"📁 Created directory: {path}")
 
 
-def setup_environment(config: dict, multi_domain: bool = False,
-                      domain_files: list = None) -> MeshEnv:
-    """Setup training environment."""
+def setup_environment(config: dict, domain_config) -> MeshEnv:
+    """
+    Setup training environment based on the domain configuration.
+    It automatically detects single vs. multi-domain from the config type.
+    """
     max_steps = config['environment'].get('max_steps', 1000)
 
-    if multi_domain and domain_files:
-        print(f"🌍 Setting up multi-domain environment with domains: {domain_files}")
+    # If the domain_config is a list, we are in multi-domain mode
+    if isinstance(domain_config, list):
+        print(f"🌍 Setting up multi-domain environment with domains: {domain_config}")
         print(f"   Max steps per episode: {max_steps}")
-        env = MultiDomainMeshEnv(config, domain_files)
+        env = MultiDomainMeshEnv(config, domain_config)
+    # Otherwise, it's single-domain mode
     else:
-        print(f"🌍 Setting up single-domain environment with domain: {config['domain']['training_domain']}")
+        print(f"🌍 Setting up single-domain environment with domain: {domain_config}")
         print(f"   Max steps per episode: {max_steps}")
+        # We need to manually set the domain file in the config for MeshEnv to find it
+        config['domain']['training_domain'] = domain_config
         env = MeshEnv(config)
 
     return env
@@ -245,7 +251,7 @@ def create_training_summary(results: dict, config: dict, args,
 
 
 def print_training_header(args, config, experiment_name):
-    """Print formatted training header."""
+    """Print formatted training header that auto-detects training mode."""
     print("\n" + "=" * 80)
     print("🚀 RL-MESH-GENERATION TRAINING")
     print("=" * 80)
@@ -254,18 +260,21 @@ def print_training_header(args, config, experiment_name):
     print(f"🔧 Configuration: {args.config}")
     print(f"🎯 Algorithm: SAC (Soft Actor-Critic)")
 
-    if args.multi_domain:
-        print(f"🌍 Training Mode: Multi-Domain ({len(args.domain_files)} domains)")
-        print(f"   Domains: {', '.join(args.domain_files)}")
+    # --- MODIFICATION START ---
+    # Auto-detect training mode from the config file
+    training_domain_config = config['domain']['training_domain']
+    if isinstance(training_domain_config, list):
+        print(f"🌍 Training Mode: Multi-Domain ({len(training_domain_config)} domains)")
+        print(f"   Domains: {', '.join(training_domain_config)}")
     else:
-        print(f"🌍 Training Mode: Single-Domain ({config['domain']['training_domain']})")
+        print(f"🌍 Training Mode: Single-Domain ({training_domain_config})")
+    # --- MODIFICATION END ---
 
     print(f"📊 Total Timesteps: {config['training']['total_timesteps']:,}")
-    print(f"📈 Evaluation Frequency: {config['training']['evaluation_freq']:,}")
-    print(f"💾 Save Frequency: {config['training']['save_freq']:,}")
+    print(f"📈 Evaluation Frequency (Episodes): {config['training']['eval_freq_episode']:,}")
+    print(f"💾 Save Frequency (Timesteps): {config['training']['save_freq']:,}")
     print(f"📏 Max Steps per Episode: {config['environment'].get('max_steps', 1000)}")
 
-    # Alpha configuration
     if config['sac'].get('use_static_alpha', False):
         print(f"🌡️  Alpha (temperature): {config['sac'].get('static_alpha', 0.1)} (static)")
     else:
@@ -275,18 +284,16 @@ def print_training_header(args, config, experiment_name):
 
 
 def main():
-    """Main training function."""
+    """Main training function, now driven by config file structure."""
     start_time = time.time()
     args = parse_arguments()
 
     print("🎯 Starting RL-Mesh-Generation Training")
     print(f"📅 Timestamp: {datetime.now().isoformat()}")
 
-    # Load configuration
     config = load_config(args.config)
     print(f"📋 Loaded configuration from: {args.config}")
 
-    # Override configs with command line arguments
     if args.log_frequency is not None:
         config['training']['log_interval'] = args.log_frequency
         print(f"🔄 Overriding log frequency to: {args.log_frequency}")
@@ -301,64 +308,55 @@ def main():
     elif 'seed' in config['training']:
         set_random_seeds(int(config['training']['seed']))
 
-    # Setup device
     device = setup_device(args.device)
 
-    # Create experiment name
+    # --- MODIFICATION START ---
+    # Create experiment name based on training mode detected from config
+    training_domain_config = config['domain']['training_domain']
+    is_multi_domain = isinstance(training_domain_config, list)
+
     if args.experiment_name:
         experiment_name = args.experiment_name
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        domain_suffix = "multi" if args.multi_domain else "single"
+        domain_suffix = "multi_domain" if is_multi_domain else "single_domain"
         experiment_name = f"mesh_sac_{domain_suffix}_{timestamp}"
 
     print(f"🏷️  Experiment name: {experiment_name}")
 
-    # Setup directories
     setup_directories(config, experiment_name)
 
-    # Save configuration
     config_save_path = os.path.join(config['paths']['logs_dir'], "config.yaml")
     save_config(config, config_save_path)
     print(f"💾 Configuration saved to: {config_save_path}")
 
-    # Setup environment
-    env = setup_environment(config, args.multi_domain, args.domain_files)
+    # Pass the domain config directly to the setup function
+    env = setup_environment(config, training_domain_config)
+    # --- MODIFICATION END ---
 
-    # Setup agent
     agent = setup_agent(config, device)
 
-    # Resume from checkpoint if specified
     if args.resume:
         print(f"🔄 Resuming training from: {args.resume}")
         agent.load(args.resume)
 
-    # Setup trainer
     trainer = MeshSACTrainer(agent, env, config)
-
-    # Print training header
     print_training_header(args, config, experiment_name)
 
-    # Start training
     try:
         print("\n🚀 STARTING TRAINING")
         results = trainer.train()
 
-        # Save training results
+        # ... (rest of the function remains the same)
+
         results_path = os.path.join(config['paths']['logs_dir'], "training_results.pt")
         trainer.save_training_results(results_path)
-
-        # Create and save training summary
         summary = create_training_summary(results, config, args, experiment_name)
         summary_path = os.path.join(config['paths']['logs_dir'], "training_summary.yaml")
         with open(summary_path, 'w') as f:
             yaml.dump(summary, f, default_flow_style=False)
         print(f"📊 Training summary saved to: {summary_path}")
-
-        # Generate training plots
         print("\n📈 Generating training plots...")
-
-        # Learning curve
         if results['episode_rewards']:
             learning_curve_path = os.path.join(config['paths']['figures_dir'], "learning_curve.png")
             plot_learning_curve(
@@ -368,8 +366,6 @@ def main():
                 save_path=learning_curve_path
             )
             print(f"📈 Learning curve saved to: {learning_curve_path}")
-
-        # Training progress with additional metrics
         if results['training_stats']:
             progress_path = os.path.join(config['paths']['figures_dir'], "training_progress.png")
             plot_training_progress(
@@ -377,8 +373,6 @@ def main():
                 save_path=progress_path
             )
             print(f"📊 Training progress saved to: {progress_path}")
-
-        # Print final statistics
         total_time = time.time() - start_time
         print(f"\n" + "=" * 80)
         print(f"🎉 TRAINING COMPLETED SUCCESSFULLY!")
@@ -386,26 +380,16 @@ def main():
         print(f"⏱️  Total Runtime: {total_time / 3600:.2f} hours")
         print(f"📊 Final Statistics:")
         print(f"   Total Episodes: {len(results['episode_rewards'])}")
-
         if results['episode_rewards']:
             print(f"   Final Reward: {results['episode_rewards'][-1]:.2f}")
             print(f"   Best Reward: {results.get('best_reward', 0):.2f} (Episode {results.get('best_episode', 0)})")
-
-            if len(results['episode_rewards']) >= 100:
-                recent_avg = np.mean(results['episode_rewards'][-100:])
-                print(f"   Recent Average (last 100): {recent_avg:.2f}")
-
-        if results.get('episode_times'):
-            print(f"   Mean Episode Time: {np.mean(results['episode_times']):.2f}s")
-
         if results.get('episode_completion_rates'):
-            print(f"   Completion Rate: {np.mean(results['episode_completion_rates']):.1%}")
-
+            print(f"   Success Rate: {np.mean(results['episode_completion_rates']):.1%}")
         if results['evaluation_results']:
             eval_rewards = [r['mean_reward'] for r in results['evaluation_results']]
-            print(f"   Best Evaluation Reward: {max(eval_rewards):.2f}")
-            print(f"   Final Evaluation Reward: {eval_rewards[-1]:.2f}")
-
+            if eval_rewards:
+                print(f"   Best Evaluation Reward: {max(eval_rewards):.2f}")
+                print(f"   Final Evaluation Reward: {eval_rewards[-1]:.2f}")
         print(f"\n📁 Results Location:")
         print(f"   Logs: {config['paths']['logs_dir']}")
         print(f"   Models: {config['paths']['models_dir']}")
@@ -416,48 +400,20 @@ def main():
         print(f"\n" + "=" * 80)
         print(f"⚠️  TRAINING INTERRUPTED BY USER")
         print(f"=" * 80)
-
-        # Save current progress
         interrupt_model_path = os.path.join(config['paths']['models_dir'], "interrupted_model.pt")
         agent.save(interrupt_model_path)
         print(f"💾 Saved interrupted model to: {interrupt_model_path}")
-
-        # Try to save partial results
-        try:
-            if hasattr(trainer, 'episode_rewards') and trainer.episode_rewards:
-                partial_results = {
-                    'episode_rewards': trainer.episode_rewards,
-                    'episode_lengths': trainer.episode_lengths,
-                    'episode_times': getattr(trainer, 'episode_times', []),
-                    'episode_mesh_qualities': getattr(trainer, 'episode_mesh_qualities', []),
-                    'episode_completion_rates': getattr(trainer, 'episode_completion_rates', []),
-                    'evaluation_results': trainer.evaluation_results,
-                    'interrupted': True,
-                    'total_training_time': time.time() - start_time
-                }
-
-                partial_results_path = os.path.join(config['paths']['logs_dir'], "interrupted_results.pt")
-                torch.save(partial_results, partial_results_path)
-                print(f"📊 Saved partial results to: {partial_results_path}")
-        except Exception as e:
-            print(f"⚠️  Could not save partial results: {e}")
-
     except Exception as e:
         print(f"\n" + "=" * 80)
         print(f"❌ TRAINING FAILED: {str(e)}")
         print(f"=" * 80)
-
-        # Save current progress anyway
         error_model_path = os.path.join(config['paths']['models_dir'], "error_model.pt")
         try:
             agent.save(error_model_path)
             print(f"💾 Saved model state to: {error_model_path}")
         except Exception as save_error:
             print(f"⚠️  Could not save error model: {save_error}")
-
-        # Re-raise the exception
         raise
-
     finally:
         print(f"\n🏁 Training session ended at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
