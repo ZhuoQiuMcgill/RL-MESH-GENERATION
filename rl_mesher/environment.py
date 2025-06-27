@@ -1,18 +1,16 @@
+import os
 import numpy as np
 import torch
 from typing import Dict, Tuple, Optional, List
-import os
-import gymnasium as gym
-from gymnasium import spaces
-
-from .utils.geometry import (
-    calculate_reference_vertex, get_state_components, transform_to_relative_coords,
-    calculate_reward_components, calculate_polygon_area,
-    load_domain_from_file, generate_action_coordinates, calculate_element_quality
+from gymnasium import Env, spaces
+from rl_mesher.utils.geometry import (
+    calculate_polygon_area, generate_action_coordinates,
+    calculate_reward_components, calculate_reference_vertex,
+    get_state_components, calculate_element_quality, load_domain_from_file
 )
 
 
-class MeshEnv(gym.Env):
+class MeshEnv(Env):
     """
     Mesh generation environment implementing Gymnasium interface.
 
@@ -101,7 +99,7 @@ class MeshEnv(gym.Env):
             dtype=np.float32
         )
 
-        # Observation space components
+        # Observation space components - Dict type for compatibility
         self.observation_space = spaces.Dict({
             'ref_vertex': spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32),
             'left_neighbors': spaces.Box(low=-np.inf, high=np.inf,
@@ -125,7 +123,7 @@ class MeshEnv(gym.Env):
         self.episode_reward = 0.0
 
         # Get initial observation
-        observation = self._get_observation()
+        observation = self._get_observation_dict()
         info = self._get_info()
 
         return observation, info
@@ -136,7 +134,7 @@ class MeshEnv(gym.Env):
 
         # Check for max steps truncation first
         if self.step_count >= self.max_steps:
-            observation = self._get_observation()
+            observation = self._get_observation_dict()
             info = self._get_info()
             info.update({
                 'is_valid_element': False,
@@ -160,7 +158,7 @@ class MeshEnv(gym.Env):
             )
         except Exception as e:
             # If state calculation fails, give small penalty and continue
-            observation = self._get_observation()
+            observation = self._get_observation_dict()
             info = self._get_info()
             info.update({
                 'is_valid_element': False,
@@ -185,31 +183,6 @@ class MeshEnv(gym.Env):
         termination_reason = None
 
         if is_valid:
-            # Debug: Print detailed boundary change info
-            old_boundary_size = len(self.current_boundary)
-            new_boundary_size = len(new_boundary)
-
-            # if self.step_count % 20 == 0:  # Print every 20 steps for more frequent monitoring
-            #     print(f"\n=== Step {self.step_count} ===")
-            #     print(f"Action type: {action_type}")
-            #     print(f"Ref vertex index: {ref_idx}")
-            #     print(f"Boundary: {old_boundary_size} -> {new_boundary_size}")
-            #     print(f"Elements generated: {len(self.generated_elements)}")
-#
-            #     # Show actual boundary change
-            #     old_vertices = [f"({v[0]:.1f},{v[1]:.1f})" for v in self.current_boundary]
-            #     new_vertices = [f"({v[0]:.1f},{v[1]:.1f})" for v in new_boundary]
-            #     print(f"Old boundary: {old_vertices}")
-            #     print(f"New boundary: {new_vertices}")
-#
-            #     if old_boundary_size == new_boundary_size:
-            #         print("✓ Boundary size unchanged (replacement operation)")
-            #     elif new_boundary_size == old_boundary_size - 1:
-            #         print("✓ Boundary size decreased by 1 (vertex removal)")
-            #     else:
-            #         print("⚠️  Unexpected boundary size change!")
-            #     print()
-
             self.generated_elements.append(element_vertices)
             self.current_boundary = new_boundary
             # Update area ratio
@@ -235,7 +208,7 @@ class MeshEnv(gym.Env):
             reward = -0.1
 
         # Get next observation
-        observation = self._get_observation()
+        observation = self._get_observation_dict()
 
         # Get info
         info = self._get_info()
@@ -252,7 +225,8 @@ class MeshEnv(gym.Env):
                         action_type: int, ref_idx: int) -> Tuple[np.ndarray, bool, np.ndarray]:
         """
         Execute action following the paper's algorithm.
-        Key insight: When element is cut off, the new point becomes part of the boundary.
+
+        CRITICAL FIX: Type 0 should reduce boundary size, Type 1 maintains size.
         """
         ref_vertex = state_components['ref_vertex']
         left_neighbors = state_components['left_neighbors']
@@ -273,7 +247,7 @@ class MeshEnv(gym.Env):
         if action_type == 0:
             # Type 0: Create element using three existing boundary vertices + interior point
             # Element: [ref_vertex, v_right, interior_point, v_left]
-            # After cutting: ref_vertex is replaced by interior_point in boundary
+            # CRITICAL: After cutting, boundary should connect v_left directly to v_right (reducing size)
 
             # Create interior point that makes a reasonable quadrilateral
             triangle_center = np.mean([ref_vertex, v_right, v_left], axis=0)
@@ -296,8 +270,8 @@ class MeshEnv(gym.Env):
             # Element vertices: ref_vertex, v_right, interior_point, v_left
             element_vertices = np.array([ref_vertex, v_right, interior_point, v_left])
 
-            # For boundary update: interior_point will replace ref_vertex
-            boundary_replacement_point = interior_point
+            # For Type 0: Remove ref_vertex from boundary (connecting left and right neighbors)
+            new_boundary = self._update_boundary_type0(ref_idx)
 
         else:
             # Type 1: Add new vertex inside the boundary
@@ -316,11 +290,8 @@ class MeshEnv(gym.Env):
             # Element vertices: ref_vertex, v_right, new_vertex, v_left
             element_vertices = np.array([ref_vertex, v_right, new_vertex, v_left])
 
-            # For boundary update: new_vertex will replace ref_vertex
-            boundary_replacement_point = new_vertex
-
-        # Update boundary: replace ref_vertex with the new point
-        new_boundary = self._update_boundary_cut(ref_idx, 0, 0, boundary_replacement_point, action_type)
+            # For Type 1: Replace ref_vertex with new_vertex
+            new_boundary = self._update_boundary_type1(ref_idx, new_vertex)
 
         # Validate the generated element and new boundary
         is_valid = self._validate_element(element_vertices) and len(new_boundary) >= 3
@@ -330,46 +301,37 @@ class MeshEnv(gym.Env):
 
         return element_vertices, True, new_boundary
 
-    def _update_boundary_cut(self, ref_idx: int, right_idx: int, left_idx: int,
-                             new_point: np.ndarray, action_type: int) -> np.ndarray:
+    def _update_boundary_type0(self, ref_idx: int) -> np.ndarray:
         """
-        Update boundary by cutting off the element region properly.
+        Update boundary for Type 0 action (connect neighbors).
 
-        Key insight: When element [ref_vertex, right_neighbor, new_point, left_neighbor]
-        is cut off, the new boundary should include the new_point as it becomes part
-        of the new boundary where the element was removed.
+        CRITICAL FIX: Type 0 should REMOVE the reference vertex, directly connecting
+        the left and right neighbors. This reduces boundary size by 1.
 
-        Example: boundary [0,1,2,3,4,5,6,7,8,9,10,11]
-        If element is [5,6,7,P], new boundary should be [0,1,2,3,4,5,P,7,8,9,10,11]
+        Example: boundary [A, B, C, D, E] with ref_idx=2 (vertex C)
+        After Type 0: [A, B, D, E] (vertex C is removed)
         """
-        boundary_list = [v.tolist() for v in self.current_boundary]
+        boundary_list = self.current_boundary.tolist()
         n = len(boundary_list)
 
-        if action_type == 0:
-            # Type 0: Element uses ref_vertex + neighbors + interior_point
-            # After cutting: replace ref_vertex with interior_point
-            # This simulates the element being cut off and interior_point becoming new boundary
-            new_boundary_list = boundary_list.copy()
-            new_boundary_list[ref_idx] = new_point.tolist()
+        # Remove only the reference vertex
+        new_boundary_list = boundary_list[:ref_idx] + boundary_list[ref_idx + 1:]
 
-        else:
-            # Type 1: Element uses ref_vertex + neighbors + new_vertex
-            # After cutting: replace ref_vertex with new_vertex
-            new_boundary_list = boundary_list.copy()
-            new_boundary_list[ref_idx] = new_point.tolist()
-
-        # Ensure we have enough vertices
+        # Ensure we have enough vertices left
         if len(new_boundary_list) < 3:
             return self.current_boundary
 
         return np.array(new_boundary_list)
 
-    def _find_vertex_index(self, vertex: np.ndarray) -> int:
-        """Find the index of a vertex in the current boundary."""
-        for i, boundary_vertex in enumerate(self.current_boundary):
-            if np.allclose(vertex, boundary_vertex, atol=1e-6):
-                return i
-        return -1  # Not found
+    def _update_boundary_type1(self, ref_idx: int, new_vertex: np.ndarray) -> np.ndarray:
+        """
+        Update boundary for Type 1 action (add new vertex).
+        Replace ref_vertex with new_vertex, maintaining boundary size.
+        """
+        new_boundary = self.current_boundary.copy()
+        new_boundary[ref_idx] = new_vertex
+
+        return new_boundary
 
     def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
         """
@@ -395,35 +357,8 @@ class MeshEnv(gym.Env):
 
         return inside
 
-    def _update_boundary_type0(self, ref_idx: int, v3_idx: int) -> np.ndarray:
-        """
-        Update boundary for Type 0 action (connect neighbors).
-        Simply remove the reference vertex, connecting left and right neighbors directly.
-        """
-        boundary_list = self.current_boundary.tolist()
-        n = len(boundary_list)
-
-        # Remove only the reference vertex
-        new_boundary_list = boundary_list[:ref_idx] + boundary_list[ref_idx + 1:]
-
-        # Ensure we have enough vertices left
-        if len(new_boundary_list) < 3:
-            return self.current_boundary
-
-        return np.array(new_boundary_list)
-
-    def _update_boundary_type1(self, ref_idx: int, new_vertex: np.ndarray) -> np.ndarray:
-        """
-        Update boundary for Type 1 action (add new vertex).
-        Replace ref_vertex with new_vertex.
-        """
-        new_boundary = self.current_boundary.copy()
-        new_boundary[ref_idx] = new_vertex
-
-        return new_boundary
-
     def _validate_element(self, element_vertices: np.ndarray) -> bool:
-        """Validate that the generated element is acceptable - simplified version."""
+        """Validate that the generated element is acceptable."""
         if len(element_vertices) < 3:
             return False
 
@@ -444,93 +379,86 @@ class MeshEnv(gym.Env):
                           state_components: Dict) -> float:
         """Calculate reward for the current action."""
         if not is_valid:
-            return -0.5
+            return -1.0
 
         try:
-            # Calculate reward components according to paper
+            # Calculate reward components following the paper
             eta_e, eta_b, mu_t = calculate_reward_components(
                 element_vertices, self.current_boundary, self.current_boundary,
                 self.current_area_ratio, self.v_density, self.M_angle
             )
 
-            # Combined reward
-            reward = eta_e + eta_b + mu_t
+            # Combined reward following paper's equation
+            alpha_element = getattr(self, 'alpha_element', 1.0)
+            reward = alpha_element * eta_e + eta_b + mu_t
 
-            # Bonus for progress (reducing boundary size)
-            if len(self.current_boundary) < len(self.original_boundary):
-                progress_bonus = 0.1
-                reward += progress_bonus
+            return float(reward)
 
-            return reward
+        except Exception as e:
+            # Fallback reward
+            return 0.1 if is_valid else -1.0
 
-        except Exception:
-            return -0.1
+    def _get_observation_dict(self) -> Dict:
+        """Get current observation as dictionary with torch tensors."""
+        if len(self.current_boundary) < 5:
+            # Minimal boundary case - return zeros
+            return {
+                'ref_vertex': torch.zeros(2, dtype=torch.float32),
+                'left_neighbors': torch.zeros((self.n_neighbors, 2), dtype=torch.float32),
+                'right_neighbors': torch.zeros((self.n_neighbors, 2), dtype=torch.float32),
+                'fan_points': torch.zeros((self.n_fan_points, 2), dtype=torch.float32),
+                'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
+            }
 
-    def _get_observation(self) -> Dict:
-        """Get current observation."""
-        if len(self.current_boundary) < 3:
-            return self._get_default_observation()
-
-        # Get reference vertex
         try:
+            # Calculate reference vertex
             ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
-        except:
-            ref_idx = 0
 
-        # Get state components
-        try:
+            # Get state components
             state_components = get_state_components(
                 self.current_boundary, ref_idx, self.n_neighbors,
                 self.n_fan_points, self.beta_obs
             )
-        except:
-            return self._get_default_observation()
 
-        # Transform to relative coordinates
-        ref_vertex = state_components['ref_vertex']
-        reference_direction = state_components['reference_direction']
+            # Convert to torch tensors
+            ref_vertex = torch.zeros(2, dtype=torch.float32)
 
-        # Collect all points for transformation
-        all_points = [ref_vertex]
-        all_points.extend(state_components['left_neighbors'])
-        all_points.extend(state_components['right_neighbors'])
-        all_points.extend(state_components['fan_points'])
+            # Pad left neighbors
+            left_neighbors = torch.zeros((self.n_neighbors, 2), dtype=torch.float32)
+            if len(state_components['left_neighbors']) > 0:
+                n_left = min(len(state_components['left_neighbors']), self.n_neighbors)
+                left_neighbors[:n_left] = torch.tensor(state_components['left_neighbors'][:n_left], dtype=torch.float32)
 
-        # Transform to relative coordinates
-        try:
-            relative_points = transform_to_relative_coords(
-                all_points, ref_vertex, reference_direction
-            )
-        except:
-            return self._get_default_observation()
+            # Pad right neighbors
+            right_neighbors = torch.zeros((self.n_neighbors, 2), dtype=torch.float32)
+            if len(state_components['right_neighbors']) > 0:
+                n_right = min(len(state_components['right_neighbors']), self.n_neighbors)
+                right_neighbors[:n_right] = torch.tensor(state_components['right_neighbors'][:n_right],
+                                                         dtype=torch.float32)
 
-        # Ensure we have the right number of points
-        while len(relative_points) < 1 + 2 * self.n_neighbors + self.n_fan_points:
-            relative_points.append(np.zeros(2))
+            # Pad fan points
+            fan_points = torch.zeros((self.n_fan_points, 2), dtype=torch.float32)
+            if len(state_components['fan_points']) > 0:
+                n_fan = min(len(state_components['fan_points']), self.n_fan_points)
+                fan_points[:n_fan] = torch.tensor(state_components['fan_points'][:n_fan], dtype=torch.float32)
 
-        # Create observation dictionary
-        observation = {
-            'ref_vertex': torch.tensor(relative_points[0], dtype=torch.float32),
-            'left_neighbors': torch.tensor(np.array(relative_points[1:1 + self.n_neighbors]), dtype=torch.float32),
-            'right_neighbors': torch.tensor(np.array(relative_points[1 + self.n_neighbors:1 + 2 * self.n_neighbors]),
-                                            dtype=torch.float32),
-            'fan_points': torch.tensor(
-                np.array(relative_points[1 + 2 * self.n_neighbors:1 + 2 * self.n_neighbors + self.n_fan_points]),
-                dtype=torch.float32),
-            'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
-        }
+            return {
+                'ref_vertex': ref_vertex,
+                'left_neighbors': left_neighbors,
+                'right_neighbors': right_neighbors,
+                'fan_points': fan_points,
+                'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
+            }
 
-        return observation
-
-    def _get_default_observation(self) -> Dict:
-        """Get default observation when boundary is too small."""
-        return {
-            'ref_vertex': torch.zeros(2, dtype=torch.float32),
-            'left_neighbors': torch.zeros((self.n_neighbors, 2), dtype=torch.float32),
-            'right_neighbors': torch.zeros((self.n_neighbors, 2), dtype=torch.float32),
-            'fan_points': torch.zeros((self.n_fan_points, 2), dtype=torch.float32),
-            'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
-        }
+        except Exception as e:
+            # Fallback observation
+            return {
+                'ref_vertex': torch.zeros(2, dtype=torch.float32),
+                'left_neighbors': torch.zeros((self.n_neighbors, 2), dtype=torch.float32),
+                'right_neighbors': torch.zeros((self.n_neighbors, 2), dtype=torch.float32),
+                'fan_points': torch.zeros((self.n_fan_points, 2), dtype=torch.float32),
+                'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
+            }
 
     def _get_info(self) -> Dict:
         """Get additional information about current state."""
@@ -598,29 +526,50 @@ class MultiDomainMeshEnv(MeshEnv):
 
         Args:
             config: Configuration dictionary
-            domain_files: List of domain files to use
+            domain_files: List of domain file names
         """
         self.domain_files = domain_files
         self.current_domain_idx = 0
 
+        # Initialize with first domain
+        config = config.copy()
+        config['domain']['training_domain'] = domain_files[0]
+
         super().__init__(config)
 
-    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[Dict, Dict]:
-        """Reset with random domain selection."""
-        # Randomly select domain
-        if len(self.domain_files) > 1:
-            self.current_domain_idx = np.random.randint(0, len(self.domain_files))
-            self.domain_file = self.domain_files[self.current_domain_idx]
-            self.original_boundary = self._load_domain()
-            self.original_boundary = self._ensure_clockwise(self.original_boundary)
-            self.original_area = calculate_polygon_area(self.original_boundary)
+        # Load all domains
+        self.all_domains = []
+        for domain_file in domain_files:
+            domain_path = os.path.join(self.data_dir, domain_file)
+            boundary = load_domain_from_file(domain_path)
+            boundary = self._ensure_clockwise(boundary)
+            self.all_domains.append(boundary)
 
-        return super().reset(seed, options)
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[Dict, Dict]:
+        """Reset environment, optionally switching to next domain."""
+        # Switch domain randomly or in sequence
+        if options and 'domain_idx' in options:
+            self.current_domain_idx = options['domain_idx']
+        else:
+            # Random domain selection
+            self.current_domain_idx = np.random.choice(len(self.domain_files))
+
+        # Set current domain
+        self.original_boundary = self.all_domains[self.current_domain_idx].copy()
+        self.original_area = calculate_polygon_area(self.original_boundary)
+
+        return super().reset(seed=seed, options=options)
 
     def get_current_domain_info(self) -> Dict:
         """Get information about current domain."""
         return {
-            'domain_file': self.domain_file,
-            'domain_index': self.current_domain_idx,
-            'total_domains': len(self.domain_files)
+            'domain_idx': self.current_domain_idx,
+            'domain_file': self.domain_files[self.current_domain_idx],
+            'num_domains': len(self.domain_files),
+            'original_vertices': len(self.original_boundary),
+            'original_area': self.original_area
         }
+
+
+# Compatibility alias
+MeshEnvironment = MeshEnv
