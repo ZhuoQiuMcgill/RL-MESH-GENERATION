@@ -32,6 +32,7 @@ class MeshSACTrainer:
         self.eval_freq = int(config['training']['evaluation_freq'])
         self.log_interval = int(config['training']['log_interval'])
         self.save_freq = int(config['training']['save_freq'])
+        self.eval_freq = int(config['training']['eval_freq_episode'])
 
         # Paths
         self.models_dir = config['paths']['models_dir']
@@ -120,27 +121,31 @@ class MeshSACTrainer:
             if done:
                 episode_time = time.time() - self.episode_start_time
 
-                # Calculate mesh quality metrics
                 mesh_quality_metrics = self.env.get_mesh_quality_metrics()
                 mesh_quality = mesh_quality_metrics.get('mean_element_quality', 0.0) if mesh_quality_metrics else 0.0
                 completion_rate = 1.0 if terminated else 0.0
 
-                # Store episode data
                 self.episode_rewards.append(episode_reward)
                 self.episode_lengths.append(episode_length)
                 self.episode_times.append(episode_time)
                 self.episode_mesh_qualities.append(mesh_quality)
                 self.episode_completion_rates.append(completion_rate)
 
-                # Update best episode tracking
                 if episode_reward > self.best_reward:
                     self.best_reward = episode_reward
                     self.best_episode = episode
 
-                # Enhanced logging
                 if episode % self.log_interval == 0:
-                    self._log_progress(episode, timestep, episode_reward, episode_length,
-                                       episode_time, mesh_quality, completion_rate)
+                    self._log_progress(
+                        episode, timestep, episode_reward, episode_length,
+                        episode_time, mesh_quality, completion_rate
+                    )
+
+                # Evaluate at episode intervals
+                if episode % self.eval_freq == 0:
+                    eval_results = self._evaluate(timestep)
+                    self.evaluation_results.append(eval_results)
+                    self._log_evaluation(timestep, eval_results)
 
                 # Reset for next episode
                 state_dict, _ = self.env.reset()
@@ -150,12 +155,6 @@ class MeshSACTrainer:
                 self.episode_start_time = time.time()
             else:
                 state_dict = next_state_dict
-
-            # Evaluation
-            if self._should_evaluate(timestep, done, terminated):
-                eval_results = self._evaluate(timestep)
-                self.evaluation_results.append(eval_results)
-                self._log_evaluation(timestep, eval_results)
 
             # Save model
             if timestep % self.save_freq == 0:
