@@ -128,13 +128,13 @@ class MeshEnv(Env):
 
         return observation, info
 
-    def step(self, action: np.ndarray) -> Tuple[Dict, float, bool, bool, Dict]:
+    def step(self, action: np.ndarray, global_timestep: Optional[int] = None) -> Tuple[Dict, float, bool, bool, Dict]:
         """Execute one environment step following the paper's algorithm."""
         self.step_count += 1
 
-        # Check for max steps truncation first
+        # Truncate if max_steps is reached
         if self.step_count >= self.max_steps:
-            observation = self._get_observation_dict()
+            observation = self._get_observation()
             info = self._get_info()
             info.update({
                 'is_valid_element': False,
@@ -147,7 +147,6 @@ class MeshEnv(Env):
         try:
             ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
         except Exception as e:
-            # If reference vertex calculation fails, just use index 0
             ref_idx = 0
 
         # Step 2: Get state components
@@ -157,8 +156,7 @@ class MeshEnv(Env):
                 self.n_fan_points, self.beta_obs
             )
         except Exception as e:
-            # If state calculation fails, give small penalty and continue
-            observation = self._get_observation_dict()
+            observation = self._get_observation()
             info = self._get_info()
             info.update({
                 'is_valid_element': False,
@@ -167,50 +165,44 @@ class MeshEnv(Env):
             })
             return observation, -0.1, False, False, info
 
-        # Step 3: Determine action type
-        action_type = 0 if action[0] < 0 else 1
+        # Step 3: Determine action type with forced exploration during early training
+        exploration_steps = self.config['training'].get('forced_exploration_steps', 0)
 
-        # Step 4: Generate element and apply action filter
+        if global_timestep is not None and global_timestep < exploration_steps:
+            action_type = np.random.choice([0, 1])
+        else:
+            action_type = 0 if action[0] < 0 else 1
+
+        # Step 4: Execute the action to get element and new boundary
         element_vertices, is_valid, new_boundary = self._execute_action(
             action, state_components, action_type, ref_idx
         )
 
-        # Step 5: Calculate reward
+        # Step 5: Calculate reward (strictly based on the paper)
         reward = self._calculate_reward(element_vertices, is_valid, state_components)
 
-        # Step 6: Update environment if action is valid
+        # Step 6: Update environment state
         terminated = False
         termination_reason = None
 
         if is_valid:
             self.generated_elements.append(element_vertices)
             self.current_boundary = new_boundary
-            # Update area ratio
             current_area = calculate_polygon_area(self.current_boundary)
             self.current_area_ratio = current_area / self.original_area if self.original_area > 0 else 0.0
             self.episode_reward += reward
 
-            # Check termination: Only terminate when boundary becomes 4 vertices or less
             if len(self.current_boundary) <= 4:
-                # Add final element if boundary can form one
                 if len(self.current_boundary) == 4:
-                    final_element = self.current_boundary.copy()
-                    self.generated_elements.append(final_element)
-
+                    self.generated_elements.append(self.current_boundary.copy())
                 terminated = True
                 termination_reason = 'boundary_complete'
-                reward += 10.0  # Completion bonus
-                print(f"🎉 Mesh generation completed at step {self.step_count}! "
-                      f"Generated {len(self.generated_elements)} elements.")
-
+                reward += 10.0
         else:
-            # Invalid action, small penalty but continue
             reward = -0.1
 
-        # Get next observation
-        observation = self._get_observation_dict()
-
-        # Get info
+        # Get next state and info
+        observation = self._get_observation()
         info = self._get_info()
         info.update({
             'is_valid_element': is_valid,
@@ -224,114 +216,83 @@ class MeshEnv(Env):
     def _execute_action(self, action: np.ndarray, state_components: Dict,
                         action_type: int, ref_idx: int) -> Tuple[np.ndarray, bool, np.ndarray]:
         """
-        Execute action following the paper's algorithm.
-
-        CRITICAL FIX: Type 0 should reduce boundary size, Type 1 maintains size.
+        Execute action with geometrically correct boundary updates for both types,
+        based on the paper's diagrams (Fig. 8a and 8b).
         """
-        ref_vertex = state_components['ref_vertex']
-        left_neighbors = state_components['left_neighbors']
-        right_neighbors = state_components['right_neighbors']
-        reference_direction = state_components['reference_direction']
-        base_length = state_components['base_length']
-
         n_boundary = len(self.current_boundary)
-
-        # Ensure we have enough neighbors for the action
-        if len(left_neighbors) == 0 or len(right_neighbors) == 0 or n_boundary < 5:
-            return np.array([[0, 0], [0, 0], [0, 0], [0, 0]]), False, self.current_boundary
-
-        # Get neighbor vertices
-        v_right = right_neighbors[0]  # Right neighbor (clockwise)
-        v_left = left_neighbors[0]  # Left neighbor (counter-clockwise)
+        new_boundary = None
+        element_vertices = None
 
         if action_type == 0:
-            # Type 0: Create element using three existing boundary vertices + interior point
-            # Element: [ref_vertex, v_right, interior_point, v_left]
-            # CRITICAL: After cutting, boundary should connect v_left directly to v_right (reducing size)
+            # TYPE 0: CONNECT action (Shrink-by-2). Based on Fig. 8a of the paper.
+            # Forms an element from 4 consecutive vertices and removes 2 of them.
+            if n_boundary < 5:  # This action is only possible if the boundary is large enough
+                return np.array([]), False, self.current_boundary
 
-            # Create interior point that makes a reasonable quadrilateral
-            triangle_center = np.mean([ref_vertex, v_right, v_left], axis=0)
+            # Get indices of the 4 consecutive vertices, handling wrap-around.
+            # V3, V0, V1, V4 in the paper correspond to left, ref, right, right_right.
+            left_idx = (ref_idx - 1 + n_boundary) % n_boundary
+            right_idx = (ref_idx + 1) % n_boundary
+            right_right_idx = (ref_idx + 2) % n_boundary
 
-            # Calculate an inward direction to place interior point
-            edge_vec = v_right - ref_vertex
-            perp_vec = np.array([-edge_vec[1], edge_vec[0]])  # Perpendicular
-            if np.linalg.norm(perp_vec) > 1e-8:
-                perp_vec = perp_vec / np.linalg.norm(perp_vec)
+            # Ensure we have 4 unique vertices before proceeding
+            if len(set([left_idx, ref_idx, right_idx, right_right_idx])) < 4:
+                return np.array([]), False, self.current_boundary
 
-                # Test which direction is inward
-                test_point = triangle_center + perp_vec * base_length * 0.01
-                if self._is_point_inside_boundary(test_point):
-                    interior_point = triangle_center + perp_vec * base_length * 0.2
-                else:
-                    interior_point = triangle_center - perp_vec * base_length * 0.2
-            else:
-                interior_point = triangle_center
+            v_left = self.current_boundary[left_idx]
+            ref_vertex = self.current_boundary[ref_idx]
+            v_right = self.current_boundary[right_idx]
+            v_right_right = self.current_boundary[right_right_idx]
 
-            # Element vertices: ref_vertex, v_right, interior_point, v_left
-            element_vertices = np.array([ref_vertex, v_right, interior_point, v_left])
+            element_vertices = np.array([ref_vertex, v_right, v_right_right, v_left])
 
-            # For Type 0: Remove ref_vertex from boundary (connecting left and right neighbors)
-            new_boundary = self._update_boundary_type0(ref_idx)
+            # --- Boundary Update for Type 0 ---
+            # The new boundary connects v_left and v_right_right.
+            # We must remove ref_vertex and v_right from the boundary.
+            # A boolean mask is the most robust way to handle index removal.
+            keep_mask = np.ones(n_boundary, dtype=bool)
+            keep_mask[ref_idx] = False
+            keep_mask[right_idx] = False
 
-        else:
-            # Type 1: Add new vertex inside the boundary
-            # Element: [ref_vertex, v_right, new_vertex, v_left]
-            # After cutting: ref_vertex is replaced by new_vertex in boundary
+            new_boundary = self.current_boundary[keep_mask]
+
+        else:  # action_type == 1
+            # TYPE 1: INSERT action (Replace). Based on Fig. 8b of the paper.
+            # Forms an element with a new vertex, replacing the reference vertex.
+            # The boundary size remains unchanged.
+            if n_boundary < 3:
+                return np.array([]), False, self.current_boundary
+
+            ref_vertex = state_components['ref_vertex']
+            v_left = state_components['left_neighbors'][0]
+            v_right = state_components['right_neighbors'][0]
+            base_length = state_components['base_length']
+            reference_direction = state_components['reference_direction']
 
             new_vertex = generate_action_coordinates(
                 action, ref_vertex, reference_direction,
                 self.alpha_action, base_length
             )
 
-            # Action filter: check if new vertex is inside boundary
             if not self._is_point_inside_boundary(new_vertex):
-                return np.array([[0, 0], [0, 0], [0, 0], [0, 0]]), False, self.current_boundary
+                return np.array([]), False, self.current_boundary
 
-            # Element vertices: ref_vertex, v_right, new_vertex, v_left
             element_vertices = np.array([ref_vertex, v_right, new_vertex, v_left])
 
-            # For Type 1: Replace ref_vertex with new_vertex
-            new_boundary = self._update_boundary_type1(ref_idx, new_vertex)
+            # --- Boundary Update for Type 1 ---
+            new_boundary = self.current_boundary.copy()
+            new_boundary[ref_idx] = new_vertex
 
-        # Validate the generated element and new boundary
-        is_valid = self._validate_element(element_vertices) and len(new_boundary) >= 3
+        # --- Final Validation ---
+        if new_boundary is None or element_vertices is None or len(new_boundary) < 3:
+            return np.array([]), False, self.current_boundary
+
+        is_valid = self._validate_element(element_vertices)
 
         if not is_valid:
             return element_vertices, False, self.current_boundary
 
         return element_vertices, True, new_boundary
-
-    def _update_boundary_type0(self, ref_idx: int) -> np.ndarray:
-        """
-        Update boundary for Type 0 action (connect neighbors).
-
-        CRITICAL FIX: Type 0 should REMOVE the reference vertex, directly connecting
-        the left and right neighbors. This reduces boundary size by 1.
-
-        Example: boundary [A, B, C, D, E] with ref_idx=2 (vertex C)
-        After Type 0: [A, B, D, E] (vertex C is removed)
-        """
-        boundary_list = self.current_boundary.tolist()
-        n = len(boundary_list)
-
-        # Remove only the reference vertex
-        new_boundary_list = boundary_list[:ref_idx] + boundary_list[ref_idx + 1:]
-
-        # Ensure we have enough vertices left
-        if len(new_boundary_list) < 3:
-            return self.current_boundary
-
-        return np.array(new_boundary_list)
-
-    def _update_boundary_type1(self, ref_idx: int, new_vertex: np.ndarray) -> np.ndarray:
-        """
-        Update boundary for Type 1 action (add new vertex).
-        Replace ref_vertex with new_vertex, maintaining boundary size.
-        """
-        new_boundary = self.current_boundary.copy()
-        new_boundary[ref_idx] = new_vertex
-
-        return new_boundary
 
     def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
         """
@@ -377,26 +338,32 @@ class MeshEnv(Env):
 
     def _calculate_reward(self, element_vertices: np.ndarray, is_valid: bool,
                           state_components: Dict) -> float:
-        """Calculate reward for the current action."""
+        """
+        Calculate reward for the current action, strictly following the paper's
+        three-component reward function (Eq. 6).
+        """
         if not is_valid:
-            return -1.0
+            # A penalty for creating a geometrically invalid element.
+            return -0.5
 
         try:
-            # Calculate reward components following the paper
+            # Calculate the three reward components as defined in the paper:
+            # element quality (eta_e), boundary quality (eta_b), and density (mu_t).
             eta_e, eta_b, mu_t = calculate_reward_components(
                 element_vertices, self.current_boundary, self.current_boundary,
                 self.current_area_ratio, self.v_density, self.M_angle
             )
 
-            # Combined reward following paper's equation
-            alpha_element = getattr(self, 'alpha_element', 1.0)
-            reward = alpha_element * eta_e + eta_b + mu_t
+            # The total step reward is the sum of the three quality metrics.
+            # This implementation now perfectly matches the paper's Eq. 6.
+            # No additional bonuses are applied, allowing the agent to learn the
+            # intrinsic trade-offs between element quality, boundary quality, and density.
+            reward = eta_e + eta_b + mu_t
+            return reward
 
-            return float(reward)
-
-        except Exception as e:
-            # Fallback reward
-            return 0.1 if is_valid else -1.0
+        except Exception:
+            # A fallback penalty if reward calculation fails for any reason.
+            return -0.1
 
     def _get_observation_dict(self) -> Dict:
         """Get current observation as dictionary with torch tensors."""

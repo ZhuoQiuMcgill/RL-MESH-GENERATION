@@ -126,20 +126,8 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
                            save_meshes: bool = False, save_animation: bool = False,
                            output_dir: str = "") -> Dict:
     """
-    Evaluate agent on a single domain.
-
-    Args:
-        agent: Trained SAC agent
-        env: Mesh environment
-        domain_file: Domain file to evaluate on
-        num_episodes: Number of episodes to run
-        deterministic: Whether to use deterministic policy
-        save_meshes: Whether to save mesh visualizations
-        save_animation: Whether to save animation frames
-        output_dir: Output directory for results
-
-    Returns:
-        Evaluation results dictionary
+    Evaluate agent on a single domain with enhanced step-by-step logging
+    to debug premature termination. This is the complete function.
     """
     print(f"Evaluating on domain: {domain_file}")
 
@@ -158,60 +146,84 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
     elements_histories = []
 
     for episode in range(num_episodes):
-        print(f"  Episode {episode + 1}/{num_episodes}")
+        print(f"\n--- Starting Standalone Eval Episode {episode + 1}/{num_episodes} ---")
 
         # Reset environment
         state_dict, _ = env.reset()
+        initial_boundary_size = len(env.current_boundary)
+        print(f"  [Step 00] Environment reset. Initial boundary size: {initial_boundary_size}")
 
         # Episode tracking
         episode_reward = 0.0
         episode_length = 0
         completed = False
 
-        # Animation tracking for this episode
-        if save_animation and episode == 0:  # Save animation for first episode only
+        if save_animation and episode == 0:
             boundary_history = [env.current_boundary.copy()]
             elements_history = [[]]
 
         while True:
-            # Select action
-            action = agent.select_action(state_dict, deterministic=deterministic)
+            step_num = episode_length + 1
+            try:
+                # --- Pre-Step Logging ---
+                boundary_size_before = len(env.current_boundary)
 
-            # Take step
-            next_state_dict, reward, terminated, truncated, info = env.step(action)
+                # Select action
+                action = agent.select_action(state_dict, deterministic=deterministic)
 
-            # Update tracking
-            episode_reward += reward
-            episode_length += 1
+                # --- Take Step ---
+                # Pass None for global_timestep as it's not relevant in standalone eval
+                next_state_dict, reward, terminated, truncated, info = env.step(action, None)
 
-            # Animation tracking
-            if save_animation and episode == 0:
-                boundary_history.append(env.current_boundary.copy())
-                elements_history.append(env.generated_elements.copy())
+                # --- Post-Step Logging ---
+                boundary_size_after = info.get('boundary_vertices', 0)
+                is_valid_element = info.get('is_valid_element', False)
 
-            # Check completion
-            if terminated:
-                completed = True
+                print(f"  [Step {step_num:02d}] "
+                      f"Boundary: {boundary_size_before} -> {boundary_size_after}, "
+                      f"Valid: {is_valid_element}, "
+                      f"Reward: {reward:+.3f}, "
+                      f"Term: {terminated}, "
+                      f"Trunc: {truncated}")
+
+                # Update tracking
+                episode_reward += reward
+                episode_length += 1
+
+                # Animation tracking
+                if save_animation and episode == 0:
+                    boundary_history.append(env.current_boundary.copy())
+                    elements_history.append(env.generated_elements.copy())
+
+                # Check completion
+                if terminated or truncated:
+                    print(f"--- Episode {episode + 1} Ended at Step {step_num} ---")
+                    print(f"  Reason: {'Terminated' if terminated else 'Truncated'}")
+                    print(f"  Final Info: {info}")
+                    completed = terminated
+                    break
+
+                state_dict = next_state_dict
+
+            except Exception as e:
+                print(f"!!!!!! CRASH DETECTED IN EPISODE {episode + 1} AT STEP {step_num} !!!!!!")
+                print(f"  Error Type: {type(e).__name__}")
+                print(f"  Error Message: {e}")
+                import traceback
+                traceback.print_exc()
+                terminated = True
                 break
-            elif truncated:
-                break
-
-            state_dict = next_state_dict
 
         # Store episode results
         episode_rewards.append(episode_reward)
         episode_lengths.append(episode_length)
         completion_rates.append(1.0 if completed else 0.0)
 
-        # Get final mesh
         final_boundary, final_elements = env.get_current_mesh()
         all_meshes.append((final_boundary, final_elements))
-
-        # Calculate mesh quality
         quality_metrics = env.get_mesh_quality_metrics()
         mesh_qualities.append(quality_metrics)
 
-        # Save animation for first episode
         if save_animation and episode == 0:
             boundary_histories = boundary_history
             elements_histories = elements_history
@@ -221,28 +233,27 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
         'domain_file': domain_file,
         'num_episodes': num_episodes,
         'rewards': {
-            'mean': np.mean(episode_rewards),
-            'std': np.std(episode_rewards),
-            'min': np.min(episode_rewards),
-            'max': np.max(episode_rewards),
+            'mean': np.mean(episode_rewards) if episode_rewards else 0,
+            'std': np.std(episode_rewards) if episode_rewards else 0,
+            'min': np.min(episode_rewards) if episode_rewards else 0,
+            'max': np.max(episode_rewards) if episode_rewards else 0,
             'values': episode_rewards
         },
         'episode_lengths': {
-            'mean': np.mean(episode_lengths),
-            'std': np.std(episode_lengths),
-            'min': np.min(episode_lengths),
-            'max': np.max(episode_lengths),
+            'mean': np.mean(episode_lengths) if episode_lengths else 0,
+            'std': np.std(episode_lengths) if episode_lengths else 0,
+            'min': np.min(episode_lengths) if episode_lengths else 0,
+            'max': np.max(episode_lengths) if episode_lengths else 0,
             'values': episode_lengths
         },
-        'completion_rate': np.mean(completion_rates),
+        'completion_rate': np.mean(completion_rates) if completion_rates else 0,
         'mesh_quality': {}
     }
 
-    # Aggregate mesh quality metrics
-    if mesh_qualities and mesh_qualities[0]:  # Check if we have quality metrics
-        quality_keys = mesh_qualities[0].keys()
+    if mesh_qualities and any(mq for mq in mesh_qualities):
+        quality_keys = next((item.keys() for item in mesh_qualities if item), [])
         for key in quality_keys:
-            values = [mq[key] for mq in mesh_qualities if key in mq]
+            values = [mq[key] for mq in mesh_qualities if mq and key in mq]
             if values:
                 results['mesh_quality'][key] = {
                     'mean': np.mean(values),
@@ -253,28 +264,25 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
                 }
 
     # Save visualizations if requested
-    if save_meshes:
+    if save_meshes and any(all_meshes):
         domain_name = os.path.splitext(domain_file)[0]
         mesh_dir = os.path.join(output_dir, "meshes", domain_name)
         os.makedirs(mesh_dir, exist_ok=True)
 
-        # Save best mesh (highest reward)
-        best_episode = np.argmax(episode_rewards)
-        best_boundary, best_elements = all_meshes[best_episode]
+        if episode_rewards:
+            best_episode = np.argmax(episode_rewards)
+            best_boundary, best_elements = all_meshes[best_episode]
+            mesh_path = os.path.join(mesh_dir, f"best_mesh_episode_{best_episode}.png")
+            plot_mesh(best_boundary, best_elements,
+                      title=f"Best Mesh - {domain_name} (Episode {best_episode})",
+                      save_path=mesh_path)
 
-        mesh_path = os.path.join(mesh_dir, f"best_mesh_episode_{best_episode}.png")
-        plot_mesh(best_boundary, best_elements,
-                  title=f"Best Mesh - {domain_name} (Episode {best_episode})",
-                  save_path=mesh_path)
-
-        # Save worst mesh for comparison
-        worst_episode = np.argmin(episode_rewards)
-        worst_boundary, worst_elements = all_meshes[worst_episode]
-
-        mesh_path = os.path.join(mesh_dir, f"worst_mesh_episode_{worst_episode}.png")
-        plot_mesh(worst_boundary, worst_elements,
-                  title=f"Worst Mesh - {domain_name} (Episode {worst_episode})",
-                  save_path=mesh_path)
+            worst_episode = np.argmin(episode_rewards)
+            worst_boundary, worst_elements = all_meshes[worst_episode]
+            mesh_path = os.path.join(mesh_dir, f"worst_mesh_episode_{worst_episode}.png")
+            plot_mesh(worst_boundary, worst_elements,
+                      title=f"Worst Mesh - {domain_name} (Episode {worst_episode})",
+                      save_path=mesh_path)
 
     # Save animation if requested
     if save_animation and boundary_histories:

@@ -31,7 +31,7 @@ environment:
   alpha_action: 2.0
 
   # Episode settings
-  max_steps: 50
+  max_steps: 100
 
   # Reward function
   v_density: 1.0
@@ -43,7 +43,7 @@ environment:
 # Training Parameters
 training:
   total_timesteps: 100000
-  evaluation_freq: 1000
+  evaluation_freq: 500
   seed: 356
   log_interval: 10
   save_freq: 50000
@@ -58,4 +58,4 @@ paths:
 
 # Domain settings
 domain:
-  training_domain: "T1.txt"
+  training_domain: "T2.txt"

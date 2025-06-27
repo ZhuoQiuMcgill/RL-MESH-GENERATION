@@ -92,7 +92,7 @@ class MeshSACTrainer:
             action = self.agent.select_action(state_dict, deterministic=False)
 
             # Take step in environment
-            next_state_dict, reward, terminated, truncated, info = self.env.step(action)
+            next_state_dict, reward, terminated, truncated, info = self.env.step(action, timestep)
             done = terminated or truncated
 
             # Store transition
@@ -185,16 +185,10 @@ class MeshSACTrainer:
 
     def _evaluate(self, timestep: int, num_episodes: int = 5) -> Dict:
         """
-        Enhanced evaluation with detailed metrics collection and mesh visualization.
-
-        Args:
-            timestep: Current training timestep
-            num_episodes: Number of episodes to evaluate
-
-        Returns:
-            Evaluation results
+        Enhanced evaluation with detailed, step-by-step logging to debug
+        premature termination. This is the complete function.
         """
-        print(f"\nStarting evaluation ({num_episodes} episodes)...")
+        print(f"\n--- Starting Evaluation at Timestep {timestep:,} ({num_episodes} episodes) ---")
         eval_start_time = time.time()
 
         self.agent.set_training_mode(False)
@@ -205,78 +199,103 @@ class MeshSACTrainer:
         mesh_qualities = []
         completion_rates = []
 
-        # Track the best episode for visualization
         best_episode_reward = float('-inf')
         best_episode_boundary = None
         best_episode_elements = None
 
         for episode in range(num_episodes):
+            print(f"  --- Running Eval Episode {episode + 1}/{num_episodes} ---")
             episode_start = time.time()
             state_dict, _ = self.env.reset()
+            initial_boundary_size = len(self.env.current_boundary)
+            print(f"    [Step 00] Env reset. Initial boundary size: {initial_boundary_size}")
+
             episode_reward = 0.0
             episode_length = 0
 
             while True:
-                action = self.agent.select_action(state_dict, deterministic=True)
-                next_state_dict, reward, terminated, truncated, info = self.env.step(action)
+                step_num = episode_length + 1
+                try:
+                    boundary_size_before = len(self.env.current_boundary)
 
-                episode_reward += reward
-                episode_length += 1
+                    action = self.agent.select_action(state_dict, deterministic=True)
 
-                if terminated or truncated:
-                    completion_rates.append(1.0 if terminated else 0.0)
+                    # During evaluation, global_timestep is not relevant, so we pass None.
+                    next_state_dict, reward, terminated, truncated, info = self.env.step(action, None)
 
-                    # Check if this is the best episode for visualization
-                    if episode_reward > best_episode_reward:
-                        best_episode_reward = episode_reward
-                        best_episode_boundary, best_episode_elements = self.env.get_current_mesh()
+                    boundary_size_after = info.get('boundary_vertices', 0)
+                    is_valid_element = info.get('is_valid_element', False)
 
+                    print(f"    [Step {step_num:02d}] "
+                          f"Boundary: {boundary_size_before} -> {boundary_size_after}, "
+                          f"Valid: {is_valid_element}, "
+                          f"Reward: {reward:+.3f}, "
+                          f"Term: {terminated}, "
+                          f"Trunc: {truncated}")
+
+                    episode_reward += reward
+                    episode_length += 1
+
+                    if terminated or truncated:
+                        print(f"  --- Eval Episode {episode + 1} Ended at Step {step_num} ---")
+                        print(f"    Reason: {'Terminated' if terminated else 'Truncated'}")
+                        print(f"    Final Info Dict: {info}")
+                        completion_rates.append(1.0 if terminated else 0.0)
+
+                        if episode_reward > best_episode_reward:
+                            best_episode_reward = episode_reward
+                            best_episode_boundary, best_episode_elements = self.env.get_current_mesh()
+                        break
+
+                    state_dict = next_state_dict
+
+                except Exception as e:
+                    print(f"    !!!!!! CRASH DETECTED IN EVAL EPISODE {episode + 1} AT STEP {step_num} !!!!!!")
+                    print(f"      Error Type: {type(e).__name__}")
+                    print(f"      Error Message: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    terminated = True  # Force stop this episode
                     break
 
-                state_dict = next_state_dict
-
             episode_time = time.time() - episode_start
-
             eval_rewards.append(episode_reward)
             eval_lengths.append(episode_length)
             eval_times.append(episode_time)
-
-            # Get mesh quality metrics
             quality_metrics = self.env.get_mesh_quality_metrics()
             if quality_metrics:
                 mesh_qualities.append(quality_metrics)
 
         self.agent.set_training_mode(True)
-
         eval_total_time = time.time() - eval_start_time
 
-        # Create mesh visualization for the best evaluation episode
-        self._save_evaluation_mesh_visualization(timestep, best_episode_boundary,
-                                                 best_episode_elements, best_episode_reward)
+        if best_episode_boundary is not None:
+            self._save_evaluation_mesh_visualization(timestep, best_episode_boundary,
+                                                     best_episode_elements, best_episode_reward)
 
         results = {
             'timestep': timestep,
-            'mean_reward': np.mean(eval_rewards),
-            'std_reward': np.std(eval_rewards),
-            'min_reward': np.min(eval_rewards),
-            'max_reward': np.max(eval_rewards),
-            'mean_length': np.mean(eval_lengths),
-            'std_length': np.std(eval_lengths),
-            'mean_episode_time': np.mean(eval_times),
-            'completion_rate': np.mean(completion_rates),
+            'mean_reward': np.mean(eval_rewards) if eval_rewards else 0.0,
+            'std_reward': np.std(eval_rewards) if eval_rewards else 0.0,
+            'min_reward': np.min(eval_rewards) if eval_rewards else 0.0,
+            'max_reward': np.max(eval_rewards) if eval_rewards else 0.0,
+            'mean_length': np.mean(eval_lengths) if eval_lengths else 0.0,
+            'std_length': np.std(eval_lengths) if eval_lengths else 0.0,
+            'mean_episode_time': np.mean(eval_times) if eval_times else 0.0,
+            'completion_rate': np.mean(completion_rates) if completion_rates else 0.0,
             'eval_total_time': eval_total_time
         }
 
-        if mesh_qualities:
-            # Calculate average mesh quality metrics
-            quality_keys = mesh_qualities[0].keys()
+        if mesh_qualities and any(mq for mq in mesh_qualities):
+            # Gracefully find the keys from the first valid quality dict
+            quality_keys = next((item.keys() for item in mesh_qualities if item), [])
             for key in quality_keys:
-                values = [q[key] for q in mesh_qualities if key in q]
+                values = [q[key] for q in mesh_qualities if q and key in q]
                 if values:
                     results[f'mean_{key}'] = np.mean(values)
                     results[f'std_{key}'] = np.std(values)
 
-        print(f"Evaluation completed in {eval_total_time:.1f}s")
+        print(f"--- Evaluation at Timestep {timestep:,} Finished in {eval_total_time:.1f}s ---")
         self.eval_count += 1
         return results
 
