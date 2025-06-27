@@ -22,10 +22,7 @@ class SACAgent:
     def __init__(self, config: Dict, device: torch.device = torch.device("cpu")):
         """
         Initialize SAC agent.
-
-        Args:
-            config: Configuration dictionary
-            device: Device to run computations on
+        This version reads the target_entropy from the config file.
         """
         self.config = config
         self.device = device
@@ -48,10 +45,12 @@ class SACAgent:
         else:
             self.alpha = float(config['sac']['alpha'])
             # Automatic entropy tuning
-            self.target_entropy = -3.0  # For 3D action space
+            # CRITICAL CHANGE: Use target_entropy from config, with a fallback for backward compatibility
+            self.target_entropy = float(
+                config['sac'].get('target_entropy', -3.0))  # -3.0 is a reasonable default (action_dim)
             self.log_alpha = torch.tensor(np.log(self.alpha), requires_grad=True, device=device)
             self.alpha_optimizer = optim.Adam([self.log_alpha], lr=self.lr)
-            print(f"Using automatic alpha tuning, initial alpha: {self.alpha}")
+            print(f"Using automatic alpha tuning, initial alpha: {self.alpha}, target entropy: {self.target_entropy}")
 
         # Network parameters (ensure proper types)
         self.n_neighbors = int(config['environment']['n_neighbors'])

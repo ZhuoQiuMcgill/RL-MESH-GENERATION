@@ -226,20 +226,15 @@ class MeshSACTrainer:
                     boundary_size_after = info.get('boundary_vertices', 0)
                     is_valid_element = info.get('is_valid_element', False)
 
-                    print(f"    [Step {step_num:02d}] "
-                          f"Boundary: {boundary_size_before} -> {boundary_size_after}, "
-                          f"Valid: {is_valid_element}, "
-                          f"Reward: {reward:+.3f}, "
-                          f"Term: {terminated}, "
-                          f"Trunc: {truncated}")
+
 
                     episode_reward += reward
                     episode_length += 1
 
                     if terminated or truncated:
-                        print(f"  --- Eval Episode {episode + 1} Ended at Step {step_num} ---")
-                        print(f"    Reason: {'Terminated' if terminated else 'Truncated'}")
-                        print(f"    Final Info Dict: {info}")
+                        # print(f"  --- Eval Episode {episode + 1} Ended at Step {step_num} ---")
+                        # print(f"    Reason: {'Terminated' if terminated else 'Truncated'}")
+                        # print(f"    Final Info Dict: {info}")
                         completion_rates.append(1.0 if terminated else 0.0)
 
                         if episode_reward > best_episode_reward:

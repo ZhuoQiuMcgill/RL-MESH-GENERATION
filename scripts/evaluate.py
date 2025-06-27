@@ -151,7 +151,7 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
         # Reset environment
         state_dict, _ = env.reset()
         initial_boundary_size = len(env.current_boundary)
-        print(f"  [Step 00] Environment reset. Initial boundary size: {initial_boundary_size}")
+        # print(f"  [Step 00] Environment reset. Initial boundary size: {initial_boundary_size}")
 
         # Episode tracking
         episode_reward = 0.0
@@ -179,12 +179,12 @@ def evaluate_single_domain(agent: SACAgent, env: MeshEnv, domain_file: str,
                 boundary_size_after = info.get('boundary_vertices', 0)
                 is_valid_element = info.get('is_valid_element', False)
 
-                print(f"  [Step {step_num:02d}] "
-                      f"Boundary: {boundary_size_before} -> {boundary_size_after}, "
-                      f"Valid: {is_valid_element}, "
-                      f"Reward: {reward:+.3f}, "
-                      f"Term: {terminated}, "
-                      f"Trunc: {truncated}")
+                # print(f"  [Step {step_num:02d}] "
+                #       f"Boundary: {boundary_size_before} -> {boundary_size_after}, "
+                #       f"Valid: {is_valid_element}, "
+                #       f"Reward: {reward:+.3f}, "
+                #       f"Term: {terminated}, "
+                #       f"Trunc: {truncated}")
 
                 # Update tracking
                 episode_reward += reward
