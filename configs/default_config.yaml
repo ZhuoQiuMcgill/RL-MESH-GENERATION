@@ -7,7 +7,7 @@ sac:
   buffer_size: 1000000
   batch_size: 256
   tau: 0.005
-  alpha: 0.2
+  alpha: 1.0
   gradient_steps: 1
   polyak: 0.995
   # Static alpha mode - set to true to disable automatic alpha tuning
@@ -44,9 +44,9 @@ environment:
 # Training Parameters
 training:
   total_timesteps: 100000
-  evaluation_freq: 500
+  evaluation_freq: 2500
   seed: 356
-  log_interval: 5
+  log_interval: 1
   save_freq: 50000
 
 # Paths

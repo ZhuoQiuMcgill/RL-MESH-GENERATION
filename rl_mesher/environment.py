@@ -14,7 +14,7 @@ from .utils.geometry import (
 class MeshEnv(Env):
     """
     Mesh generation environment implementing Gymnasium interface.
-    This is the final, fully corrected version based on the user's file.
+    This version includes the definitive fix for the out-of-boundary edge generation issue.
     """
 
     def __init__(self, config: Dict):
@@ -76,59 +76,40 @@ class MeshEnv(Env):
         return observation, info
 
     def _get_observation(self) -> Dict:
-        """
-        Get current observation as a dictionary of tensors in ABSOLUTE coordinates.
-        This version fixes the bug that zeroed out the reference vertex, while preserving
-        the original state representation the agent was designed for.
-        """
         if self.current_boundary is None or len(self.current_boundary) < 3:
             return self._get_default_observation()
-
         try:
             ref_idx = calculate_reference_vertex(self.current_boundary, self.nrv)
             state_components = get_state_components(
                 self.current_boundary, ref_idx, self.n_neighbors,
                 self.n_fan_points, self.beta_obs
             )
-
-            # --- BUG FIX ---
-            # Use the actual reference vertex, not a zero vector.
             ref_vertex = torch.tensor(state_components['ref_vertex'], dtype=torch.float32)
-
-            # Pad left neighbors safely
             left_neighbors = torch.zeros((self.n_neighbors, 2), dtype=torch.float32)
             if 'left_neighbors' in state_components and len(state_components['left_neighbors']) > 0:
                 n_left = min(len(state_components['left_neighbors']), self.n_neighbors)
                 left_neighbors_data = np.array(state_components['left_neighbors'][:n_left])
                 left_neighbors[:n_left] = torch.from_numpy(left_neighbors_data)
-
-            # Pad right neighbors safely
             right_neighbors = torch.zeros((self.n_neighbors, 2), dtype=torch.float32)
             if 'right_neighbors' in state_components and len(state_components['right_neighbors']) > 0:
                 n_right = min(len(state_components['right_neighbors']), self.n_neighbors)
                 right_neighbors_data = np.array(state_components['right_neighbors'][:n_right])
                 right_neighbors[:n_right] = torch.from_numpy(right_neighbors_data)
-
-            # Pad fan points safely
             fan_points = torch.zeros((self.n_fan_points, 2), dtype=torch.float32)
             if 'fan_points' in state_components and len(state_components['fan_points']) > 0:
                 n_fan = min(len(state_components['fan_points']), self.n_fan_points)
                 fan_points_data = np.array(state_components['fan_points'][:n_fan])
                 fan_points[:n_fan] = torch.from_numpy(fan_points_data)
-
             return {
-                'ref_vertex': ref_vertex,
-                'left_neighbors': left_neighbors,
-                'right_neighbors': right_neighbors,
-                'fan_points': fan_points,
+                'ref_vertex': ref_vertex, 'left_neighbors': left_neighbors,
+                'right_neighbors': right_neighbors, 'fan_points': fan_points,
                 'area_ratio': torch.tensor([self.current_area_ratio], dtype=torch.float32)
             }
         except Exception as e:
-            print(f"Error during get_observation: {e}")  # Added for debugging
+            print(f"Error during get_observation: {e}")
             return self._get_default_observation()
 
     def _get_default_observation(self) -> Dict:
-        """Return a default (zero) observation."""
         return {
             'ref_vertex': torch.zeros(2, dtype=torch.float32),
             'left_neighbors': torch.zeros((self.n_neighbors, 2), dtype=torch.float32),
@@ -137,11 +118,72 @@ class MeshEnv(Env):
             'area_ratio': torch.tensor([1.0], dtype=torch.float32)
         }
 
+    # ==============================================================================
+    #  CRITICAL FIX: The _execute_action function is replaced with a version that
+    #  includes robust checks for out-of-boundary edges for BOTH action types.
+    # ==============================================================================
+    def _execute_action(self, action: np.ndarray, state_components: Dict, action_type: int, ref_idx: int) -> Tuple[
+        np.ndarray, bool, np.ndarray]:
+        n_boundary = len(self.current_boundary)
+        new_boundary = None
+        element_vertices = None
+
+        if action_type == 0:
+            # TYPE 0: CONNECT action (Shrink-by-2).
+            if n_boundary < 5: return np.array([]), False, self.current_boundary
+
+            left_idx = (ref_idx - 1 + n_boundary) % n_boundary
+            right_idx = (ref_idx + 1) % n_boundary
+            right_right_idx = (ref_idx + 2) % n_boundary
+
+            if len(set([left_idx, ref_idx, right_idx, right_right_idx])) < 4:
+                return np.array([]), False, self.current_boundary
+
+            v_left = self.current_boundary[left_idx]
+            v_right_right = self.current_boundary[right_right_idx]
+
+            # Check if the new connecting edge is outside the boundary
+            midpoint_of_new_edge = (v_left + v_right_right) / 2.0
+            if not self._is_point_inside_boundary(midpoint_of_new_edge):
+                return np.array([[-2, -2]]), False, self.current_boundary  # Invalid topological change marker
+
+            element_vertices = np.array([self.current_boundary[ref_idx], self.current_boundary[right_idx],
+                                         v_right_right, v_left])
+            keep_mask = np.ones(n_boundary, dtype=bool)
+            keep_mask[ref_idx], keep_mask[right_idx] = False, False
+            new_boundary = self.current_boundary[keep_mask]
+        else:
+            # TYPE 1: INSERT action.
+            if n_boundary < 3: return np.array([]), False, self.current_boundary
+
+            ref_vertex = state_components['ref_vertex']
+            v_left = state_components['left_neighbors'][0]
+            v_right = state_components['right_neighbors'][0]
+
+            new_vertex = generate_action_coordinates(action, state_components['ref_vertex'],
+                                                     state_components['reference_direction'], self.alpha_action,
+                                                     state_components['base_length'])
+
+            # Check 1: Point must be inside
+            if not self._is_point_inside_boundary(new_vertex):
+                return np.array([[-1, -1]]), False, self.current_boundary  # Out-of-boundary point marker
+
+            # Check 2: New edges formed by the point must also be inside
+            midpoint_edge1 = (v_left + new_vertex) / 2.0
+            midpoint_edge2 = (v_right + new_vertex) / 2.0
+            if not self._is_point_inside_boundary(midpoint_edge1) or not self._is_point_inside_boundary(midpoint_edge2):
+                return np.array([[-2, -2]]), False, self.current_boundary  # Invalid topological change marker
+
+            element_vertices = np.array([ref_vertex, v_right, new_vertex, v_left])
+            new_boundary = self.current_boundary.copy()
+            new_boundary[ref_idx] = new_vertex
+
+        is_valid = self._validate_element(element_vertices)
+        if not is_valid or new_boundary is None or len(new_boundary) < 3:
+            return element_vertices, False, self.current_boundary
+        return element_vertices, True, new_boundary
+
     def step(self, action: np.ndarray, global_timestep: Optional[int] = None) -> Tuple[Dict, float, bool, bool, Dict]:
-        """
-        Execute one environment step with a re-balanced terminal reward to
-        prevent policy collapse into 'shortcut' solutions.
-        """
         self.step_count += 1
         if self.step_count >= self.max_steps:
             observation = self._get_observation()
@@ -169,72 +211,40 @@ class MeshEnv(Env):
 
         terminated = False
         if is_valid:
+            if action_type == 1: reward += 0.2
             self.generated_elements.append(element_vertices)
             self.current_boundary = new_boundary
             self.current_area_ratio = calculate_polygon_area(
                 self.current_boundary) / self.original_area if self.original_area > 0 else 0.0
             self.episode_reward += reward
-
             if len(self.current_boundary) <= 4:
-                if len(self.current_boundary) == 4:
-                    self.generated_elements.append(self.current_boundary.copy())
                 terminated = True
-
-                # ==============================================================================
-                #  CRITICAL FIX: Reduce the terminal reward to prevent reward hacking.
-                #  A smaller bonus encourages the agent to seek rewards from quality
-                #  generation rather than just ending the episode quickly.
-                # ==============================================================================
-                reward += 2.0
+                if len(self.current_boundary) == 4: self.generated_elements.append(self.current_boundary.copy())
+                total_meshed_area = sum([calculate_polygon_area(elem) for elem in self.generated_elements])
+                completion_ratio = total_meshed_area / self.original_area if self.original_area > 0 else 0
+                if completion_ratio >= 0.80:
+                    reward += 2.0
+                else:
+                    reward -= 10.0
         else:
-            # Check for the special 'out-of-bounds' marker for a stronger penalty.
-            if element_vertices is not None and np.array_equal(element_vertices, np.array([[-1, -1]])):
-                reward = -1.0
+            if element_vertices is not None:
+                if np.array_equal(element_vertices, np.array([[-1, -1]])):
+                    reward = -1.0
+                elif np.array_equal(element_vertices, np.array([[-2, -2]])):
+                    reward = -1.0
+                else:
+                    reward = -0.1
             else:
                 reward = -0.1
 
         observation = self._get_observation()
         info = self._get_info()
         info.update({
-            'is_valid_element': is_valid,
-            'element_count': len(self.generated_elements),
+            'is_valid_element': is_valid, 'element_count': len(self.generated_elements),
             'boundary_vertices': len(self.current_boundary),
             'termination_reason': 'boundary_complete' if terminated else None
         })
         return observation, reward, terminated, False, info
-
-    def _execute_action(self, action: np.ndarray, state_components: Dict, action_type: int, ref_idx: int) -> Tuple[
-        np.ndarray, bool, np.ndarray]:
-        n_boundary = len(self.current_boundary)
-        if action_type == 0:
-            if n_boundary < 5: return np.array([]), False, self.current_boundary
-            left_idx, right_idx, right_right_idx = (ref_idx - 1 + n_boundary) % n_boundary, (
-                    ref_idx + 1) % n_boundary, (ref_idx + 2) % n_boundary
-            if len(set([left_idx, ref_idx, right_idx, right_right_idx])) < 4: return np.array(
-                []), False, self.current_boundary
-            element_vertices = np.array([self.current_boundary[ref_idx], self.current_boundary[right_idx],
-                                         self.current_boundary[right_right_idx], self.current_boundary[left_idx]])
-            keep_mask = np.ones(n_boundary, dtype=bool);
-            keep_mask[ref_idx], keep_mask[right_idx] = False, False
-            new_boundary = self.current_boundary[keep_mask]
-        else:
-            if n_boundary < 3: return np.array([]), False, self.current_boundary
-            new_vertex = generate_action_coordinates(action, state_components['ref_vertex'],
-                                                     state_components['reference_direction'], self.alpha_action,
-                                                     state_components['base_length'])
-            if not self._is_point_inside_boundary(new_vertex):
-                # Return a special marker to indicate an 'out-of-bounds' failure.
-                return np.array([[-1, -1]]), False, self.current_boundary
-            element_vertices = np.array(
-                [state_components['ref_vertex'], state_components['right_neighbors'][0], new_vertex,
-                 state_components['left_neighbors'][0]])
-            new_boundary = self.current_boundary.copy()
-            new_boundary[ref_idx] = new_vertex
-
-        is_valid = self._validate_element(element_vertices)
-        if not is_valid or new_boundary is None or len(
-                new_boundary) < 3: return element_vertices, False, self.current_boundary
-        return element_vertices, True, new_boundary
 
     def _is_point_inside_boundary(self, point: np.ndarray) -> bool:
         x, y = point;
@@ -260,11 +270,9 @@ class MeshEnv(Env):
                 if np.linalg.norm(element_vertices[i] - element_vertices[j]) < 1e-6: return False
         return True
 
-    def _calculate_reward(self, element_vertices: np.ndarray, is_valid: bool) -> float:
+    def _calculate_reward(self, element_vertices: np.ndarray, is_valid: bool, state_components: Dict) -> float:
         if not is_valid: return -0.5
         try:
-            state_comps_for_reward = get_state_components(self.current_boundary, 0, self.n_neighbors, self.n_fan_points,
-                                                          self.beta_obs)
             eta_e, eta_b, mu_t = calculate_reward_components(element_vertices, self.current_boundary,
                                                              self.current_boundary, self.current_area_ratio,
                                                              self.v_density, self.M_angle)
@@ -278,8 +286,7 @@ class MeshEnv(Env):
                 self.current_boundary) >= 3 else 0,
             'boundary_vertices': len(self.current_boundary) if self.current_boundary is not None else 0,
             'generated_elements': len(self.generated_elements), 'episode_reward': self.episode_reward,
-            'step_count': self.step_count, 'area_ratio': self.current_area_ratio
-        }
+            'step_count': self.step_count, 'area_ratio': self.current_area_ratio}
 
     def get_current_mesh(self) -> Tuple[np.ndarray, List[np.ndarray]]:
         return self.current_boundary.copy(), self.generated_elements.copy()
@@ -301,8 +308,6 @@ class MeshEnv(Env):
 
 
 class MultiDomainMeshEnv(MeshEnv):
-    """An extended environment that handles multiple domains for training."""
-
     def __init__(self, config: Dict, domain_files: List[str]):
         self.domain_files = domain_files
         self.current_domain_idx = 0
@@ -315,7 +320,5 @@ class MultiDomainMeshEnv(MeshEnv):
         return super().reset(seed, options)
 
     def get_current_domain_info(self) -> Dict:
-        return {
-            'domain_file': self.domain_files[self.current_domain_idx],
-            'domain_index': self.current_domain_idx, 'total_domains': len(self.domain_files)
-        }
+        return {'domain_file': self.domain_files[self.current_domain_idx],
+                'domain_index': self.current_domain_idx, 'total_domains': len(self.domain_files)}
