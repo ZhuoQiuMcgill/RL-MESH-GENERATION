@@ -65,6 +65,10 @@ class MeshSACTrainer:
         os.makedirs(self.logs_dir, exist_ok=True)
         os.makedirs(self.figures_dir, exist_ok=True)
 
+        # evaluation scheduling
+        self.min_eval_interval = int(self.config['training'].get('min_eval_interval', 500))
+        self.last_eval_step = 0
+
     def train(self) -> Dict:
         """
         Enhanced training method with comprehensive monitoring.
@@ -147,9 +151,10 @@ class MeshSACTrainer:
             else:
                 state_dict = next_state_dict
 
-            # Evaluation
-            if timestep % self.eval_freq == 0:
+            # Evaluation (event-driven + periodic)
+            if self._should_evaluate(timestep, done, terminated):
                 eval_results = self._evaluate(timestep)
+                self.last_eval_step = timestep
                 self.evaluation_results.append(eval_results)
                 self._log_evaluation(timestep, eval_results)
 
@@ -226,8 +231,6 @@ class MeshSACTrainer:
                     boundary_size_after = info.get('boundary_vertices', 0)
                     is_valid_element = info.get('is_valid_element', False)
 
-
-
                     episode_reward += reward
                     episode_length += 1
 
@@ -293,6 +296,28 @@ class MeshSACTrainer:
         print(f"--- Evaluation at Timestep {timestep:,} Finished in {eval_total_time:.1f}s ---")
         self.eval_count += 1
         return results
+
+    def _should_evaluate(self,
+                         timestep: int,
+                         episode_done: bool,
+                         terminated: bool) -> bool:
+        """
+        Decide whether to trigger evaluation.
+
+        Rules
+        -----
+        1) Always evaluate after a completed mesh (terminated==True)
+           *and* at least `min_eval_interval` steps have passed since
+           the last evaluation.
+        2) Otherwise fall back to periodic evaluation every `eval_freq`
+           steps.
+        """
+        # Event-driven trigger – completed mesh
+        if terminated and (timestep - self.last_eval_step) >= self.min_eval_interval:
+            return True
+
+        # Periodic trigger
+        return (timestep - self.last_eval_step) >= self.eval_freq
 
     def _save_evaluation_mesh_visualization(self, timestep: int, boundary: np.ndarray,
                                             elements: List[np.ndarray], reward: float):

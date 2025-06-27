@@ -6,7 +6,7 @@ sac:
   learning_rate: 3e-4  # Original uses 3e-4
   discount_factor: 0.5  # Original uses 0.5 instead of 0.99
   buffer_size: 1000000
-  batch_size: 64  # Original uses 100 instead of 256
+  batch_size: 256  # Original uses 100 instead of 256
   tau: 0.005
   alpha: 10.0
   gradient_steps: 1
@@ -39,7 +39,7 @@ environment:
 
   # Reward function
   reward_method: 10  # Original author's reward method 10
-  v_density: 1.0
+  v_density: 1.5
   M_angle: 60.0
 
   # Legacy parameters (kept for compatibility)
@@ -53,7 +53,7 @@ environment:
 training:
   total_timesteps: 800000
   evaluation_freq: 1000  # Original evaluates more frequently
-  seed: 2887
+  seed: 369
   log_interval: 10  # Log every 10 episodes
   save_freq: 50000
 
@@ -67,4 +67,4 @@ paths:
 
 # Domain settings (original author tested on multiple domains)
 domain:
-  training_domain: "T4.txt"  # Original author's primary training domain
+  training_domain: "T1.txt"  # Original author's primary training domain

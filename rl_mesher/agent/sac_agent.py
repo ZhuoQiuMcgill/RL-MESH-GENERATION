@@ -1,10 +1,9 @@
+import os
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-import numpy as np
-from typing import Dict, Tuple, Optional, List, Union
-import os
+from typing import Dict, Tuple, Optional
 from collections import defaultdict
 
 from ..networks import MeshActor, MeshCritic, SimpleMeshActor, SimpleMeshCritic, soft_update_target_network
@@ -19,7 +18,7 @@ class SACAgent:
 
     def __init__(self, config: Dict, device: torch.device = torch.device("cpu")):
         """
-        Initialize SAC agent.
+        Initialize SAC agent with dimension validation.
         """
         self.config = config
         self.device = device
@@ -65,18 +64,23 @@ class SACAgent:
         self._build_optimizers()
 
         # Initialize replay buffer (simplified for flat arrays)
-        self.replay_buffer = ReplayBuffer(
-            capacity=self.buffer_size,
-            state_shape=(self.state_dim,),
-            action_dim=self.action_dim,
-            device=device
-        )
+        self._initialize_replay_buffer()
 
         # Training statistics
         self.training_stats = defaultdict(list)
         self.total_updates = 0
 
         print(f"SAC Agent initialized with state_dim={self.state_dim}, action_dim={self.action_dim}")
+
+    def _initialize_replay_buffer(self):
+        """Initialize replay buffer with correct dimensions."""
+        self.replay_buffer = ReplayBuffer(
+            capacity=self.buffer_size,
+            state_shape=(self.state_dim,),
+            action_dim=self.action_dim,
+            device=self.device
+        )
+        print(f"Replay buffer initialized with state_shape=({self.state_dim},)")
 
     def _build_networks(self):
         """Build actor and critic networks."""
@@ -95,34 +99,31 @@ class SACAgent:
                 num_layers=num_layers
             ).to(self.device)
 
-            # Double critic for SAC
-            self.critic1 = SimpleMeshCritic(
+            # Double critic for SAC - using Critic directly since SimpleMeshCritic only creates single critic
+            from ..networks import Critic
+            self.critic1 = Critic(
                 state_dim=self.state_dim,
                 action_dim=self.action_dim,
-                hidden_dim=hidden_dim,
-                num_layers=num_layers
+                hidden_layers=self.hidden_layers
             ).to(self.device)
 
-            self.critic2 = SimpleMeshCritic(
+            self.critic2 = Critic(
                 state_dim=self.state_dim,
                 action_dim=self.action_dim,
-                hidden_dim=hidden_dim,
-                num_layers=num_layers
+                hidden_layers=self.hidden_layers
             ).to(self.device)
 
             # Target critics
-            self.target_critic1 = SimpleMeshCritic(
+            self.target_critic1 = Critic(
                 state_dim=self.state_dim,
                 action_dim=self.action_dim,
-                hidden_dim=hidden_dim,
-                num_layers=num_layers
+                hidden_layers=self.hidden_layers
             ).to(self.device)
 
-            self.target_critic2 = SimpleMeshCritic(
+            self.target_critic2 = Critic(
                 state_dim=self.state_dim,
                 action_dim=self.action_dim,
-                hidden_dim=hidden_dim,
-                num_layers=num_layers
+                hidden_layers=self.hidden_layers
             ).to(self.device)
 
         else:
@@ -164,106 +165,102 @@ class SACAgent:
         else:
             self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=self.lr)
 
-    def select_action(self, state: Union[np.ndarray, torch.Tensor], deterministic: bool = False) -> np.ndarray:
+    def select_action(self, state: np.ndarray, deterministic: bool = False) -> np.ndarray:
         """
-        Select action based on current policy.
+        Select action using current policy.
 
         Args:
-            state: Current state (flat array)
-            deterministic: Whether to use deterministic action
+            state: Current state observation (flat array)
+            deterministic: Whether to use deterministic action selection (for evaluation)
 
         Returns:
-            Action array
+            Selected action as a 1D numpy array
         """
         with torch.no_grad():
-            # Convert to tensor if needed
-            if isinstance(state, np.ndarray):
-                state = torch.tensor(state, dtype=torch.float32, device=self.device)
+            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
-            # Ensure correct shape
-            if state.dim() == 1:
-                state = state.unsqueeze(0)
+            if deterministic:
+                action_tensor = self.actor.get_action(state_tensor, deterministic=True)
+            else:
+                action_tensor, _ = self.actor.sample(state_tensor)
 
-            # Get action from actor
-            action = self.actor.get_action(state, deterministic)
-
-            return action.cpu().numpy().flatten()
+            return action_tensor.cpu().numpy().flatten()
 
     def store_transition(self, state: np.ndarray, action: np.ndarray, reward: float,
                          next_state: np.ndarray, done: bool):
         """
-        Store transition in replay buffer.
+        Store transition in replay buffer with dimension validation.
 
         Args:
-            state: Current state (flat array)
+            state: Current state
             action: Action taken
             reward: Reward received
-            next_state: Next state (flat array)
-            done: Whether episode ended
+            next_state: Next state
+            done: Whether episode is done
         """
-        # Convert to tensors
-        state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
-        action_tensor = torch.tensor(action, dtype=torch.float32, device=self.device)
-        next_state_tensor = torch.tensor(next_state, dtype=torch.float32, device=self.device)
+        # Validate state dimensions
+        if len(state) != self.state_dim:
+            raise ValueError(f"State dimension mismatch. Expected {self.state_dim}, got {len(state)}")
 
+        if len(next_state) != self.state_dim:
+            raise ValueError(f"Next state dimension mismatch. Expected {self.state_dim}, got {len(next_state)}")
+
+        # Convert to tensors
+        state_tensor = torch.FloatTensor(state).to(self.device)
+        action_tensor = torch.FloatTensor(action).to(self.device)
+        next_state_tensor = torch.FloatTensor(next_state).to(self.device)
+
+        # Add to buffer
         self.replay_buffer.add(state_tensor, action_tensor, reward, next_state_tensor, done)
 
-    def update(self) -> Dict:
-        """
-        Update actor and critic networks.
-
-        Returns:
-            Dictionary of training statistics
-        """
+    def update_networks(self) -> Dict:
+        """Update networks using SAC algorithm."""
         if not self.replay_buffer.is_ready(self.batch_size):
             return {}
 
-        stats = {}
+        # Sample batch from replay buffer
+        states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.batch_size)
 
-        for _ in range(self.gradient_steps):
-            # Sample batch from replay buffer
-            states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.batch_size)
+        # Update critics
+        critic_loss1, critic_loss2 = self._update_critics(states, actions, rewards, next_states, dones)
 
-            # Update critics
-            critic_loss = self._update_critics(states, actions, rewards, next_states, dones)
-            stats['critic_loss'] = critic_loss
+        # Update actor
+        actor_loss = self._update_actor(states)
 
-            # Update actor
-            actor_loss = self._update_actor(states)
-            stats['actor_loss'] = actor_loss
+        # Update target networks
+        self._update_target_networks()
 
-            # Update alpha (temperature parameter) only if not using static alpha
-            if not self.use_static_alpha:
-                alpha_loss = self._update_alpha(states)
-                stats['alpha_loss'] = alpha_loss
-            else:
-                stats['alpha_loss'] = 0.0
+        # Update alpha if using automatic tuning
+        alpha_loss = 0.0
+        if not self.use_static_alpha:
+            alpha_loss = self._update_alpha(states)
 
-            stats['alpha'] = self.alpha
-
-            # Update target networks
-            use_simple = self.config.get('use_simple_networks', True)
-            if use_simple:
-                soft_update_target_network(self.target_critic1, self.critic1, self.tau)
-                soft_update_target_network(self.target_critic2, self.critic2, self.tau)
-            else:
-                soft_update_target_network(self.target_critic, self.critic, self.tau)
-
-            self.total_updates += 1
+        self.total_updates += 1
 
         # Store training statistics
+        stats = {
+            'critic_loss1': critic_loss1.item(),
+            'critic_loss2': critic_loss2.item(),
+            'actor_loss': actor_loss.item(),
+            'alpha_loss': alpha_loss.item() if isinstance(alpha_loss, torch.Tensor) else alpha_loss,
+            'alpha': self.alpha,
+            'total_updates': self.total_updates
+        }
+
         for key, value in stats.items():
             self.training_stats[key].append(value)
 
         return stats
 
-    def _update_critics(self, states, actions, rewards, next_states, dones) -> float:
+    def update(self) -> Dict:
+        """Update method expected by trainer (alias for update_networks)."""
+        return self.update_networks()
+
+    def _update_critics(self, states, actions, rewards, next_states, dones):
         """Update critic networks."""
         with torch.no_grad():
-            # Sample next actions from current policy
             next_actions, next_log_probs = self.actor.sample(next_states)
 
-            # Compute target Q-values
             use_simple = self.config.get('use_simple_networks', True)
             if use_simple:
                 target_q1 = self.target_critic1(next_states, next_actions)
@@ -275,82 +272,86 @@ class SACAgent:
 
             target_q = rewards + (1 - dones.float()) * self.gamma * target_q
 
-        # Get current Q-values
+        # Update critic networks
         if use_simple:
             current_q1 = self.critic1(states, actions)
             current_q2 = self.critic2(states, actions)
 
-            # Compute critic losses
-            critic1_loss = F.mse_loss(current_q1, target_q)
-            critic2_loss = F.mse_loss(current_q2, target_q)
+            critic_loss1 = nn.MSELoss()(current_q1, target_q)
+            critic_loss2 = nn.MSELoss()(current_q2, target_q)
 
-            # Update critics
             self.critic1_optimizer.zero_grad()
-            critic1_loss.backward()
+            critic_loss1.backward()
             self.critic1_optimizer.step()
 
             self.critic2_optimizer.zero_grad()
-            critic2_loss.backward()
+            critic_loss2.backward()
             self.critic2_optimizer.step()
 
-            critic_loss = critic1_loss.item() + critic2_loss.item()
+            return critic_loss1, critic_loss2
         else:
             current_q1, current_q2 = self.critic(states, actions)
-            critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
+
+            critic_loss1 = nn.MSELoss()(current_q1, target_q)
+            critic_loss2 = nn.MSELoss()(current_q2, target_q)
+
+            total_critic_loss = critic_loss1 + critic_loss2
 
             self.critic_optimizer.zero_grad()
-            critic_loss.backward()
+            total_critic_loss.backward()
             self.critic_optimizer.step()
 
-            critic_loss = critic_loss.item()
+            return critic_loss1, critic_loss2
 
-        return critic_loss
-
-    def _update_actor(self, states) -> float:
+    def _update_actor(self, states):
         """Update actor network."""
-        # Sample actions from current policy
         actions, log_probs = self.actor.sample(states)
 
-        # Compute Q-values for sampled actions
         use_simple = self.config.get('use_simple_networks', True)
         if use_simple:
             q1 = self.critic1(states, actions)
             q2 = self.critic2(states, actions)
-            q_value = torch.min(q1, q2)
+            q = torch.min(q1, q2)
         else:
             q1, q2 = self.critic(states, actions)
-            q_value = torch.min(q1, q2)
+            q = torch.min(q1, q2)
 
-        # Actor loss (maximize Q-value and entropy)
-        actor_loss = (self.alpha * log_probs - q_value).mean()
+        actor_loss = (self.alpha * log_probs - q).mean()
 
-        # Update actor
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        return actor_loss.item()
+        return actor_loss
 
-    def _update_alpha(self, states) -> float:
-        """Update alpha (temperature parameter) - only called when not using static alpha."""
+    def _update_target_networks(self):
+        """Soft update target networks."""
+        use_simple = self.config.get('use_simple_networks', True)
+        if use_simple:
+            self._soft_update(self.target_critic1, self.critic1)
+            self._soft_update(self.target_critic2, self.critic2)
+        else:
+            self._soft_update(self.target_critic, self.critic)
+
+    def _soft_update(self, target_network, source_network):
+        """Perform soft update of target network."""
+        for target_param, source_param in zip(target_network.parameters(), source_network.parameters()):
+            target_param.data.copy_(self.tau * source_param.data + (1.0 - self.tau) * target_param.data)
+
+    def _update_alpha(self, states):
+        """Update temperature parameter alpha."""
         if self.use_static_alpha:
             return 0.0
 
-        with torch.no_grad():
-            _, log_probs = self.actor.sample(states)
+        actions, log_probs = self.actor.sample(states)
+        alpha_loss = -(self.log_alpha * (log_probs + self.target_entropy).detach()).mean()
 
-        # Alpha loss
-        alpha_loss = -(self.log_alpha * (log_probs + self.target_entropy)).mean()
-
-        # Update alpha
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
         self.alpha_optimizer.step()
 
-        # Update alpha value
         self.alpha = self.log_alpha.exp().item()
-
-        return alpha_loss.item()
+        return alpha_loss
 
     def save(self, filepath: str):
         """
@@ -366,10 +367,10 @@ class SACAgent:
             'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
             'total_updates': self.total_updates,
             'config': self.config,
-            'use_static_alpha': self.use_static_alpha,
-            'alpha': self.alpha,
             'state_dim': self.state_dim,
-            'action_dim': self.action_dim
+            'action_dim': self.action_dim,
+            'use_static_alpha': self.use_static_alpha,
+            'alpha': self.alpha
         }
 
         if use_simple:
@@ -388,53 +389,88 @@ class SACAgent:
                 'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
             })
 
-        # Only save alpha-related parameters if using automatic tuning
         if not self.use_static_alpha:
-            checkpoint['alpha_optimizer_state_dict'] = self.alpha_optimizer.state_dict()
-            checkpoint['log_alpha'] = self.log_alpha
+            checkpoint.update({
+                'log_alpha': self.log_alpha,
+                'alpha_optimizer_state_dict': self.alpha_optimizer.state_dict(),
+            })
 
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         torch.save(checkpoint, filepath)
 
-    def load(self, filepath: str):
+    def load(self, filepath: str, force_reload: bool = False):
         """
-        Load agent state from file.
+        Load agent state from file with dimension validation.
 
         Args:
-            filepath: Path to save file
+            filepath: Path to load file
+            force_reload: If True, skip dimension validation and reinitialize networks
         """
         checkpoint = torch.load(filepath, map_location=self.device)
 
-        self.actor.load_state_dict(checkpoint['actor_state_dict'])
-        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
-        self.total_updates = checkpoint['total_updates']
+        # Check dimension compatibility
+        saved_state_dim = checkpoint.get('state_dim', None)
+        saved_action_dim = checkpoint.get('action_dim', None)
 
-        use_simple = self.config.get('use_simple_networks', True)
-        if use_simple:
-            self.critic1.load_state_dict(checkpoint['critic1_state_dict'])
-            self.critic2.load_state_dict(checkpoint['critic2_state_dict'])
-            self.target_critic1.load_state_dict(checkpoint['target_critic1_state_dict'])
-            self.target_critic2.load_state_dict(checkpoint['target_critic2_state_dict'])
-            self.critic1_optimizer.load_state_dict(checkpoint['critic1_optimizer_state_dict'])
-            self.critic2_optimizer.load_state_dict(checkpoint['critic2_optimizer_state_dict'])
-        else:
-            self.critic.load_state_dict(checkpoint['critic_state_dict'])
-            self.target_critic.load_state_dict(checkpoint['target_critic_state_dict'])
-            self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        if saved_state_dim is not None and saved_action_dim is not None:
+            if saved_state_dim != self.state_dim or saved_action_dim != self.action_dim:
+                if not force_reload:
+                    print(
+                        f"Warning: Dimension mismatch detected. Saved: state_dim={saved_state_dim}, action_dim={saved_action_dim}")
+                    print(f"Current: state_dim={self.state_dim}, action_dim={self.action_dim}")
+                    print("Skipping model loading due to dimension mismatch. Use force_reload=True to override.")
+                    return
+                else:
+                    print(f"Warning: Dimension mismatch detected, but force_reload=True")
+                    print(f"Proceeding with loading, networks may be incompatible")
 
-        # Load alpha configuration
-        saved_use_static = checkpoint.get('use_static_alpha', False)
-        if saved_use_static and self.use_static_alpha:
-            # Both using static alpha
-            self.alpha = checkpoint.get('alpha', self.alpha)
-        elif not saved_use_static and not self.use_static_alpha:
-            # Both using automatic alpha tuning
-            self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
-            self.log_alpha = checkpoint['log_alpha']
-            self.alpha = self.log_alpha.exp().item()
-        else:
-            # Configuration mismatch - use current configuration
-            print(f"Warning: Alpha configuration mismatch. Using current config: static={self.use_static_alpha}")
+        # Load networks
+        try:
+            self.actor.load_state_dict(checkpoint['actor_state_dict'])
+            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+            self.total_updates = checkpoint['total_updates']
+
+            use_simple = self.config.get('use_simple_networks', True)
+            if use_simple:
+                self.critic1.load_state_dict(checkpoint['critic1_state_dict'])
+                self.critic2.load_state_dict(checkpoint['critic2_state_dict'])
+                self.target_critic1.load_state_dict(checkpoint['target_critic1_state_dict'])
+                self.target_critic2.load_state_dict(checkpoint['target_critic2_state_dict'])
+                self.critic1_optimizer.load_state_dict(checkpoint['critic1_optimizer_state_dict'])
+                self.critic2_optimizer.load_state_dict(checkpoint['critic2_optimizer_state_dict'])
+            else:
+                self.critic.load_state_dict(checkpoint['critic_state_dict'])
+                self.target_critic.load_state_dict(checkpoint['target_critic_state_dict'])
+                self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+
+            # Load alpha configuration
+            saved_use_static = checkpoint.get('use_static_alpha', False)
+            if saved_use_static and self.use_static_alpha:
+                # Both using static alpha
+                self.alpha = checkpoint.get('alpha', self.alpha)
+            elif not saved_use_static and not self.use_static_alpha:
+                # Both using automatic alpha tuning
+                self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
+                self.log_alpha = checkpoint['log_alpha']
+                self.alpha = self.log_alpha.exp().item()
+            else:
+                # Configuration mismatch - use current configuration
+                print(f"Warning: Alpha configuration mismatch. Using current config: static={self.use_static_alpha}")
+
+            print(f"Successfully loaded model from {filepath}")
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            if not force_reload:
+                raise
+
+    def clear_replay_buffer(self):
+        """Clear replay buffer and reinitialize with correct dimensions."""
+        self._initialize_replay_buffer()
+        print("Replay buffer cleared and reinitialized")
+
+    def clear_replay_buffer(self):
+        """Clear replay buffer and reinitialize with correct dimensions."""
+        self._initialize_replay_buffer()
+        print("Replay buffer cleared and reinitialized")
 
     def get_training_stats(self) -> Dict:
         """Get training statistics."""
