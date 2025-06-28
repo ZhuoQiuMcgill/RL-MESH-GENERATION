@@ -1,63 +1,63 @@
 # Configuration file for RL-Mesh-Generation project
-# Modified to match original author's implementation for better reproducibility
+# Fixed to match paper implementation exactly
 
-# SAC Algorithm Parameters (matching original)
+# SAC Algorithm Parameters (matching paper Table 1)
 sac:
-  learning_rate: 5e-5  # Original uses 3e-4
-  discount_factor: 0.99
-  buffer_size: 1000000
-  batch_size: 64
-  tau: 0.005
-  alpha: 20.0
-  gradient_steps: 1
-  polyak: 0.995
-  # Static alpha mode - set to true to disable automatic alpha tuning
-  use_static_alpha: true
-  static_alpha: 2.0
-  target_entropy: -5.0
-  learning_starts: 50000  # Original parameter
+  learning_rate: 3e-4       # Fixed: was 5e-5, paper uses 3e-4
+  discount_factor: 0.99     # Correct
+  buffer_size: 1000000      # Correct (1e6)
+  batch_size: 256           # Fixed: was 64, paper uses 256
+  tau: 0.005               # Correct (5e-3)
+  gradient_steps: 1        # Correct
 
-# Network Architecture (simplified to match original)
+  # Alpha configuration - match paper's automatic tuning
+  use_static_alpha: false   # Fixed: was true, paper uses automatic
+  alpha: 20.0              # Initial value for automatic tuning
+  target_entropy: -5.0     # Adjusted for 5D action space
+
+# Network Architecture (matching paper Figure 11, config S2)
 networks:
-  actor_hidden_layers: [128, 128, 128]
-  critic_hidden_layers: [128, 128, 128]
-  activation: relu
+  actor_hidden_layers: [128, 128, 128]    # Correct
+  critic_hidden_layers: [128, 128, 128]   # Correct
+  activation: relu                         # Correct
 
-# Use simplified networks matching original author
+# Use simple networks matching paper implementation
 use_simple_networks: true
 
-# Environment Parameters (matching original author's approach)
+# Environment Parameters (matching paper optimal settings O2)
 environment:
-  # State representation (original author's parameters)
-  neighbor_num: 6  # Original uses 6 neighbors
-  radius_num: 3    # Original uses 3 radius points
-  observation_radius: 4  # Original uses radius 4
-  max_radius: 2    # Original uses max_radius 2
+  # State representation - clarified parameters
+  n_neighbors_left: 2      # Clear: n left neighbors
+  n_neighbors_right: 2     # Clear: n right neighbors
+  n_fan_points: 3          # Correct: g=3 fan points
+  observation_radius: 6    # Correct: β=6
+  max_radius: 2           # Correct: for action space
+
+  # Remove conflicting legacy parameters
+  # neighbor_num: 6        # REMOVED - was confusing
+  # radius_num: 3          # REMOVED - redundant with n_fan_points
+  # n_neighbors: 2         # REMOVED - legacy
+  # n_fan_points: 3        # REMOVED - redundant
+
+  # Action space (matching paper R2 setting)
+  alpha_action: 2.0       # Correct: α=2 for optimal action radius
+
+  # Reward function (matching paper settings)
+  v_density: 1.0          # Fixed: was 1.5, paper uses υ=1.0
+  M_angle: 60.0          # Correct
 
   # Episode settings
   max_steps: 1000
 
-  # Reward function
-  reward_method: 10
-  v_density: 1.5
-  M_angle: 60.0
-
-  # Legacy parameters (kept for compatibility)
-  n_neighbors: 2
-  n_fan_points: 3
-  beta_obs: 6.0
-  alpha_action: 2.0
-  nrv: 2
-
-# Training Parameters
+# Training Parameters (matching paper)
 training:
-  total_timesteps: 800000
-  evaluation_freq: 5000
-  eval_freq_episode: 10
-  seed: 888
+  total_timesteps: 1200000  # Fixed: was 800000, paper uses 1.2e6
+  evaluation_freq: 10000    # Paper evaluates every 10k steps
+  eval_freq_episode: 10     # Paper uses 10 evaluation episodes
+  seed: 999                # Keep existing seed
   log_interval: 2
   save_freq: 50000
-  evaluation_action_block: false
+  learning_starts: 50000    # Wait for buffer to fill before training
 
 # Paths
 paths:
@@ -67,6 +67,6 @@ paths:
   logs_dir: "results/logs"
   figures_dir: "results/figures"
 
-# Domain settings (original author tested on multiple domains)
+# Domain settings (paper tested on multiple domains)
 domain:
-  training_domain: ["T3.txt", "T4.txt"]
+  training_domain: ["T4.txt"]  # Paper uses T1-T3 domains
