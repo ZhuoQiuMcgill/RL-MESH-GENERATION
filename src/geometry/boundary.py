@@ -50,32 +50,6 @@ class Boundary:
         """
         return len(self._verts)
 
-    def get_average_edge_length(self) -> float:
-        """
-        计算并返回边界中所有边的平均长度
-
-        Returns:
-            float: 边界中所有边的平均长度
-
-        Raises:
-            ValueError: 当边界顶点数量少于2时
-        """
-        if len(self._verts) < 2:
-            raise ValueError("Need at least 2 vertices to calculate edge length")
-
-        total_length = 0.0
-        num_edges = len(self._verts)
-
-        for i in range(num_edges):
-            # 计算当前顶点到下一个顶点的距离（闭合多边形）
-            current_vertex = self._verts[i]
-            next_vertex = self._verts[(i + 1) % num_edges]
-
-            # 计算欧几里得距离
-            edge_length = np.linalg.norm(next_vertex - current_vertex)
-            total_length += edge_length
-
-        return total_length / num_edges
 
     # ------------------------------------------------------------
     # 内角计算工具
@@ -96,17 +70,6 @@ class Boundary:
         # 防止除零错误
         cos_theta = np.clip(dot / np.where(norm_prod == 0, 1, norm_prod), -1.0, 1.0)
         return np.degrees(np.arccos(cos_theta))
-
-    def get_max_interior_angles(self) -> Tuple[Tuple[float, float], float]:
-        """
-        返回具有最大内角的顶点和角度
-
-        Returns:
-            Tuple[Tuple[float, float], float]: (顶点坐标, 角度值)
-        """
-        angles = self._interior_angles()
-        idx = int(angles.argmax())
-        return tuple(self._verts[idx]), float(angles[idx])
 
     def get_min_interior_angles(self) -> Tuple[Tuple[float, float], float]:
         """
@@ -260,36 +223,152 @@ class Boundary:
 
     def get_neighbor_info(self, vertex: tuple, n: int) -> dict:
         """
-        TODO:
         本函数旨在获取指定顶点(vertex)在边界上的一个完整局部片段信息。
         一个局部片段被定义为该顶点本身，以及其沿边界前后各n个邻居点，总共2n+1个点。
         函数将返回这个片段的有序坐标列表，以及由这些点构成的局部线段的平均长度。
-
-        实现步骤：
-        1.  **定位顶点**:
-            - 在边界的内部顶点列表(`self._verts`)中，查找输入`vertex`的索引 (`idx`)。
-            - 如果未找到该顶点，应引发一个`ValueError`。
-
-        2.  **处理边界大小**:
-            - 检查边界的总顶点数是否足够（即 `self.size() >= 2 * n + 1`）。如果边界太小，无法找到`2*n`个不重复的邻居点，应定义一种合理的错误处理方式（例如，引发`ValueError`）。
-
-        3.  **构建局部片段列表**:
-            - 使用模运算（`% self.size()`）来处理环形边界的索引。
-            - 创建一个列表，按照从“前n个点”到“参考点”再到“后n个点”的顺序，依次存入这`2n+1`个顶点的坐标。
-            - 例如，如果n=2，最终列表的顺序应为 `[v_idx-2, v_idx-1, v_idx, v_idx+1, v_idx+2]`。
-
-        4.  **计算局部平均边长**:
-            - 确定构成局部片段的`2n`条边（即上一步生成的`2n+1`个顶点之间的连续边）。
-            - 遍历这`2n`条边，计算每条边的欧几里得长度。
-            - 计算这些边长的平均值。
-
-        5.  **构建并返回结果**:
-            - 创建一个字典用于返回。
-            - 字典应包含以下键值对：
-              - "local_segment_coords": 一个包含`2n+1`个顶点坐标的有序列表 (List[Tuple[float, float]])。
-              - "local_avg_edge_length": 一个浮点数，表示上一步计算出的局部平均边长。
         """
-        pass
+        # 1. 定位顶点
+        vertex_array = np.array(vertex, dtype=float)
+        # 找到匹配的顶点索引（考虑浮点数精度）
+        distances = np.linalg.norm(self._verts - vertex_array, axis=1)
+        matches = np.where(distances < 1e-10)[0]
+
+        if len(matches) == 0:
+            raise ValueError(f"Vertex {vertex} not found in boundary")
+
+        idx = matches[0]  # 取第一个匹配的索引
+
+        # 2. 处理边界大小
+        boundary_size = self.size()
+        if boundary_size < 2 * n + 1:
+            raise ValueError(f"Boundary has only {boundary_size} vertices, need at least {2 * n + 1} for n={n}")
+
+        # 3. 构建局部片段列表
+        local_segment_coords = []
+        for i in range(-n, n + 1):
+            # 使用模运算处理环形边界的索引
+            neighbor_idx = (idx + i) % boundary_size
+            local_segment_coords.append(tuple(self._verts[neighbor_idx]))
+
+        # 4. 计算局部平均边长
+        total_length = 0.0
+        num_edges = 2 * n  # 2n条边（2n+1个点之间有2n条边）
+
+        for i in range(num_edges):
+            current_point = np.array(local_segment_coords[i])
+            next_point = np.array(local_segment_coords[i + 1])
+            # 计算欧几里得距离
+            edge_length = np.linalg.norm(next_point - current_point)
+            total_length += edge_length
+
+        local_avg_edge_length = total_length / num_edges
+
+        # 5. 构建并返回结果
+        return {
+            "local_segment_coords": local_segment_coords,
+            "local_avg_edge_length": local_avg_edge_length
+        }
+
+    def get_area(self) -> float:
+        """
+        本函数旨在计算当前边界所围成多边形的面积。
+        这个面积值是计算网格化进度指标 ρ_t (rho_t) 的基础。
+        """
+        if len(self._verts) < 3:
+            return 0.0
+
+        # 1. 获取顶点坐标
+        x = self._verts[:, 0]
+        y = self._verts[:, 1]
+
+        # 2. 应用鞋带公式
+        # 使用numpy.roll获取下一个顶点的坐标，形成闭环
+        x_next = np.roll(x, -1)
+        y_next = np.roll(y, -1)
+
+        # 计算交叉乘积：Σ(x_i * y_{i+1} - x_{i+1} * y_i)
+        cross_product = x * y_next - x_next * y
+
+        # 3. 返回结果：Area = 0.5 * |Σ(cross_product)|
+        area = 0.5 * abs(np.sum(cross_product))
+
+        return area
+
+    def get_fan_points(self, reference_vertex_index: int, g: int, fan_radius: float) -> List[Tuple[float, float]]:
+        """
+        本函数旨在实现论文中定义的"前瞻性扇形区域"顶点提取功能。
+        它会从给定的参考顶点向多边形内部投射一个扇形区域，将其划分为`g`个相等的角切片，
+        并在每个切片中找到一个代表性的边界点，最终返回这`g`个点的列表。
+        """
+        # 输入验证
+        boundary_size = len(self._verts)
+        if not (0 <= reference_vertex_index < boundary_size):
+            raise IndexError("Reference vertex index out of range")
+
+        if g <= 0:
+            raise ValueError("Number of slices g must be positive")
+
+        # 1. 定义扇形几何边界
+        v_0 = self._verts[reference_vertex_index]
+        v_l1 = self._verts[(reference_vertex_index - 1) % boundary_size]  # 左邻居
+        v_r1 = self._verts[(reference_vertex_index + 1) % boundary_size]  # 右邻居
+
+        # 计算定义扇形边界的两个向量
+        vec_left = v_l1 - v_0
+        vec_right = v_r1 - v_0
+
+        # 计算角度
+        angle_left = np.arctan2(vec_left[1], vec_left[0])
+        angle_right = np.arctan2(vec_right[1], vec_right[0])
+
+        # 计算总扇形角度（考虑顺时针边界）
+        # 从右邻居到左邻居的内角
+        total_fan_angle = angle_left - angle_right
+        if total_fan_angle <= 0:
+            total_fan_angle += 2 * np.pi
+
+        # 2. 划分扇形为g个切片
+        slice_angle = total_fan_angle / g
+        result_points = []
+
+        # 3. 为每个切片寻找代表点
+        for i in range(g):
+            # 当前切片的起始和结束角度（从右到左）
+            slice_start_angle = angle_right + i * slice_angle
+            slice_end_angle = angle_right + (i + 1) * slice_angle
+
+            # a. 筛选候选点
+            candidates = []
+            for j, vertex in enumerate(self._verts):
+                if j == reference_vertex_index:
+                    continue
+
+                # 计算到参考点的向量和距离
+                vec_to_vertex = vertex - v_0
+                distance = np.linalg.norm(vec_to_vertex)
+
+                if distance > fan_radius:
+                    continue
+
+                # 计算角度
+                vertex_angle = np.arctan2(vec_to_vertex[1], vec_to_vertex[0])
+
+                # 检查是否在当前切片内
+                if self._is_angle_in_slice(vertex_angle, slice_start_angle, slice_end_angle):
+                    candidates.append((j, vertex, distance))
+
+            # b. 选择最近点
+            if candidates:
+                # 选择距离最近的候选点
+                best_candidate = min(candidates, key=lambda x: x[2])
+                result_points.append(tuple(best_candidate[1]))
+            else:
+                # c. 处理空切片 - 使用角平分线与边界的交点
+                bisector_angle = (slice_start_angle + slice_end_angle) / 2
+                intersection_point = self._find_bisector_boundary_intersection(v_0, bisector_angle, fan_radius)
+                result_points.append(intersection_point)
+
+        return result_points
 
     # ------------------------------------------------------------
     # 私有辅助方法
@@ -421,3 +500,78 @@ class Boundary:
 
         # 如果两个线段相交，则它们的端点应该在对方的两侧
         return (ccw(p1, p3, p4) != ccw(p2, p3, p4)) and (ccw(p1, p2, p3) != ccw(p1, p2, p4))
+
+    def _is_angle_in_slice(self, angle: float, start_angle: float, end_angle: float) -> bool:
+        """检查角度是否在切片内（处理角度环绕问题）"""
+
+        # 规范化角度到[0, 2π]
+        def normalize_angle(a):
+            while a < 0:
+                a += 2 * np.pi
+            while a >= 2 * np.pi:
+                a -= 2 * np.pi
+            return a
+
+        angle = normalize_angle(angle)
+        start_angle = normalize_angle(start_angle)
+        end_angle = normalize_angle(end_angle)
+
+        if start_angle <= end_angle:
+            # 正常情况
+            return start_angle <= angle <= end_angle
+        else:
+            # 跨越0点的情况
+            return angle >= start_angle or angle <= end_angle
+
+    def _find_bisector_boundary_intersection(self, origin: np.ndarray, bisector_angle: float, max_distance: float) -> \
+            Tuple[float, float]:
+        """找到角平分线与边界的最近交点"""
+        # 角平分线方向向量
+        direction = np.array([np.cos(bisector_angle), np.sin(bisector_angle)])
+
+        closest_intersection = None
+        min_distance = float('inf')
+
+        # 检查与每条边界边的交点
+        for i in range(len(self._verts)):
+            edge_start = self._verts[i]
+            edge_end = self._verts[(i + 1) % len(self._verts)]
+
+            # 计算射线与线段的交点
+            intersection = self._ray_segment_intersection(origin, direction, edge_start, edge_end)
+
+            if intersection is not None:
+                distance = np.linalg.norm(intersection - origin)
+                if distance <= max_distance and distance < min_distance and distance > 1e-10:
+                    min_distance = distance
+                    closest_intersection = intersection
+
+        if closest_intersection is not None:
+            return tuple(closest_intersection)
+        else:
+            # 如果没有找到交点，返回射线上的最远点
+            farthest_point = origin + direction * max_distance
+            return tuple(farthest_point)
+
+    def _ray_segment_intersection(self, ray_origin: np.ndarray, ray_direction: np.ndarray,
+                                  segment_start: np.ndarray, segment_end: np.ndarray) -> np.ndarray:
+        """计算射线与线段的交点"""
+        # 线段方向向量
+        segment_vec = segment_end - segment_start
+
+        # 检查平行性
+        cross_product = ray_direction[0] * segment_vec[1] - ray_direction[1] * segment_vec[0]
+        if abs(cross_product) < 1e-10:
+            return None  # 平行或共线
+
+        # 计算参数
+        to_segment_start = segment_start - ray_origin
+        t = (to_segment_start[0] * segment_vec[1] - to_segment_start[1] * segment_vec[0]) / cross_product
+        s = (to_segment_start[0] * ray_direction[1] - to_segment_start[1] * ray_direction[0]) / cross_product
+
+        # 检查交点是否在射线和线段上
+        if t >= 0 and 0 <= s <= 1:
+            intersection = ray_origin + t * ray_direction
+            return intersection
+
+        return None
