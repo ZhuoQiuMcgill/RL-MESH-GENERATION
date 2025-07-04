@@ -9,5 +9,7 @@ class Action(ABC):
     def execute(self, mesh):
         pass
 
+    def is_valid(self, boundary):
+        pass
 
 
