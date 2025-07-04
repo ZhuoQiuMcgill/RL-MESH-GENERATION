@@ -1,4 +1,5 @@
 from .action import Action
+from ..geometry import Mesh, Boundary
 
 
 class ActionType2(Action):
