@@ -6,6 +6,9 @@ sac_agent:
   gamma: 0.99
   tau: 0.005
   hidden_dim: 128
+  buffer_size: 1000000
+  batch_size: 256
+  start_training_steps: 1000
 
 environment:
   n: 2
@@ -16,3 +19,10 @@ environment:
   upsilon: 1.0
   kappa: 4.0
   M_angle: 60.0
+
+training:
+  max_episodes: 1000
+  max_steps_per_episode: 1000
+  save_frequency: 100
+  log_frequency: 10
+  evaluation_frequency: 50
