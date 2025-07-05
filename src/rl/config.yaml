@@ -34,8 +34,16 @@ environment:
   M_angle: 60.0
 
 training:
+  # 训练基本参数
   max_episodes: 1000
   max_steps_per_episode: 1000
-  save_frequency: 100
-  log_frequency: 10
-  evaluation_frequency: 50
+
+  # 保存和日志参数
+  save_dir: "results"
+  save_frequency: 100         # 每多少个episode保存一次检查点
+  log_frequency: 10           # 每多少个episode输出一次日志
+  evaluation_frequency: 50    # 每多少个episode进行一次评估
+
+  # 早停和收敛参数
+  early_stopping_patience: 200  # 早停的patience（暂未实现）
+  convergence_threshold: 0.01   # 收敛阈值（暂未实现）
