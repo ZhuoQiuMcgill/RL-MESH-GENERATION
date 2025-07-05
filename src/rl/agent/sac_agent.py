@@ -17,9 +17,10 @@ class SACAgent:
         cfg = load_config() if config is None else config
         sac_cfg = cfg.get("sac_agent", {})
 
-        hidden_dim = sac_cfg.get("hidden_dim", 128)
-        self.gamma = sac_cfg.get("gamma", 0.99)
-        self.tau = sac_cfg.get("tau", 0.005)
+        # 确保所有数值参数都转换为正确的类型
+        hidden_dim = int(sac_cfg.get("hidden_dim", 128))
+        self.gamma = float(sac_cfg.get("gamma", 0.99))
+        self.tau = float(sac_cfg.get("tau", 0.005))
 
         # 初始化 Actor、Critic 以及对应的目标网络。
         # Critic_target 是 Critic 的深拷贝，其参数会以软更新方式延迟更新。
@@ -28,14 +29,16 @@ class SACAgent:
         self.critic_target = deepcopy(self.critic)
 
         # 初始化优化器，学习率等超参数参考论文表1。
-        actor_lr = sac_cfg.get("actor_lr", 3e-4)
-        critic_lr = sac_cfg.get("critic_lr", 3e-4)
+        # 确保学习率被正确转换为浮点数
+        actor_lr = float(sac_cfg.get("actor_lr", 3e-4))
+        critic_lr = float(sac_cfg.get("critic_lr", 3e-4))
+        alpha_lr = float(sac_cfg.get("alpha_lr", 3e-4))
+
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 
         # 初始化自动熵调优相关的参数。alpha（温度参数）会在训练过程中自动学习。
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
-        alpha_lr = sac_cfg.get("alpha_lr", 3e-4)
         self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
         self.target_entropy = -torch.prod(torch.Tensor((action_dim,)).to(device)).item()
 
@@ -135,12 +138,12 @@ class SACAgent:
             replay_buffer.update_priorities(indices, td_errors)
 
         return {
-            "critic_loss": critic_loss.item(),
-            "actor_loss": actor_loss.item(),
-            "alpha_loss": alpha_loss.item(),
-            "alpha": self.log_alpha.exp().item(),
-            "mean_td_error": td_errors.mean(),
-            "max_td_error": td_errors.max(),
+            "critic_loss": float(critic_loss.item()),
+            "actor_loss": float(actor_loss.item()),
+            "alpha_loss": float(alpha_loss.item()),
+            "alpha": float(self.log_alpha.exp().item()),
+            "mean_td_error": float(td_errors.mean()),
+            "max_td_error": float(td_errors.max()),
         }
 
     def save(self, filename):

@@ -427,10 +427,10 @@ class MeshTrainer:
         return episode_data
 
     def train(
-        self,
-        max_episodes: int = None,
-        max_steps: int = None,
-        stop_event: Optional["threading.Event"] = None,
+            self,
+            max_episodes: int = None,
+            max_steps: int = None,
+            stop_event: Optional["threading.Event"] = None,
     ) -> Dict[str, List[float]]:
         """
         执行训练过程
@@ -443,22 +443,22 @@ class MeshTrainer:
         Returns:
             包含训练统计信息的字典
         """
-        # 获取训练参数
+        # 获取训练参数，确保类型正确
         training_config = self.config.get("training", {})
         if max_episodes is None:
-            max_episodes = training_config.get("max_episodes", 1000)
+            max_episodes = int(training_config.get("max_episodes", 1000))
         if max_steps is None:
-            max_steps = training_config.get("max_steps_per_episode", 1000)
+            max_steps = int(training_config.get("max_steps_per_episode", 1000))
 
-        # 从配置中读取其他训练参数
-        save_frequency = training_config.get("save_frequency", 100)
-        log_frequency = training_config.get("log_frequency", 10)
-        evaluation_frequency = training_config.get("evaluation_frequency", 50)
+        # 从配置中读取其他训练参数，确保类型正确
+        save_frequency = int(training_config.get("save_frequency", 100))
+        log_frequency = int(training_config.get("log_frequency", 10))
+        evaluation_frequency = int(training_config.get("evaluation_frequency", 50))
 
-        # SAC训练参数
+        # SAC训练参数，确保类型正确
         sac_config = self.config.get("sac_agent", {})
-        start_training_steps = sac_config.get("start_training_steps", 1000)
-        batch_size = sac_config.get("batch_size", 256)
+        start_training_steps = int(sac_config.get("start_training_steps", 1000))
+        batch_size = int(sac_config.get("batch_size", 256))
 
         print(f"开始训练: 最大episodes={max_episodes}, 每episode最大步数={max_steps}")
         start_time = time.time()
@@ -757,3 +757,4 @@ class MeshTrainer:
             summary["最佳评估奖励"] = np.max(self.training_stats['evaluation_rewards'])
 
         return summary
+

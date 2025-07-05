@@ -420,6 +420,11 @@ class TrainingManager {
             this.updateTrainingStats(status.stats);
         }
 
+        // 更新进度信息
+        if (status.progress) {
+            this.updateProgressInfo(status.progress);
+        }
+
         // 如果训练停止，停止定期更新
         if (!status.running && this.updateInterval) {
             this.stopPeriodicUpdate();
@@ -452,9 +457,43 @@ class TrainingManager {
                 indicator.classList.add('status-success');
                 text.textContent = '已完成';
                 break;
+            case 'stopping':
+                indicator.classList.add('status-loading');
+                text.textContent = '停止中';
+                break;
+            case 'error':
+                indicator.classList.add('status-stopped');
+                text.textContent = '出错';
+                break;
             default:
                 indicator.classList.add('status-idle');
                 text.textContent = '未启动';
+        }
+    }
+
+    /**
+     * 更新进度信息
+     */
+    updateProgressInfo(progress) {
+        if (progress.current_episode !== undefined) {
+            document.getElementById('current-episode').textContent = progress.current_episode;
+            document.getElementById('display-episode').textContent = progress.current_episode;
+        }
+
+        if (progress.total_steps !== undefined) {
+            document.getElementById('total-steps').textContent = progress.total_steps;
+        }
+
+        if (progress.average_reward !== undefined) {
+            document.getElementById('avg-reward').textContent = progress.average_reward.toFixed(3);
+        }
+
+        if (progress.buffer_utilization !== undefined) {
+            document.getElementById('buffer-size').textContent = progress.buffer_utilization;
+        }
+
+        if (progress.latest_reward !== undefined) {
+            document.getElementById('episode-reward').textContent = progress.latest_reward.toFixed(3);
         }
     }
 
