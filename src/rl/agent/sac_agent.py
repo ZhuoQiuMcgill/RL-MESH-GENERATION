@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from copy import deepcopy
 from .network import Actor, Critic
+from ..config import load_config
 
 
 class SACAgent:
@@ -9,22 +10,32 @@ class SACAgent:
     实现了Soft Actor-Critic (SAC)算法的智能体。
     """
 
-    def __init__(self, state_dim, action_dim, max_action, device):
+    def __init__(self, state_dim, action_dim, max_action, device, config=None):
         self.device = device
+
+        cfg = load_config() if config is None else config
+        sac_cfg = cfg.get("sac_agent", {})
+
+        hidden_dim = sac_cfg.get("hidden_dim", 128)
+        self.gamma = sac_cfg.get("gamma", 0.99)
+        self.tau = sac_cfg.get("tau", 0.005)
 
         # 初始化 Actor、Critic 以及对应的目标网络。
         # Critic_target 是 Critic 的深拷贝，其参数会以软更新方式延迟更新。
-        self.actor = Actor(state_dim, action_dim, max_action=max_action).to(device)
-        self.critic = Critic(state_dim, action_dim).to(device)
+        self.actor = Actor(state_dim, action_dim, hidden_dim=hidden_dim, max_action=max_action).to(device)
+        self.critic = Critic(state_dim, action_dim, hidden_dim=hidden_dim).to(device)
         self.critic_target = deepcopy(self.critic)
 
         # 初始化优化器，学习率等超参数参考论文表1。
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
+        actor_lr = sac_cfg.get("actor_lr", 3e-4)
+        critic_lr = sac_cfg.get("critic_lr", 3e-4)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
 
         # 初始化自动熵调优相关的参数。alpha（温度参数）会在训练过程中自动学习。
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
-        self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=3e-4)
+        alpha_lr = sac_cfg.get("alpha_lr", 3e-4)
+        self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
         self.target_entropy = -torch.prod(torch.Tensor((action_dim,)).to(device)).item()
 
         self.max_action = max_action
@@ -75,7 +86,7 @@ class SACAgent:
             target_q1, target_q2 = self.critic_target(next_state, next_action)
             target_q = torch.min(target_q1, target_q2)
             alpha = self.log_alpha.exp()
-            target_q = reward + (1 - done) * 0.99 * (target_q - alpha * next_log_prob)
+            target_q = reward + (1 - done) * self.gamma * (target_q - alpha * next_log_prob)
 
         current_q1, current_q2 = self.critic(state, action)
         critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
@@ -101,7 +112,7 @@ class SACAgent:
         self.alpha_optimizer.step()
 
         for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-            target_param.data.copy_(0.005 * param.data + (1 - 0.005) * target_param.data)
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
         return {
             "critic_loss": critic_loss.item(),
