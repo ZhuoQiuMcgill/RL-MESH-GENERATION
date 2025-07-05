@@ -10,6 +10,7 @@ class TrainingManager {
         this.canvas = null;
         this.ctx = null;
         this.meshData = null;
+        this.boundaryData = null;
 
         // API基础URL配置
         this.apiBaseUrl = 'http://localhost:5000';
@@ -107,9 +108,9 @@ class TrainingManager {
         this.canvas.width = rect.width - padding;
         this.canvas.height = rect.height - padding;
 
-        // 重新绘制
-        if (this.meshData) {
-            this.renderMesh(this.meshData);
+        // 重新绘制，使用统一的渲染函数
+        if (this.meshData || this.boundaryData) {
+            this.renderMeshAndBoundary(this.meshData, this.boundaryData);
         } else {
             this.clearCanvas();
         }
@@ -133,6 +134,10 @@ class TrainingManager {
             this.canvas.width / 2,
             this.canvas.height / 2
         );
+
+        // 清除缓存的数据
+        this.meshData = null;
+        this.boundaryData = null;
     }
 
     /**
@@ -537,152 +542,130 @@ class TrainingManager {
             document.getElementById('boundary-vertices').textContent = stats.boundary_vertices;
         }
 
-        // 更新mesh数据
-        if (stats.mesh_data) {
-            this.meshData = stats.mesh_data;
-            this.renderMesh(stats.mesh_data);
-        }
+        // 统一渲染mesh和boundary数据，避免坐标变换不一致导致的错位问题
+        const meshData = stats.mesh_data || this.meshData;
+        const boundaryData = stats.boundary_vertices_data || this.boundaryData;
 
-        if (stats.boundary_vertices_data) {
-            this.renderBoundary(stats.boundary_vertices_data);
+        if (meshData || boundaryData) {
+            this.meshData = meshData;
+            this.boundaryData = boundaryData;
+            this.renderMeshAndBoundary(meshData, boundaryData);
         }
     }
 
     /**
-     * 渲染Mesh
+     * 统一渲染Mesh和Boundary，避免坐标变换不一致导致的错位问题
      */
-    renderMesh(meshData) {
-        if (!meshData || Object.keys(meshData).length === 0) {
-            this.clearCanvas();
-            return;
-        }
-
+    renderMeshAndBoundary(meshData, boundaryVertices) {
         // 清空canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.drawGrid();
 
-        // 计算所有顶点的边界框以进行缩放
+        // 如果没有任何数据，显示提示
+        if (!meshData && !boundaryVertices) {
+            this.ctx.fillStyle = '#9CA3AF';
+            this.ctx.font = '16px sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(
+                '等待训练开始...',
+                this.canvas.width / 2,
+                this.canvas.height / 2
+            );
+            return;
+        }
+
+        // 收集所有顶点用于计算统一的边界框
         const allVertices = new Set();
 
-        try {
+        // 从mesh数据中收集顶点
+        if (meshData && Object.keys(meshData).length > 0) {
             Object.values(meshData).forEach(adjacentVertices => {
-                if (Array.isArray(adjacentVertices)) {
-                    adjacentVertices.forEach(vertex => {
-                        try {
-                            // 直接处理数组格式的顶点，不使用JSON.stringify/parse
-                            if (Array.isArray(vertex) && vertex.length >= 2) {
-                                const vertexKey = `${vertex[0]},${vertex[1]}`;
-                                allVertices.add(vertexKey);
-                            }
-                        } catch (e) {
-                            console.warn('处理顶点时出错:', e, vertex);
-                        }
-                    });
-                }
+                adjacentVertices.forEach(vertex => {
+                    allVertices.add(JSON.stringify(vertex));
+                });
             });
-        } catch (e) {
-            console.error('处理mesh数据时出错:', e);
-            this.clearCanvas();
-            return;
+        }
+
+        // 从boundary数据中收集顶点
+        if (boundaryVertices && boundaryVertices.length > 0) {
+            boundaryVertices.forEach(vertex => {
+                allVertices.add(JSON.stringify(vertex));
+            });
         }
 
         if (allVertices.size === 0) {
-            this.clearCanvas();
+            this.ctx.fillStyle = '#9CA3AF';
+            this.ctx.font = '16px sans-serif';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(
+                '无数据显示',
+                this.canvas.width / 2,
+                this.canvas.height / 2
+            );
             return;
         }
 
-        // 解析顶点坐标
-        const vertices = [];
-        allVertices.forEach(vertexStr => {
-            try {
-                const coords = vertexStr.split(',').map(parseFloat);
-                if (coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
-                    vertices.push(coords);
-                }
-            } catch (e) {
-                console.warn('解析顶点坐标时出错:', e, vertexStr);
-            }
-        });
-
-        if (vertices.length === 0) {
-            this.clearCanvas();
-            return;
-        }
-
+        // 计算统一的边界框和变换参数
+        const vertices = Array.from(allVertices).map(v => JSON.parse(v));
         const bounds = this.calculateBounds(vertices);
         const transform = this.calculateTransform(bounds);
 
+        // 首先渲染mesh（如果存在）
+        if (meshData && Object.keys(meshData).length > 0) {
+            this.renderMeshWithTransform(meshData, transform);
+        }
+
+        // 然后渲染boundary（如果存在）
+        if (boundaryVertices && boundaryVertices.length > 0) {
+            this.renderBoundaryWithTransform(boundaryVertices, transform);
+        }
+    }
+
+    /**
+     * 使用指定变换参数渲染Mesh
+     */
+    renderMeshWithTransform(meshData, transform) {
         // 绘制边
         this.ctx.strokeStyle = '#6366F1';
         this.ctx.lineWidth = 2;
 
-        try {
-            Object.entries(meshData).forEach(([vertex, adjacentVertices]) => {
-                try {
-                    // 解析顶点坐标
-                    let vertexCoords;
-                    if (typeof vertex === 'string' && vertex.startsWith('(') && vertex.endsWith(')')) {
-                        // 处理字符串格式的元组 "(x, y)"
-                        const coordStr = vertex.slice(1, -1); // 移除括号
-                        vertexCoords = coordStr.split(',').map(s => parseFloat(s.trim()));
-                    } else if (Array.isArray(vertex)) {
-                        vertexCoords = vertex;
-                    } else {
-                        console.warn('无法解析顶点格式:', vertex);
-                        return;
-                    }
+        Object.entries(meshData).forEach(([vertex, adjacentVertices]) => {
+            const [x1, y1] = JSON.parse(vertex);
+            const screenPos1 = this.worldToScreen([x1, y1], transform);
 
-                    if (!Array.isArray(vertexCoords) || vertexCoords.length < 2) {
-                        return;
-                    }
+            adjacentVertices.forEach(([x2, y2]) => {
+                const screenPos2 = this.worldToScreen([x2, y2], transform);
 
-                    const screenPos1 = this.worldToScreen(vertexCoords, transform);
-
-                    if (Array.isArray(adjacentVertices)) {
-                        adjacentVertices.forEach(neighbor => {
-                            try {
-                                if (Array.isArray(neighbor) && neighbor.length >= 2) {
-                                    const screenPos2 = this.worldToScreen(neighbor, transform);
-                                    this.ctx.beginPath();
-                                    this.ctx.moveTo(screenPos1[0], screenPos1[1]);
-                                    this.ctx.lineTo(screenPos2[0], screenPos2[1]);
-                                    this.ctx.stroke();
-                                }
-                            } catch (e) {
-                                console.warn('绘制边时出错:', e);
-                            }
-                        });
-                    }
-                } catch (e) {
-                    console.warn('处理顶点连接时出错:', e, vertex);
-                }
-            });
-        } catch (e) {
-            console.error('绘制边时出错:', e);
-        }
-
-        // 绘制顶点
-        this.ctx.fillStyle = '#3B82F6';
-        vertices.forEach(vertex => {
-            try {
-                const screenPos = this.worldToScreen(vertex, transform);
                 this.ctx.beginPath();
-                this.ctx.arc(screenPos[0], screenPos[1], 3, 0, 2 * Math.PI);
-                this.ctx.fill();
-            } catch (e) {
-                console.warn('绘制顶点时出错:', e);
-            }
+                this.ctx.moveTo(screenPos1[0], screenPos1[1]);
+                this.ctx.lineTo(screenPos2[0], screenPos2[1]);
+                this.ctx.stroke();
+            });
+        });
+
+        // 绘制mesh顶点
+        this.ctx.fillStyle = '#3B82F6';
+        const meshVertices = new Set();
+        Object.values(meshData).forEach(adjacentVertices => {
+            adjacentVertices.forEach(vertex => {
+                meshVertices.add(JSON.stringify(vertex));
+            });
+        });
+
+        Array.from(meshVertices).forEach(vertexStr => {
+            const vertex = JSON.parse(vertexStr);
+            const screenPos = this.worldToScreen(vertex, transform);
+            this.ctx.beginPath();
+            this.ctx.arc(screenPos[0], screenPos[1], 3, 0, 2 * Math.PI);
+            this.ctx.fill();
         });
     }
 
     /**
-     * 渲染边界
+     * 使用指定变换参数渲染Boundary
      */
-    renderBoundary(boundaryVertices) {
+    renderBoundaryWithTransform(boundaryVertices, transform) {
         if (!boundaryVertices || boundaryVertices.length === 0) return;
-
-        const bounds = this.calculateBounds(boundaryVertices);
-        const transform = this.calculateTransform(bounds);
 
         // 绘制边界线
         this.ctx.strokeStyle = '#EF4444';
@@ -709,6 +692,21 @@ class TrainingManager {
             this.ctx.arc(screenPos[0], screenPos[1], 4, 0, 2 * Math.PI);
             this.ctx.fill();
         });
+    }
+
+    /**
+     * 渲染Mesh（保持向后兼容性）
+     */
+    renderMesh(meshData) {
+        this.renderMeshAndBoundary(meshData, null);
+    }
+
+    /**
+     * 渲染边界（保持向后兼容性）
+     */
+    renderBoundary(boundaryVertices) {
+        this.boundaryData = boundaryVertices;
+        this.renderMeshAndBoundary(this.meshData, boundaryVertices);
     }
 
     /**
