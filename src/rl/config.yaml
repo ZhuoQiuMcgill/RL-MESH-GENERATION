@@ -1,0 +1,18 @@
+# Default configuration for RL mesh generation
+sac_agent:
+  actor_lr: 3e-4
+  critic_lr: 3e-4
+  alpha_lr: 3e-4
+  gamma: 0.99
+  tau: 0.005
+  hidden_dim: 128
+
+environment:
+  n: 2
+  g: 3
+  alpha: 2
+  beta: 6
+  max_steps: 1000
+  upsilon: 1.0
+  kappa: 4.0
+  M_angle: 60.0
