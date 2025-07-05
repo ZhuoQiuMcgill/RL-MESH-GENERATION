@@ -1,5 +1,4 @@
 from .action import ActionType
-import copy
 
 
 class ActionType0(ActionType):
@@ -12,13 +11,15 @@ class ActionType0(ActionType):
         """
         执行Type 0动作的逻辑
 
+        直接修改输入的mesh和boundary对象，避免深拷贝的开销。
+
         Args:
-            mesh: 网格对象
-            boundary: 边界对象
+            mesh: 网格对象（会被直接修改）
+            boundary: 边界对象（会被直接修改）
             reference_vertex_V0_idx: 参考顶点V0在边界中的索引
 
         Returns:
-            tuple: (更新后的mesh, 更新后的boundary, 生成的元素)
+            list: 生成的四边形元素（四个顶点的列表）
         """
         # 使用新的封装函数获取顶点
         V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
@@ -26,29 +27,25 @@ class ActionType0(ActionType):
         V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
         V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
 
-        # 创建新的网格和边界副本
-        new_mesh = copy.deepcopy(mesh)
-        new_boundary = copy.deepcopy(boundary)
-
         # 创建四边形元素 (V0, V1, V2, V3)
         quadrilateral = [V0, V1, V2, V3]
 
-        # 【代码修正】
-        # 不再向网格中添加内部对角线 V0-V2。
-        # 新的内部边界 V0-V2 是隐式的，由新的边界定义。
-        # V0, V1, V2, V3 四个点构成了一个四边形单元，
-        # 它们的连接关系由 quadrilateral 列表定义。
-        # new_mesh.add_edge(V0, V2) # <--- REMOVED
-
         # 更新边界：移除被消耗的边界顶点V1和V2
-        new_boundary.remove_vertex(V1)
-        new_boundary.remove_vertex(V2)
+        boundary.remove_vertex(V1)
+        boundary.remove_vertex(V2)
 
-        return new_mesh, new_boundary, quadrilateral
+        return quadrilateral
 
     def is_valid(self, boundary, reference_vertex_V0_idx):
         """
         检查Type 0动作的有效性
+
+        Args:
+            boundary: 边界对象
+            reference_vertex_V0_idx: 参考顶点V0在边界中的索引
+
+        Returns:
+            bool: 动作是否有效
         """
         if boundary.size() < 4:
             return False

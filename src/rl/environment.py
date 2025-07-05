@@ -100,17 +100,17 @@ class MeshEnv(gym.Env):
         try:
             if action_type == 0:
                 if self.action_type_0.is_valid(self.boundary, reference_vertex_idx):
-                    self.mesh, self.boundary, generated_element = self.action_type_0.execute(
+                    generated_element = self.action_type_0.execute(
                         self.mesh, self.boundary, reference_vertex_idx)
                     action_valid = True
             elif action_type == 1:
                 if self.action_type_1.is_valid(self.boundary, reference_vertex_idx, new_coords[0]):
-                    self.mesh, self.boundary, generated_element = self.action_type_1.execute(
+                    generated_element = self.action_type_1.execute(
                         self.mesh, self.boundary, reference_vertex_idx, new_coords[0])
                     action_valid = True
             elif action_type == 2:
                 if self.action_type_2.is_valid(self.boundary, reference_vertex_idx, new_coords[0], new_coords[1]):
-                    self.mesh, self.boundary, generated_element = self.action_type_2.execute(
+                    generated_element = self.action_type_2.execute(
                         self.mesh, self.boundary, reference_vertex_idx, new_coords[0], new_coords[1])
                     action_valid = True
         except Exception as e:
