@@ -84,6 +84,7 @@ class TrainingManager:
         self._trainer.add_episode_callback(self._update_stats_callback)
 
         self._stop_event.clear()
+        # 初始化统计信息为可JSON序列化的格式
         self._stats = {
             'episode': 0,
             'total_steps': 0,
@@ -134,43 +135,179 @@ class TrainingManager:
             if self._stats is None:
                 self._stats = {}
 
+            # 处理mesh_data，将元组键转换为字符串键以便JSON序列化
+            mesh_data = episode_data.get('mesh_data', {})
+            serializable_mesh_data = {}
+            try:
+                for vertex, neighbors in mesh_data.items():
+                    # 将顶点坐标元组转换为字符串
+                    if isinstance(vertex, tuple):
+                        # 确保元组中的每个元素都是Python原生类型
+                        clean_vertex = []
+                        for coord in vertex:
+                            if hasattr(coord, 'item'):  # numpy类型
+                                clean_vertex.append(float(coord.item()))
+                            else:
+                                clean_vertex.append(float(coord))
+                        vertex_key = str(tuple(clean_vertex))
+                    else:
+                        vertex_key = str(vertex)
+
+                    # 确保邻居列表也是可序列化的
+                    serializable_neighbors = []
+                    for neighbor in neighbors:
+                        if isinstance(neighbor, tuple):
+                            clean_neighbor = []
+                            for coord in neighbor:
+                                if hasattr(coord, 'item'):  # numpy类型
+                                    clean_neighbor.append(float(coord.item()))
+                                else:
+                                    clean_neighbor.append(float(coord))
+                            serializable_neighbors.append(clean_neighbor)
+                        elif isinstance(neighbor, list):
+                            clean_neighbor = []
+                            for coord in neighbor:
+                                if hasattr(coord, 'item'):  # numpy类型
+                                    clean_neighbor.append(float(coord.item()))
+                                else:
+                                    clean_neighbor.append(float(coord))
+                            serializable_neighbors.append(clean_neighbor)
+                        else:
+                            serializable_neighbors.append(neighbor)
+                    serializable_mesh_data[vertex_key] = serializable_neighbors
+            except Exception as mesh_error:
+                print(f"处理mesh_data时发生错误: {mesh_error}")
+                serializable_mesh_data = {}
+
+            # 处理boundary_vertices_data，确保是可序列化的
+            boundary_vertices = episode_data.get('boundary_vertices', [])
+            serializable_boundary_vertices = []
+            try:
+                for vertex in boundary_vertices:
+                    if isinstance(vertex, (tuple, list)):
+                        clean_vertex = []
+                        for coord in vertex:
+                            if hasattr(coord, 'item'):  # numpy类型
+                                clean_vertex.append(float(coord.item()))
+                            else:
+                                clean_vertex.append(float(coord))
+                        serializable_boundary_vertices.append(clean_vertex)
+                    else:
+                        serializable_boundary_vertices.append(vertex)
+            except Exception as boundary_error:
+                print(f"处理boundary_vertices时发生错误: {boundary_error}")
+                serializable_boundary_vertices = []
+
             # 更新实时统计信息
             self._stats.update({
                 'episode': episode_data.get('episode', 0),
                 'total_steps': episode_data.get('total_steps', 0),
-                'episode_reward': episode_data.get('episode_reward', 0.0),
-                'average_reward': episode_data.get('average_reward', 0.0),
+                'episode_reward': float(episode_data.get('episode_reward', 0.0)),
+                'average_reward': float(episode_data.get('average_reward', 0.0)),
                 'episode_length': episode_data.get('episode_length', 0),
                 'boundary_vertices': episode_data.get('boundary_size', 0),
                 'buffer_size': episode_data.get('buffer_size', 0),
-                'mesh_data': episode_data.get('mesh_data', {}),
-                'boundary_vertices_data': episode_data.get('boundary_vertices', [])
+                'mesh_data': serializable_mesh_data,
+                'boundary_vertices_data': serializable_boundary_vertices
             })
 
-            # 添加最近的损失信息
+            # 添加最近的损失信息，确保是可序列化的浮点数
             if 'recent_actor_loss' in episode_data:
-                self._stats['recent_actor_loss'] = episode_data['recent_actor_loss']
+                self._stats['recent_actor_loss'] = float(episode_data['recent_actor_loss'])
             if 'recent_critic_loss' in episode_data:
-                self._stats['recent_critic_loss'] = episode_data['recent_critic_loss']
+                self._stats['recent_critic_loss'] = float(episode_data['recent_critic_loss'])
             if 'current_alpha' in episode_data:
-                self._stats['current_alpha'] = episode_data['current_alpha']
+                self._stats['current_alpha'] = float(episode_data['current_alpha'])
 
         except Exception as e:
             print(f"更新统计信息时发生错误: {e}")
+            # 在出错时重置统计信息为安全的默认值
+            self._stats = {
+                'episode': 0,
+                'total_steps': 0,
+                'episode_reward': 0.0,
+                'average_reward': 0.0,
+                'episode_length': 0,
+                'boundary_vertices': 0,
+                'buffer_size': 0,
+                'mesh_data': {},
+                'boundary_vertices_data': []
+            }
 
     def stop_training(self) -> None:
         """停止训练过程"""
-        if not self.running:
-            return
-        self._stop_event.set()
-        self._status = "stopping"
+        try:
+            if not self.running:
+                return
 
-        # 移除回调函数
-        if self._trainer and hasattr(self._trainer, 'remove_episode_callback'):
+            self._stop_event.set()
+            self._status = "stopping"
+
+            # 移除回调函数
+            if self._trainer and hasattr(self._trainer, 'remove_episode_callback'):
+                try:
+                    self._trainer.remove_episode_callback(self._update_stats_callback)
+                except Exception as e:
+                    print(f"移除回调函数时发生错误: {e}")
+
+            # 等待训练线程结束（最多等待5秒）
+            if self._thread:
+                self._thread.join(timeout=5.0)
+                if self._thread.is_alive():
+                    print("警告: 训练线程未能在5秒内正常结束")
+
+            # 确保状态被正确设置
+            self._status = "stopped"
+
+        except Exception as e:
+            print(f"停止训练时发生错误: {e}")
+            self._status = "error"
+
+    def _deep_clean_for_json(self, data):
+        """
+        递归清理数据，确保所有数据都是JSON安全的
+
+        Args:
+            data: 要清理的数据
+
+        Returns:
+            清理后的数据
+        """
+        if data is None:
+            return None
+        elif isinstance(data, (bool, int, float, str)):
+            return data
+        elif hasattr(data, 'item'):  # numpy类型
             try:
-                self._trainer.remove_episode_callback(self._update_stats_callback)
-            except Exception as e:
-                print(f"移除回调函数时发生错误: {e}")
+                return float(data.item())
+            except:
+                return str(data)
+        elif isinstance(data, dict):
+            cleaned_dict = {}
+            for key, value in data.items():
+                try:
+                    # 确保键是字符串
+                    clean_key = str(key)
+                    cleaned_dict[clean_key] = self._deep_clean_for_json(value)
+                except Exception as e:
+                    print(f"清理字典项时出错: {e}, key: {key}, value: {value}")
+                    cleaned_dict[str(key)] = None
+            return cleaned_dict
+        elif isinstance(data, (list, tuple)):
+            cleaned_list = []
+            for item in data:
+                try:
+                    cleaned_list.append(self._deep_clean_for_json(item))
+                except Exception as e:
+                    print(f"清理列表项时出错: {e}, item: {item}")
+                    cleaned_list.append(None)
+            return cleaned_list
+        else:
+            # 对于其他类型，尝试转换为字符串
+            try:
+                return str(data)
+            except:
+                return None
 
     def get_status(self) -> Dict[str, Any]:
         """
@@ -179,8 +316,43 @@ class TrainingManager:
         Returns:
             包含训练状态信息的字典
         """
-        return {
-            "running": self.running,
-            "status": self._status,
-            "stats": self._stats,
-        }
+        try:
+            # 检查线程状态
+            actual_running = self._thread is not None and self._thread.is_alive()
+
+            # 如果线程已停止但状态仍然显示运行中，更新状态
+            if not actual_running and self._status == "running":
+                self._status = "stopped"
+
+            # 确保统计信息是可序列化的
+            safe_stats = self._stats if self._stats is not None else {}
+
+            # 验证统计信息的类型，进行深度清理
+            if isinstance(safe_stats, dict):
+                # 递归清理所有数据，确保JSON安全
+                safe_stats = self._deep_clean_for_json(safe_stats)
+
+            return {
+                "running": actual_running,
+                "status": self._status,
+                "stats": safe_stats,
+            }
+
+        except Exception as e:
+            print(f"获取状态时发生错误: {e}")
+            # 返回安全的默认状态
+            return {
+                "running": False,
+                "status": "error",
+                "stats": {
+                    'episode': 0,
+                    'total_steps': 0,
+                    'episode_reward': 0.0,
+                    'average_reward': 0.0,
+                    'episode_length': 0,
+                    'boundary_vertices': 0,
+                    'buffer_size': 0,
+                    'mesh_data': {},
+                    'boundary_vertices_data': []
+                }
+            }

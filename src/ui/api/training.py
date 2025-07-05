@@ -109,6 +109,10 @@ def status():
 
         return jsonify(result)
     except Exception as exc:
+        print(f"获取训练状态时发生错误: {exc}")
+        import traceback
+        traceback.print_exc()
+
         return jsonify({
             "running": False,
             "status": "error",

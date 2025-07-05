@@ -11,11 +11,12 @@ except ImportError:
 
         def list_available_meshes(self, subfolder="mesh"):
             """返回模拟的mesh列表"""
-            return ["simple_square", "triangle", "rectangle", "pentagon", "hexagon"]
+            return ["1", "simple_square", "triangle", "rectangle", "pentagon", "hexagon"]
 
         def get_mesh_info(self, name, subfolder="mesh"):
             """返回模拟的mesh信息"""
             mesh_data = {
+                "1": {"vertex_count": 24, "file_size": 800},
                 "simple_square": {"vertex_count": 4, "file_size": 128},
                 "triangle": {"vertex_count": 3, "file_size": 96},
                 "rectangle": {"vertex_count": 4, "file_size": 112},
@@ -65,13 +66,13 @@ def list_meshes():
         }), 500
 
 
-@mesh_bp.route("/info/<name>", methods=["GET"])
-def mesh_info(name: str):
+@mesh_bp.route("/info/<n>", methods=["GET"])
+def mesh_info(n: str):
     """
     获取指定mesh的详细信息
 
     路径参数:
-        name: mesh文件名
+        n: mesh文件名
 
     查询参数:
         subfolder: 子文件夹名称，默认为'mesh'
@@ -81,11 +82,11 @@ def mesh_info(name: str):
     """
     try:
         subfolder = request.args.get("subfolder", "mesh")
-        info = importer.get_mesh_info(name, subfolder)
+        info = importer.get_mesh_info(n, subfolder)
         return jsonify(info)
     except Exception as e:
         return jsonify({
-            "name": name,
+            "name": n,
             "subfolder": subfolder,
             "exists": False,
             "vertex_count": 0,

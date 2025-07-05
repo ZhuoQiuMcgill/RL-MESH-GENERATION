@@ -563,15 +563,52 @@ class TrainingManager {
 
         // 计算所有顶点的边界框以进行缩放
         const allVertices = new Set();
-        Object.values(meshData).forEach(adjacentVertices => {
-            adjacentVertices.forEach(vertex => {
-                allVertices.add(JSON.stringify(vertex));
+
+        try {
+            Object.values(meshData).forEach(adjacentVertices => {
+                if (Array.isArray(adjacentVertices)) {
+                    adjacentVertices.forEach(vertex => {
+                        try {
+                            // 直接处理数组格式的顶点，不使用JSON.stringify/parse
+                            if (Array.isArray(vertex) && vertex.length >= 2) {
+                                const vertexKey = `${vertex[0]},${vertex[1]}`;
+                                allVertices.add(vertexKey);
+                            }
+                        } catch (e) {
+                            console.warn('处理顶点时出错:', e, vertex);
+                        }
+                    });
+                }
             });
+        } catch (e) {
+            console.error('处理mesh数据时出错:', e);
+            this.clearCanvas();
+            return;
+        }
+
+        if (allVertices.size === 0) {
+            this.clearCanvas();
+            return;
+        }
+
+        // 解析顶点坐标
+        const vertices = [];
+        allVertices.forEach(vertexStr => {
+            try {
+                const coords = vertexStr.split(',').map(parseFloat);
+                if (coords.length >= 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+                    vertices.push(coords);
+                }
+            } catch (e) {
+                console.warn('解析顶点坐标时出错:', e, vertexStr);
+            }
         });
 
-        if (allVertices.size === 0) return;
+        if (vertices.length === 0) {
+            this.clearCanvas();
+            return;
+        }
 
-        const vertices = Array.from(allVertices).map(v => JSON.parse(v));
         const bounds = this.calculateBounds(vertices);
         const transform = this.calculateTransform(bounds);
 
@@ -579,27 +616,62 @@ class TrainingManager {
         this.ctx.strokeStyle = '#6366F1';
         this.ctx.lineWidth = 2;
 
-        Object.entries(meshData).forEach(([vertex, adjacentVertices]) => {
-            const [x1, y1] = JSON.parse(vertex);
-            const screenPos1 = this.worldToScreen([x1, y1], transform);
+        try {
+            Object.entries(meshData).forEach(([vertex, adjacentVertices]) => {
+                try {
+                    // 解析顶点坐标
+                    let vertexCoords;
+                    if (typeof vertex === 'string' && vertex.startsWith('(') && vertex.endsWith(')')) {
+                        // 处理字符串格式的元组 "(x, y)"
+                        const coordStr = vertex.slice(1, -1); // 移除括号
+                        vertexCoords = coordStr.split(',').map(s => parseFloat(s.trim()));
+                    } else if (Array.isArray(vertex)) {
+                        vertexCoords = vertex;
+                    } else {
+                        console.warn('无法解析顶点格式:', vertex);
+                        return;
+                    }
 
-            adjacentVertices.forEach(([x2, y2]) => {
-                const screenPos2 = this.worldToScreen([x2, y2], transform);
+                    if (!Array.isArray(vertexCoords) || vertexCoords.length < 2) {
+                        return;
+                    }
 
-                this.ctx.beginPath();
-                this.ctx.moveTo(screenPos1[0], screenPos1[1]);
-                this.ctx.lineTo(screenPos2[0], screenPos2[1]);
-                this.ctx.stroke();
+                    const screenPos1 = this.worldToScreen(vertexCoords, transform);
+
+                    if (Array.isArray(adjacentVertices)) {
+                        adjacentVertices.forEach(neighbor => {
+                            try {
+                                if (Array.isArray(neighbor) && neighbor.length >= 2) {
+                                    const screenPos2 = this.worldToScreen(neighbor, transform);
+                                    this.ctx.beginPath();
+                                    this.ctx.moveTo(screenPos1[0], screenPos1[1]);
+                                    this.ctx.lineTo(screenPos2[0], screenPos2[1]);
+                                    this.ctx.stroke();
+                                }
+                            } catch (e) {
+                                console.warn('绘制边时出错:', e);
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.warn('处理顶点连接时出错:', e, vertex);
+                }
             });
-        });
+        } catch (e) {
+            console.error('绘制边时出错:', e);
+        }
 
         // 绘制顶点
         this.ctx.fillStyle = '#3B82F6';
         vertices.forEach(vertex => {
-            const screenPos = this.worldToScreen(vertex, transform);
-            this.ctx.beginPath();
-            this.ctx.arc(screenPos[0], screenPos[1], 3, 0, 2 * Math.PI);
-            this.ctx.fill();
+            try {
+                const screenPos = this.worldToScreen(vertex, transform);
+                this.ctx.beginPath();
+                this.ctx.arc(screenPos[0], screenPos[1], 3, 0, 2 * Math.PI);
+                this.ctx.fill();
+            } catch (e) {
+                console.warn('绘制顶点时出错:', e);
+            }
         });
     }
 
