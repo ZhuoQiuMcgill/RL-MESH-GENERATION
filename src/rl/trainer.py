@@ -5,6 +5,7 @@ import torch
 from typing import Dict, List, Optional, Tuple, Any, Callable, Union
 from collections import deque
 import json
+import threading
 
 from .agent.sac_agent import SACAgent
 from .environment import MeshEnv
@@ -425,15 +426,19 @@ class MeshTrainer:
 
         return episode_data
 
-    def train(self,
-              max_episodes: int = None,
-              max_steps: int = None) -> Dict[str, List[float]]:
+    def train(
+        self,
+        max_episodes: int = None,
+        max_steps: int = None,
+        stop_event: Optional["threading.Event"] = None,
+    ) -> Dict[str, List[float]]:
         """
         执行训练过程
 
         Args:
             max_episodes: 最大episode数，如果为None则从配置中读取
             max_steps: 最大训练步数，如果为None则从配置中读取
+            stop_event: 可选的threading.Event，用于在外部请求时提前停止训练
 
         Returns:
             包含训练统计信息的字典
@@ -459,6 +464,9 @@ class MeshTrainer:
         start_time = time.time()
 
         for episode in range(max_episodes):
+            if stop_event is not None and stop_event.is_set():
+                print("收到停止训练信号，提前结束训练")
+                break
             episode_reward = 0
             episode_length = 0
 
@@ -466,6 +474,8 @@ class MeshTrainer:
             state, info = self.env.reset()
 
             for step in range(max_steps):
+                if stop_event is not None and stop_event.is_set():
+                    break
                 # 选择动作
                 if self.training_stats['total_steps'] < start_training_steps:
                     # 前期使用随机动作进行探索
@@ -497,7 +507,7 @@ class MeshTrainer:
 
                 state = next_state
 
-                if done:
+                if done or (stop_event is not None and stop_event.is_set()):
                     break
 
             # 记录episode统计
@@ -527,7 +537,12 @@ class MeshTrainer:
 
         # 训练结束
         self.training_stats['training_time'] = time.time() - start_time
-        print(f"训练完成! 总耗时: {self.training_stats['training_time']:.2f}秒")
+        if stop_event is not None and stop_event.is_set():
+            print("训练被外部停止")
+        else:
+            print(
+                f"训练完成! 总耗时: {self.training_stats['training_time']:.2f}秒"
+            )
 
         # 保存最终模型和统计信息
         self._save_final_results()
