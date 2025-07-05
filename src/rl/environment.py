@@ -9,6 +9,7 @@ from src.geometry import Boundary, Mesh
 from src.action.type0 import ActionType0
 from src.action.type1 import ActionType1
 from src.action.type2 import ActionType2
+from .config import load_config
 
 
 class MeshEnv(gym.Env):
@@ -18,7 +19,7 @@ class MeshEnv(gym.Env):
     """
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, initial_boundary, n=2, g=3, alpha=2, beta=6):
+    def __init__(self, initial_boundary, n=None, g=None, alpha=None, beta=None, config=None):
         """
         初始化网格生成环境
 
@@ -30,11 +31,18 @@ class MeshEnv(gym.Env):
             beta: 状态观察半径因子
         """
         super(MeshEnv, self).__init__()
+        cfg = load_config() if config is None else config
+        env_cfg = cfg.get("environment", {})
+
         self.initial_boundary = initial_boundary
-        self.n = n  # 左右邻居数量
-        self.g = g  # 扇形区域观察点数量
-        self.alpha = alpha  # 动作空间半径因子
-        self.beta = beta  # 状态观察半径因子
+        self.n = n if n is not None else env_cfg.get("n", 2)
+        self.g = g if g is not None else env_cfg.get("g", 3)
+        self.alpha = alpha if alpha is not None else env_cfg.get("alpha", 2)
+        self.beta = beta if beta is not None else env_cfg.get("beta", 6)
+        self.max_steps = env_cfg.get("max_steps", 1000)
+        self.upsilon = env_cfg.get("upsilon", 1.0)
+        self.kappa = env_cfg.get("kappa", 4.0)
+        self.M_angle = env_cfg.get("M_angle", 60.0)
 
         # 初始化动作类型
         self.action_type_0 = ActionType0()
@@ -54,7 +62,6 @@ class MeshEnv(gym.Env):
         self.boundary = None
         self.mesh = None
         self.total_initial_area = 0.0
-        self.max_steps = 1000  # 最大步数限制
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -440,7 +447,7 @@ class MeshEnv(gym.Env):
             float: 边界质量值（-1到0之间）
         """
         # 简化实现：基于新形成的角度
-        M_angle = 60.0  # 最小角度阈值
+        M_angle = self.M_angle  # 最小角度阈值
 
         # 计算新形成的角度（这里简化处理）
         # 在实际实现中，需要分析新边界的角度变化
@@ -487,10 +494,8 @@ class MeshEnv(gym.Env):
         e_max = max(edge_lengths)
 
         # 计算最小和最大允许面积
-        upsilon = 1.0  # 密度权重参数
-        A_min = upsilon * e_min ** 2
-        kappa = 4.0  # 调节参数
-        A_max = upsilon * ((e_max - e_min) / kappa + e_min) ** 2
+        A_min = self.upsilon * e_min ** 2
+        A_max = self.upsilon * ((e_max - e_min) / self.kappa + e_min) ** 2
 
         # 计算密度奖励
         if element_area < A_min:
