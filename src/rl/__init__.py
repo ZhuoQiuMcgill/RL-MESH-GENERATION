@@ -12,14 +12,24 @@
     PrioritizedReplayBuffer: 优先级经验回放缓冲区
     MeshEnv: 网格生成环境
 
+主要函数:
+    create_replay_buffer: 根据配置创建经验回放缓冲区的工厂函数
+    get_buffer_info: 获取缓冲区信息
+    load_config: 加载配置文件
+
 用法示例:
-    from src.rl import SACAgent, ReplayBuffer, MeshEnv
+    from src.rl import SACAgent, MeshEnv, create_replay_buffer
     from src.rl.config import load_config
 
     # 创建环境和智能体
     env = MeshEnv(boundary)
     agent = SACAgent(state_dim, action_dim, max_action, device)
-    replay_buffer = ReplayBuffer(capacity=1000000)
+
+    # 根据配置创建缓冲区（自动选择普通或优先级回放）
+    replay_buffer = create_replay_buffer()
+
+    # 或手动指定类型
+    per_buffer = create_replay_buffer(buffer_type="prioritized", capacity=100000)
 
     # 训练
     state, _ = env.reset()
@@ -29,6 +39,7 @@
         replay_buffer.add(state, action, reward, next_state, done)
 
         if len(replay_buffer) > batch_size:
+            # SAC agent会自动检测缓冲区类型并处理PER的权重和优先级更新
             agent.train(replay_buffer, batch_size)
 
         state = next_state if not done else env.reset()[0]
@@ -37,6 +48,7 @@
 from .agent.sac_agent import SACAgent
 from .agent.network import Actor, Critic
 from .replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from .buffer_factory import create_replay_buffer, get_buffer_info
 from .environment import MeshEnv
 from .config import load_config
 
@@ -47,6 +59,8 @@ __all__ = [
     'Critic',
     'ReplayBuffer',
     'PrioritizedReplayBuffer',
+    'create_replay_buffer',
+    'get_buffer_info',
     'MeshEnv',
     'load_config'
 ]

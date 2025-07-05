@@ -5,10 +5,10 @@ import math
 import copy
 
 # 导入几何模块和动作模块
-from src.geometry import Boundary, Mesh
-from src.action.type0 import ActionType0
-from src.action.type1 import ActionType1
-from src.action.type2 import ActionType2
+from src.geometry import Mesh
+from src.rl.action.type0 import ActionType0
+from src.rl.action.type1 import ActionType1
+from src.rl.action import ActionType2
 from .config import load_config
 
 

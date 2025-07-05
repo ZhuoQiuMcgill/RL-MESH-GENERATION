@@ -10,6 +10,19 @@ sac_agent:
   batch_size: 256
   start_training_steps: 1000
 
+# 经验回放缓冲区配置
+replay_buffer:
+  # 缓冲区类型: "normal" 或 "prioritized"
+  type: "normal"
+  capacity: 1000000
+
+  # 优先级经验回放(PER)参数 - 仅当type为"prioritized"时使用
+  prioritized:
+    alpha: 0.6          # 优先级指数，控制优先级的强度 (0=uniform, 1=full prioritization)
+    beta_start: 0.4     # 重要性采样权重的初始值
+    beta_frames: 100000 # beta从beta_start增长到1.0所需的帧数
+    epsilon: 1e-6       # 小常数，防止优先级为0
+
 environment:
   n: 2
   g: 3

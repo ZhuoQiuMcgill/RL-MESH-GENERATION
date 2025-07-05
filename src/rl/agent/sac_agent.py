@@ -8,6 +8,7 @@ from ..config import load_config
 class SACAgent:
     """
     实现了Soft Actor-Critic (SAC)算法的智能体。
+    支持普通经验回放和优先级经验回放(PER)。
     """
 
     def __init__(self, state_dim, action_dim, max_action, device, config=None):
@@ -48,32 +49,29 @@ class SACAgent:
         return action.cpu().data.numpy().flatten()
 
     def train(self, replay_buffer, batch_size=256):
-        """执行一次参数更新，对应论文 Algorithm 1 的主要循环"""
-        # 1. 从 replay_buffer 中采样一个批次的数据 (state, action, reward, next_state, done)
+        """
+        执行一次参数更新，对应论文 Algorithm 1 的主要循环
+        支持普通经验回放和优先级经验回放(PER)
 
-        # 2. 计算 Critic 损失：
-        #    a. 使用 actor 从 next_state 计算 next_action 和 log_prob。
-        #    b. 使用 critic_target 计算目标Q值，这是SAC的关键部分：
-        #       target_Q = reward + (1 - done) * gamma * (min(Q1_target, Q2_target) - alpha * log_prob)
-        #    c. 计算当前Q值 (current_Q1, current_Q2)。
-        #    d. Critic的损失是当前Q值和目标Q值的均方误差(MSE)。
+        Args:
+            replay_buffer: 经验回放缓冲区，可以是ReplayBuffer或PrioritizedReplayBuffer
+            batch_size: 批次大小
 
-        # 3. 更新 Critic 网络。
+        Returns:
+            dict: 包含损失和指标的字典
+        """
+        # 检测是否为优先级经验回放
+        is_prioritized = hasattr(replay_buffer, 'update_priorities')
 
-        # 4. 计算 Actor 损失：
-        #    a. 使用 actor 从 state 重新计算动作和 log_prob。
-        #    b. Actor 的目标是最大化Q值和策略熵：
-        #       actor_loss = (alpha * log_prob - min(Q1, Q2)).mean()
-
-        # 5. 更新 Actor 网络。
-
-        # 6. 更新温度参数 alpha：
-        #    a. alpha_loss = -(log_alpha * (log_prob + target_entropy).detach()).mean()
-        #    b. 更新 log_alpha。
-
-        # 7. 软更新 Critic_target 网络：
-        #    target_params = tau * current_params + (1 - tau) * target_params
-        state, action, reward, next_state, done = replay_buffer.sample(batch_size)
+        if is_prioritized:
+            # 优先级经验回放
+            state, action, reward, next_state, done, weights, indices = replay_buffer.sample(batch_size)
+            weights = torch.FloatTensor(weights).to(self.device).unsqueeze(1)
+        else:
+            # 普通经验回放
+            state, action, reward, next_state, done = replay_buffer.sample(batch_size)
+            weights = torch.ones(batch_size, 1).to(self.device)  # 均匀权重
+            indices = None
 
         state = torch.FloatTensor(state).to(self.device)
         action = torch.FloatTensor(action).to(self.device)
@@ -81,6 +79,7 @@ class SACAgent:
         next_state = torch.FloatTensor(next_state).to(self.device)
         done = torch.FloatTensor(done).unsqueeze(1).to(self.device)
 
+        # 计算目标Q值
         with torch.no_grad():
             next_action, next_log_prob, _ = self.actor(next_state)
             target_q1, target_q2 = self.critic_target(next_state, next_action)
@@ -88,37 +87,60 @@ class SACAgent:
             alpha = self.log_alpha.exp()
             target_q = reward + (1 - done) * self.gamma * (target_q - alpha * next_log_prob)
 
+        # 计算当前Q值
         current_q1, current_q2 = self.critic(state, action)
-        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
 
+        # 计算TD误差（用于PER的优先级更新）
+        td_error1 = torch.abs(current_q1 - target_q).detach()
+        td_error2 = torch.abs(current_q2 - target_q).detach()
+        td_errors = torch.max(td_error1, td_error2).squeeze().cpu().numpy()
+
+        # Critic损失，应用重要性采样权重
+        critic_loss1 = (weights * F.mse_loss(current_q1, target_q, reduction='none')).mean()
+        critic_loss2 = (weights * F.mse_loss(current_q2, target_q, reduction='none')).mean()
+        critic_loss = critic_loss1 + critic_loss2
+
+        # 更新Critic网络
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
+        # 计算Actor损失
         new_action, log_prob, _ = self.actor(state)
         q1_pi, q2_pi = self.critic(state, new_action)
         min_q_pi = torch.min(q1_pi, q2_pi)
         alpha = self.log_alpha.exp()
-        actor_loss = (alpha * log_prob - min_q_pi).mean()
 
+        # Actor损失，应用重要性采样权重
+        actor_loss = (weights * (alpha * log_prob - min_q_pi)).mean()
+
+        # 更新Actor网络
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
+        # 更新温度参数alpha
         alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach()).mean()
 
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
         self.alpha_optimizer.step()
 
+        # 软更新目标网络
         for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+        # 更新优先级经验回放的优先级
+        if is_prioritized and indices is not None:
+            replay_buffer.update_priorities(indices, td_errors)
 
         return {
             "critic_loss": critic_loss.item(),
             "actor_loss": actor_loss.item(),
             "alpha_loss": alpha_loss.item(),
             "alpha": self.log_alpha.exp().item(),
+            "mean_td_error": td_errors.mean(),
+            "max_td_error": td_errors.max(),
         }
 
     def save(self, filename):
