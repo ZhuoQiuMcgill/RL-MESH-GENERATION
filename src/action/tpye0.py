@@ -1,4 +1,4 @@
-from action import ActionType
+from .action import ActionType
 import copy
 
 
@@ -20,15 +20,11 @@ class ActionType0(ActionType):
         Returns:
             tuple: (更新后的mesh, 更新后的boundary, 生成的元素)
         """
-        # 获取边界顶点列表
-        vertices = boundary.get_vertices()
-        boundary_size = len(vertices)
-
-        # 获取参考顶点V0及其邻居点
-        V0 = vertices[reference_vertex_V0_idx]
-        V1 = vertices[(reference_vertex_V0_idx + 1) % boundary_size]
-        V2 = vertices[(reference_vertex_V0_idx + 2) % boundary_size]
-        V3 = vertices[(reference_vertex_V0_idx - 1) % boundary_size]
+        # 使用新的封装函数获取顶点
+        V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
 
         # 创建新的网格和边界副本
         new_mesh = copy.deepcopy(mesh)
@@ -54,14 +50,11 @@ class ActionType0(ActionType):
         """
         检查Type 0动作的有效性
         """
-        vertices = boundary.get_vertices()
-        boundary_size = len(vertices)
-
-        if boundary_size < 4:
+        if boundary.size() < 4:
             return False
 
-        V0 = vertices[reference_vertex_V0_idx]
-        V2 = vertices[(reference_vertex_V0_idx + 2) % boundary_size]
+        V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
+        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
 
         diagonal_edge = (V0, V2)
 

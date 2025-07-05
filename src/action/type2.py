@@ -1,4 +1,4 @@
-from action import ActionType
+from .action import ActionType
 import copy
 
 
@@ -12,11 +12,9 @@ class ActionType2(ActionType):
         """
         执行Type 2动作的逻辑
         """
-        vertices = boundary.get_vertices()
-        boundary_size = len(vertices)
-
-        V0 = vertices[reference_vertex_V0_idx]
-        V1 = vertices[(reference_vertex_V0_idx + 1) % boundary_size]
+        # 使用新的封装函数获取顶点
+        V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
         V2 = tuple(new_vertex_V2_coords)
         V3 = tuple(new_vertex_V3_coords)
 
@@ -61,14 +59,11 @@ class ActionType2(ActionType):
         """
         检查Type 2动作的有效性
         """
-        vertices = boundary.get_vertices()
-        boundary_size = len(vertices)
-
-        if boundary_size < 2:
+        if boundary.size() < 2:
             return False
 
-        V0 = vertices[reference_vertex_V0_idx]
-        V1 = vertices[(reference_vertex_V0_idx + 1) % boundary_size]
+        V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
         V2 = tuple(new_vertex_V2_coords)
         V3 = tuple(new_vertex_V3_coords)
 

@@ -1,4 +1,4 @@
-from action import ActionType
+from .action import ActionType
 import copy
 
 
@@ -12,12 +12,10 @@ class ActionType1(ActionType):
         """
         执行Type 1动作的逻辑
         """
-        vertices = boundary.get_vertices()
-        boundary_size = len(vertices)
-
-        V0 = vertices[reference_vertex_V0_idx]
-        V1 = vertices[(reference_vertex_V0_idx + 1) % boundary_size]
-        V3 = vertices[(reference_vertex_V0_idx - 1) % boundary_size]
+        # 使用新的封装函数获取顶点
+        V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
         V2 = tuple(new_vertex_V2_coords)
 
         new_mesh = copy.deepcopy(mesh)
@@ -57,14 +55,11 @@ class ActionType1(ActionType):
         """
         检查Type 1动作的有效性
         """
-        vertices = boundary.get_vertices()
-        boundary_size = len(vertices)
-
-        if boundary_size < 3:
+        if boundary.size() < 3:
             return False
 
-        V1 = vertices[(reference_vertex_V0_idx + 1) % boundary_size]
-        V3 = vertices[(reference_vertex_V0_idx - 1) % boundary_size]
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
         V2 = tuple(new_vertex_V2_coords)
 
         if not boundary.vertex_inside_boundary(V2):
