@@ -1,5 +1,5 @@
 import os
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 import logging
 
 from src.geometry import Boundary, Mesh
@@ -11,23 +11,103 @@ class MeshImporter:
 
     该类用于从txt文件中读取边界点数据，创建Boundary对象并生成Mesh对象。
     支持读取顺时针排列的封闭图形边界点数据。
+    所有路径配置都从config.yaml中获取。
     """
 
-    def __init__(self, data_root: Optional[str] = None):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         初始化导入器
 
         Args:
-            data_root: 数据根目录路径，如果为None则使用项目根目录下的data文件夹
+            config: 配置字典，如果为None则从config.yaml加载
         """
-        if data_root is None:
-            # 项目根目录下的data文件夹
-            self.data_root = os.path.join(os.getcwd(), "data")
-        else:
-            self.data_root = data_root
+        # 导入config加载函数
+        from src.rl.config import load_config
+
+        self.config = config if config is not None else load_config()
+        self.paths_config = self.config.get("paths", {})
+
+        # 设置数据根目录
+        self.data_root = self._get_absolute_path(self.paths_config.get("data_root", "data"))
 
         # 设置日志
         self.logger = logging.getLogger(__name__)
+
+        # 确保必要的目录存在
+        self._ensure_directories()
+
+    def _get_absolute_path(self, relative_path: str) -> str:
+        """
+        将相对路径转换为绝对路径（基于项目根目录）
+
+        Args:
+            relative_path: 相对于项目根目录的路径
+
+        Returns:
+            str: 绝对路径
+        """
+        if os.path.isabs(relative_path):
+            return relative_path
+        return os.path.join(os.getcwd(), relative_path)
+
+    def _get_subfolder_path(self, subfolder: str) -> str:
+        """
+        获取子文件夹的完整路径
+
+        Args:
+            subfolder: 子文件夹名称
+
+        Returns:
+            str: 子文件夹的完整路径
+        """
+        # 首先检查是否在paths配置中有对应的目录配置
+        folder_key = f"{subfolder}_dir"
+        if folder_key in self.paths_config:
+            subfolder_path = self.paths_config[folder_key]
+        else:
+            # 如果没有配置，直接使用subfolder名称
+            subfolder_path = subfolder
+
+        return os.path.join(self.data_root, subfolder_path)
+
+    def _ensure_directories(self):
+        """
+        确保必要的目录存在
+        """
+        try:
+            # 确保数据根目录存在
+            os.makedirs(self.data_root, exist_ok=True)
+
+            # 确保常用的子目录存在
+            common_dirs = ["mesh_dir", "custom_dir", "examples_dir"]
+            for dir_key in common_dirs:
+                if dir_key in self.paths_config:
+                    dir_path = os.path.join(self.data_root, self.paths_config[dir_key])
+                    os.makedirs(dir_path, exist_ok=True)
+
+        except Exception as e:
+            self.logger.warning(f"创建目录时发生错误: {e}")
+
+    def get_data_root(self) -> str:
+        """
+        获取数据根目录路径
+
+        Returns:
+            str: 数据根目录的绝对路径
+        """
+        return self.data_root
+
+    def get_subfolder_path(self, subfolder: str) -> str:
+        """
+        获取指定子文件夹的完整路径（公共方法）
+
+        Args:
+            subfolder: 子文件夹名称
+
+        Returns:
+            str: 子文件夹的完整路径
+        """
+        return self._get_subfolder_path(subfolder)
 
     def load_boundary_from_file(self, file_path: str) -> Boundary:
         """
@@ -44,6 +124,10 @@ class MeshImporter:
             ValueError: 当文件格式错误时
             IOError: 当文件读取失败时
         """
+        # 如果是相对路径，转换为基于项目根目录的绝对路径
+        if not os.path.isabs(file_path):
+            file_path = self._get_absolute_path(file_path)
+
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"边界数据文件不存在: {file_path}")
 
@@ -63,19 +147,20 @@ class MeshImporter:
 
         Args:
             mesh_name: 网格文件名（不含扩展名），如 "1", "simple_square"
-            subfolder: 子文件夹名称，默认为 "mesh"
+            subfolder: 子文件夹名称，默认为 "mesh"，会从配置中查找对应的目录
 
         Returns:
             Boundary: 创建的边界对象
 
         Example:
-            # 加载 data/mesh/1.txt
+            # 加载 data/mesh/1.txt（假设mesh_dir配置为"mesh"）
             boundary = importer.load_boundary_by_name("1")
 
-            # 加载 data/custom/square.txt
+            # 加载 data/custom/square.txt（假设custom_dir配置为"custom"）
             boundary = importer.load_boundary_by_name("square", "custom")
         """
-        file_path = os.path.join(self.data_root, subfolder, f"{mesh_name}.txt")
+        subfolder_path = self._get_subfolder_path(subfolder)
+        file_path = os.path.join(subfolder_path, f"{mesh_name}.txt")
         return self.load_boundary_from_file(file_path)
 
     def create_mesh_from_file(self, file_path: str) -> Mesh:
@@ -105,7 +190,7 @@ class MeshImporter:
             Mesh: 创建的网格对象
 
         Example:
-            # 创建来自 data/mesh/1.txt 的网格
+            # 创建来自配置路径下的网格
             mesh = importer.create_mesh_by_name("1")
         """
         boundary = self.load_boundary_by_name(mesh_name, subfolder)
@@ -179,8 +264,8 @@ class MeshImporter:
                 self.logger.warning(f"数据根目录不存在: {self.data_root}")
                 return False
 
-            # 检查mesh子目录
-            mesh_dir = os.path.join(self.data_root, "mesh")
+            # 检查主要的子目录
+            mesh_dir = self._get_subfolder_path("mesh")
             if not os.path.exists(mesh_dir):
                 self.logger.warning(f"mesh目录不存在: {mesh_dir}")
                 return False
@@ -208,20 +293,20 @@ class MeshImporter:
         Returns:
             List[str]: 可用的网格文件名列表（不含扩展名）
         """
-        mesh_dir = os.path.join(self.data_root, subfolder)
+        subfolder_path = self._get_subfolder_path(subfolder)
 
-        if not os.path.exists(mesh_dir):
-            self.logger.warning(f"目录不存在: {mesh_dir}")
+        if not os.path.exists(subfolder_path):
+            self.logger.warning(f"目录不存在: {subfolder_path}")
             return []
 
         try:
             txt_files = [
                 os.path.splitext(f)[0]  # 移除扩展名
-                for f in os.listdir(mesh_dir)
+                for f in os.listdir(subfolder_path)
                 if f.endswith('.txt')
             ]
 
-            self.logger.info(f"在 {mesh_dir} 中找到 {len(txt_files)} 个网格文件")
+            self.logger.info(f"在 {subfolder_path} 中找到 {len(txt_files)} 个网格文件")
             return sorted(txt_files)
 
         except Exception as e:
@@ -239,10 +324,13 @@ class MeshImporter:
         Returns:
             dict: 包含网格信息的字典
         """
-        file_path = os.path.join(self.data_root, subfolder, f"{mesh_name}.txt")
+        subfolder_path = self._get_subfolder_path(subfolder)
+        file_path = os.path.join(subfolder_path, f"{mesh_name}.txt")
 
         info = {
             "name": mesh_name,
+            "subfolder": subfolder,
+            "configured_path": subfolder_path,
             "file_path": file_path,
             "exists": os.path.exists(file_path),
             "vertex_count": 0,
@@ -267,12 +355,84 @@ class MeshImporter:
 
         return info
 
+    def get_default_meshes(self) -> List[str]:
+        """
+        获取配置中定义的默认mesh列表
 
-def create_default_importer() -> MeshImporter:
+        Returns:
+            List[str]: 默认mesh名称列表
+        """
+        return self.paths_config.get("default_meshes", [])
+
+    def get_available_subfolders(self) -> Dict[str, str]:
+        """
+        获取所有配置的子文件夹及其路径
+
+        Returns:
+            Dict[str, str]: 子文件夹名称到路径的映射
+        """
+        subfolders = {}
+
+        # 查找所有以_dir结尾的配置项
+        for key, value in self.paths_config.items():
+            if key.endswith('_dir'):
+                folder_name = key[:-4]  # 移除'_dir'后缀
+                folder_path = os.path.join(self.data_root, value)
+                subfolders[folder_name] = folder_path
+
+        return subfolders
+
+    def create_sample_mesh_file(self, mesh_name: str, vertices: List[Tuple[float, float]],
+                                subfolder: str = "mesh", overwrite: bool = False) -> str:
+        """
+        创建示例mesh文件
+
+        Args:
+            mesh_name: mesh文件名（不含扩展名）
+            vertices: 顶点坐标列表
+            subfolder: 子文件夹名称，默认为 "mesh"
+            overwrite: 是否覆盖已存在的文件
+
+        Returns:
+            str: 创建的文件路径
+
+        Raises:
+            FileExistsError: 当文件已存在且overwrite为False时
+            IOError: 当文件创建失败时
+        """
+        subfolder_path = self._get_subfolder_path(subfolder)
+        os.makedirs(subfolder_path, exist_ok=True)
+
+        file_path = os.path.join(subfolder_path, f"{mesh_name}.txt")
+
+        if os.path.exists(file_path) and not overwrite:
+            raise FileExistsError(f"文件已存在: {file_path}")
+
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(f"# Mesh file: {mesh_name}\n")
+                f.write(f"# Generated automatically\n")
+                f.write(f"# Vertices: {len(vertices)}\n")
+                f.write("#\n")
+
+                for x, y in vertices:
+                    f.write(f"{x:.6f} {y:.6f}\n")
+
+            self.logger.info(f"成功创建mesh文件: {file_path}")
+            return file_path
+
+        except Exception as e:
+            raise IOError(f"创建文件失败: {file_path}, 错误: {str(e)}") from e
+
+
+def create_default_importer(config: Optional[Dict[str, Any]] = None) -> MeshImporter:
     """
     创建默认的网格导入器实例
 
+    Args:
+        config: 配置字典，如果为None则从config.yaml加载
+
     Returns:
-        MeshImporter: 使用默认设置的导入器实例
+        MeshImporter: 使用配置的导入器实例
     """
-    return MeshImporter()
+    return MeshImporter(config)

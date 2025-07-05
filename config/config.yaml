@@ -1,3 +1,35 @@
+# 路径配置 - 统一管理所有文件路径
+paths:
+  # 数据根目录（相对于项目根目录）
+  data_root: "data"
+
+  # 网格数据子目录
+  mesh_dir: "mesh"
+
+  # 其他数据子目录
+  custom_dir: "custom"
+  examples_dir: "examples"
+
+  # 结果和输出目录
+  results_dir: "results"
+  logs_dir: "logs"
+  models_dir: "models"
+
+  # 缓存和临时目录
+  cache_dir: ".cache"
+  temp_dir: ".temp"
+
+  # 工具目录
+  tools_dir: "tools"
+
+  # 配置文件目录
+  config_dir: "config"
+
+  # 默认的mesh文件名（用于演示）
+  default_meshes:
+    - "1"
+
+
 # Default configuration for RL mesh generation
 sac_agent:
   actor_lr: 3e-4

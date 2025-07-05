@@ -24,7 +24,7 @@ def load_config(path: Optional[str] = None) -> Dict[str, Any]:
         return _CONFIG_CACHE
 
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), "config.yaml")
+        path = os.path.join(os.path.dirname(__file__), "../../config/config.yaml")
 
     with open(path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}

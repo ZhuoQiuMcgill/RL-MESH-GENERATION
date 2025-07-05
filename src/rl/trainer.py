@@ -2,7 +2,7 @@ import os
 import time
 import numpy as np
 import torch
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import Dict, List, Optional, Tuple, Any, Callable, Union
 from collections import deque
 import json
 
@@ -11,6 +11,7 @@ from .environment import MeshEnv
 from .buffer_factory import create_replay_buffer, get_buffer_info
 from .config import load_config
 from src.geometry import Boundary
+from src.utils import MeshImporter
 
 
 class MeshTrainer:
@@ -18,7 +19,7 @@ class MeshTrainer:
     网格生成强化学习训练器
 
     该类封装了整个SAC训练循环，提供训练监控和结果回调功能。
-    主要职责是管理训练过程，不涉及复杂的数据预处理和UI交互。
+    支持从文件、mesh名称或直接提供Boundary对象来初始化训练环境。
 
     Attributes:
         config: 配置字典
@@ -29,23 +30,33 @@ class MeshTrainer:
         replay_buffer: 经验回放缓冲区
         training_stats: 训练统计信息
         episode_callbacks: episode完成时的回调函数列表
+        importer: 网格数据导入器
     """
 
     def __init__(self,
-                 initial_boundary: Boundary,
+                 boundary_source: Union[Boundary, str, Dict[str, str]] = None,
                  config: Optional[Dict[str, Any]] = None,
                  device: Optional[str] = None):
         """
         初始化训练器
 
         Args:
-            initial_boundary: 初始边界对象
+            boundary_source: 边界数据源，支持以下格式：
+                - Boundary对象：直接使用该边界对象
+                - str：文件路径（.txt文件）或mesh名称
+                - Dict：包含'type'和相关参数的字典
+                  - {'type': 'file', 'path': 'path/to/file.txt'}
+                  - {'type': 'mesh', 'name': 'mesh_name', 'subfolder': 'mesh'}
+                - None：将使用默认的示例边界
             config: 配置字典，如果为None则从config.yaml加载
             device: 训练设备，如果为None则自动选择
 
+        Raises:
+            ValueError: 当boundary_source格式不正确时
+            FileNotFoundError: 当指定的文件不存在时
+
         Note:
-            TODO: 数据导入和边界创建功能将在后续实现
-            目前需要外部提供已构建好的Boundary对象
+            所有路径配置都从config.yaml的paths部分读取
         """
         # 加载配置
         self.config = config if config is not None else load_config()
@@ -58,13 +69,32 @@ class MeshTrainer:
 
         print(f"使用设备: {self.device}")
 
+        # 初始化网格导入器
+        self.importer = MeshImporter(config=self.config)
+
+        # 验证数据目录结构
+        if not self.importer.validate_data_structure():
+            print("警告: 数据目录结构验证失败，某些功能可能无法正常工作")
+
         # 从配置中获取保存目录
         training_config = self.config.get("training", {})
-        self.save_dir = training_config.get("save_dir", "results")
+        paths_config = self.config.get("paths", {})
+
+        # 优先使用training配置中的save_dir，然后是paths配置中的results_dir，最后是默认值
+        save_dir_name = training_config.get("save_dir") or paths_config.get("results_dir", "results")
+
+        # 转换为绝对路径
+        if os.path.isabs(save_dir_name):
+            self.save_dir = save_dir_name
+        else:
+            self.save_dir = os.path.join(os.getcwd(), save_dir_name)
+
         os.makedirs(self.save_dir, exist_ok=True)
 
+        # 解析并创建边界对象
+        self.initial_boundary = self._create_boundary_from_source(boundary_source)
+
         # 初始化环境
-        self.initial_boundary = initial_boundary
         self._init_environments()
 
         # 初始化智能体
@@ -80,6 +110,184 @@ class MeshTrainer:
         self.episode_callbacks: List[Callable] = []
 
         print("训练器初始化完成")
+
+    def _create_boundary_from_source(self, boundary_source: Union[Boundary, str, Dict[str, str], None]) -> Boundary:
+        """
+        根据不同的源类型创建边界对象
+
+        Args:
+            boundary_source: 边界数据源
+
+        Returns:
+            Boundary: 创建的边界对象
+
+        Raises:
+            ValueError: 当源格式不正确时
+            FileNotFoundError: 当指定的文件不存在时
+        """
+        if boundary_source is None:
+            # 使用默认的示例边界（简单正方形）
+            print("使用默认示例边界（正方形）")
+            default_vertices = [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]
+            return Boundary(default_vertices)
+
+        elif isinstance(boundary_source, Boundary):
+            # 直接使用提供的边界对象
+            print("使用提供的边界对象")
+            return boundary_source
+
+        elif isinstance(boundary_source, str):
+            # 字符串类型：可能是文件路径或mesh名称
+            if boundary_source.endswith('.txt'):
+                # 文件路径
+                print(f"从文件加载边界: {boundary_source}")
+                return self.importer.load_boundary_from_file(boundary_source)
+            else:
+                # mesh名称
+                print(f"从mesh名称加载边界: {boundary_source}")
+                return self.importer.load_boundary_by_name(boundary_source)
+
+        elif isinstance(boundary_source, dict):
+            # 字典格式：包含类型和参数
+            source_type = boundary_source.get('type')
+
+            if source_type == 'file':
+                file_path = boundary_source.get('path')
+                if not file_path:
+                    raise ValueError("字典类型'file'需要提供'path'参数")
+                print(f"从文件加载边界: {file_path}")
+                return self.importer.load_boundary_from_file(file_path)
+
+            elif source_type == 'mesh':
+                mesh_name = boundary_source.get('name')
+                subfolder = boundary_source.get('subfolder', 'mesh')
+                if not mesh_name:
+                    raise ValueError("字典类型'mesh'需要提供'name'参数")
+                print(f"从mesh名称加载边界: {mesh_name} (子文件夹: {subfolder})")
+                return self.importer.load_boundary_by_name(mesh_name, subfolder)
+
+            else:
+                raise ValueError(f"不支持的字典类型: {source_type}. 支持的类型: 'file', 'mesh'")
+
+        else:
+            raise ValueError(f"不支持的边界源类型: {type(boundary_source)}. "
+                             f"支持的类型: Boundary, str, dict, None")
+
+    @classmethod
+    def from_file(cls, file_path: str, **kwargs) -> 'MeshTrainer':
+        """
+        从文件创建训练器的便捷方法
+
+        Args:
+            file_path: txt文件路径
+            **kwargs: 其他传递给__init__的参数
+
+        Returns:
+            MeshTrainer: 训练器实例
+
+        Example:
+            trainer = MeshTrainer.from_file("data/mesh/example.txt")
+        """
+        return cls(boundary_source=file_path, **kwargs)
+
+    @classmethod
+    def from_mesh_name(cls, mesh_name: str, subfolder: str = 'mesh', **kwargs) -> 'MeshTrainer':
+        """
+        从mesh名称创建训练器的便捷方法
+
+        Args:
+            mesh_name: mesh文件名（不含扩展名）
+            subfolder: 子文件夹名称
+            **kwargs: 其他传递给__init__的参数
+
+        Returns:
+            MeshTrainer: 训练器实例
+
+        Example:
+            trainer = MeshTrainer.from_mesh_name("1")
+            trainer = MeshTrainer.from_mesh_name("complex_shape", "custom")
+        """
+        boundary_source = {'type': 'mesh', 'name': mesh_name, 'subfolder': subfolder}
+        return cls(boundary_source=boundary_source, **kwargs)
+
+    @classmethod
+    def from_boundary(cls, boundary: Boundary, **kwargs) -> 'MeshTrainer':
+        """
+        从边界对象创建训练器的便捷方法
+
+        Args:
+            boundary: 边界对象
+            **kwargs: 其他传递给__init__的参数
+
+        Returns:
+            MeshTrainer: 训练器实例
+
+        Example:
+            vertices = [(0, 0), (1, 0), (1, 1), (0, 1)]
+            boundary = Boundary(vertices)
+            trainer = MeshTrainer.from_boundary(boundary)
+        """
+        return cls(boundary_source=boundary, **kwargs)
+
+    def list_available_meshes(self, subfolder: str = "mesh") -> List[str]:
+        """
+        列出可用的网格文件
+
+        Args:
+            subfolder: 子文件夹名称，默认为 "mesh"
+
+        Returns:
+            List[str]: 可用的网格文件名列表（不含扩展名）
+        """
+        return self.importer.list_available_meshes(subfolder)
+
+    def get_mesh_info(self, mesh_name: str, subfolder: str = "mesh") -> dict:
+        """
+        获取网格文件的基本信息
+
+        Args:
+            mesh_name: 网格文件名（不含扩展名）
+            subfolder: 子文件夹名称，默认为 "mesh"
+
+        Returns:
+            dict: 包含网格信息的字典
+        """
+        return self.importer.get_mesh_info(mesh_name, subfolder)
+
+    def load_new_boundary(self, boundary_source: Union[Boundary, str, Dict[str, str]]) -> None:
+        """
+        加载新的边界并重新初始化环境
+
+        Args:
+            boundary_source: 新的边界数据源
+
+        Note:
+            这将重置当前的训练状态和环境，但保留已训练的智能体权重
+        """
+        print("加载新边界并重新初始化环境...")
+
+        # 创建新边界
+        old_boundary_size = len(self.initial_boundary.get_vertices()) if hasattr(self, 'initial_boundary') else 0
+        self.initial_boundary = self._create_boundary_from_source(boundary_source)
+        new_boundary_size = len(self.initial_boundary.get_vertices())
+
+        print(f"边界顶点数量: {old_boundary_size} -> {new_boundary_size}")
+
+        # 重新初始化环境
+        old_state_dim = self.state_dim if hasattr(self, 'state_dim') else 0
+        self._init_environments()
+
+        # 检查状态维度是否发生变化
+        if hasattr(self, 'agent') and old_state_dim != 0 and old_state_dim != self.state_dim:
+            print(f"状态维度已改变 ({old_state_dim} -> {self.state_dim})，需要重新训练智能体")
+            self._init_agent()
+        elif hasattr(self, 'agent'):
+            print("状态维度未改变，保留已训练的智能体权重")
+
+        # 重置训练统计
+        self._init_training_stats()
+
+        print("边界加载完成")
 
     def _init_environments(self):
         """初始化训练和评估环境"""
@@ -103,6 +311,7 @@ class MeshTrainer:
         self.max_action = float(self.env.action_space.high[0])
 
         print(f"状态维度: {self.state_dim}, 动作维度: {self.action_dim}")
+        print(f"边界顶点数量: {len(self.initial_boundary.get_vertices())}")
 
     def _init_agent(self):
         """初始化SAC智能体"""
@@ -428,7 +637,7 @@ class MeshTrainer:
 
         # TODO: 加载训练统计信息和缓冲区状态
         print(f"检查点已加载: {checkpoint_path}")
-        print("TODO: 需要实现完整的检查点恢复功能")
+        print("注意: 训练统计信息和缓冲区状态需要手动实现加载")
 
     def test_agent(self,
                    num_test_episodes: int = 10) -> Dict[str, Any]:
@@ -523,7 +732,10 @@ class MeshTrainer:
             "最终奖励": self.training_stats['episode_rewards'][-1],
             "平均奖励": np.mean(self.training_stats['episode_rewards']),
             "最佳奖励": np.max(self.training_stats['episode_rewards']),
-            "缓冲区使用情况": get_buffer_info(self.replay_buffer)
+            "缓冲区使用情况": get_buffer_info(self.replay_buffer),
+            "边界顶点数量": len(self.initial_boundary.get_vertices()),
+            "状态维度": self.state_dim,
+            "动作维度": self.action_dim
         }
 
         if self.training_stats['evaluation_rewards']:
