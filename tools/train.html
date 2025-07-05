@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>强化学习网格生成训练管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/train.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#6366F1',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<!-- 主容器 -->
+<div class="flex h-screen">
+    <!-- 左侧控制面板 -->
+    <div class="w-80 bg-white shadow-lg border-r border-gray-200 flex flex-col">
+        <!-- 头部 -->
+        <div class="p-6 border-b border-gray-200">
+            <h1 class="text-2xl font-bold text-gray-800">训练管理</h1>
+            <p class="text-sm text-gray-600 mt-1">强化学习网格生成系统</p>
+        </div>
+
+        <!-- 控制区域 -->
+        <div class="flex-1 p-6 overflow-y-auto">
+            <!-- 状态指示器 -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-gray-700">训练状态</span>
+                    <div id="status-indicator" class="flex items-center">
+                        <div class="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
+                        <span id="status-text" class="text-sm text-gray-600">未启动</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mesh选择 -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">选择初始Mesh</label>
+                <select id="mesh-select"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                    <option value="">加载中...</option>
+                </select>
+                <div id="mesh-info" class="mt-2 text-xs text-gray-500 hidden">
+                    <div>顶点数: <span id="mesh-vertices">0</span></div>
+                    <div>文件大小: <span id="mesh-size">0</span> bytes</div>
+                </div>
+            </div>
+
+            <!-- 训练参数 -->
+            <div class="mb-6">
+                <h3 class="text-sm font-medium text-gray-700 mb-3">训练参数</h3>
+
+                <div class="mb-4">
+                    <label class="block text-xs text-gray-600 mb-1">最大Episodes</label>
+                    <input id="max-episodes" type="number" value="1000" min="1"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs text-gray-600 mb-1">每Episode最大步数</label>
+                    <input id="max-steps" type="number" value="1000" min="1"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-xs text-gray-600 mb-1">更新间隔 (Episodes)</label>
+                    <input id="update-interval" type="number" value="10" min="1"
+                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                </div>
+            </div>
+
+            <!-- 控制按钮 -->
+            <div class="space-y-3">
+                <button id="start-btn"
+                        class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200">
+                    开始训练
+                </button>
+                <button id="stop-btn"
+                        class="w-full bg-danger hover:bg-red-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled>
+                    停止训练
+                </button>
+                <button id="refresh-btn"
+                        class="w-full bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
+                    刷新状态
+                </button>
+            </div>
+
+            <!-- 训练统计 -->
+            <div class="mt-6 pt-6 border-t border-gray-200">
+                <h3 class="text-sm font-medium text-gray-700 mb-3">训练统计</h3>
+                <div class="space-y-2 text-xs">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">当前Episode:</span>
+                        <span id="current-episode" class="font-medium">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">总步数:</span>
+                        <span id="total-steps" class="font-medium">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">平均奖励:</span>
+                        <span id="avg-reward" class="font-medium">0.000</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">缓冲区大小:</span>
+                        <span id="buffer-size" class="font-medium">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧主要内容区域 -->
+    <div class="flex-1 flex flex-col">
+        <!-- 顶部信息栏 -->
+        <div class="bg-white shadow-sm border-b border-gray-200 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800">网格可视化</h2>
+                    <p class="text-sm text-gray-600">Episode <span id="display-episode">0</span> -
+                        边界顶点: <span id="boundary-vertices">0</span></p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-sm">
+                        <span class="text-gray-600">Episode奖励:</span>
+                        <span id="episode-reward" class="font-semibold text-gray-800">0.000</span>
+                    </div>
+                    <div class="text-sm">
+                        <span class="text-gray-600">Episode长度:</span>
+                        <span id="episode-length" class="font-semibold text-gray-800">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 网格可视化区域 -->
+        <div class="flex-1 p-6">
+            <div class="h-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <canvas id="mesh-canvas" class="w-full h-full border border-gray-300 rounded"></canvas>
+            </div>
+        </div>
+
+        <!-- 底部日志区域 -->
+        <div class="bg-white border-t border-gray-200 p-4 h-32">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-medium text-gray-700">训练日志</h3>
+                <button id="clear-log-btn" class="text-xs text-gray-500 hover:text-gray-700">清除</button>
+            </div>
+            <div id="log-container" class="h-20 overflow-y-auto bg-gray-50 rounded px-3 py-2 text-xs font-mono">
+                <div class="text-gray-500">等待训练开始...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 加载指示器 -->
+<div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+        <span class="text-gray-700">处理中...</span>
+    </div>
+</div>
+
+<script src="js/train.js"></script>
+</body>
+</html>

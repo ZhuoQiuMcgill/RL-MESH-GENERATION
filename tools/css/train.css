@@ -1,0 +1,264 @@
+/* 自定义样式 */
+
+/* 状态指示器动画 */
+@keyframes pulse-success {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes pulse-warning {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.status-running {
+    background-color: #10B981;
+    animation: pulse-success 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.status-stopped {
+    background-color: #EF4444;
+}
+
+.status-idle {
+    background-color: #6B7280;
+}
+
+.status-loading {
+    background-color: #F59E0B;
+    animation: pulse-warning 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Canvas样式 */
+#mesh-canvas {
+    cursor: crosshair;
+    background: linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc),
+    linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+}
+
+/* 日志容器滚动条样式 */
+#log-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+#log-container::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+}
+
+#log-container::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+#log-container::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 平滑过渡效果 */
+.transition-all {
+    transition: all 0.3s ease;
+}
+
+/* 按钮悬停效果增强 */
+button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+/* 输入框焦点效果 */
+input:focus, select:focus {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 统计数据卡片效果 */
+.stat-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 加载动画 */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* 网格渲染相关样式 */
+.mesh-point {
+    fill: #3B82F6;
+    stroke: #1E40AF;
+    stroke-width: 1;
+}
+
+.mesh-edge {
+    stroke: #6366F1;
+    stroke-width: 1.5;
+    fill: none;
+}
+
+.mesh-element {
+    fill: rgba(59, 130, 246, 0.1);
+    stroke: #3B82F6;
+    stroke-width: 1;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+    .flex.h-screen {
+        flex-direction: column;
+    }
+
+    .w-80 {
+        width: 100%;
+        height: auto;
+        max-height: 400px;
+    }
+
+    .flex-1.flex.flex-col {
+        height: calc(100vh - 400px);
+        min-height: 500px;
+    }
+}
+
+@media (max-width: 768px) {
+    .w-80 {
+        max-height: 350px;
+    }
+
+    .p-6 {
+        padding: 1rem;
+    }
+
+    .space-y-3 > * + * {
+        margin-top: 0.5rem;
+    }
+}
+
+/* 自定义滚动条 */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 工具提示样式 */
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip .tooltip-text {
+    visibility: hidden;
+    width: 120px;
+    background-color: #374151;
+    color: white;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px;
+    font-size: 12px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -60px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.tooltip:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+/* 进度条样式 */
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3B82F6, #6366F1);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* 数据显示卡片 */
+.data-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.data-card-header {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+}
+
+.data-card-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+/* 错误状态样式 */
+.error-state {
+    color: #DC2626;
+    background-color: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+/* 成功状态样式 */
+.success-state {
+    color: #065F46;
+    background-color: #ECFDF5;
+    border: 1px solid #A7F3D0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
