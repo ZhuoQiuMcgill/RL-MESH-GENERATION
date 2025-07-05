@@ -31,6 +31,16 @@ class Boundary:
         """
         return [tuple(v) for v in self._verts]
 
+    def get_vertex_by_index(self, n: int):
+        """Return the vertex at index n, supporting negative and overflow indices."""
+        if not isinstance(n, int):
+            raise TypeError("index must be int")
+        if self.size() == 0:
+            raise IndexError("no vertices in boundary")
+
+        idx = n % self.size()  # 支持负数和越界
+        return tuple(self._verts[idx])
+
     def get_edges(self) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
         """
         返回边的列表，每条边由(前一个顶点, 当前顶点)元组表示
