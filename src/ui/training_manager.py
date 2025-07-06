@@ -94,7 +94,8 @@ class TrainingManager:
             'boundary_vertices': 0,
             'buffer_size': 0,
             'mesh_data': {},
-            'boundary_vertices_data': []
+            'boundary_vertices_data': [],
+            'reference_point_info': None
         }
         self._status = "running"
 
@@ -169,6 +170,14 @@ class TrainingManager:
                 print(f"处理boundary_vertices时发生错误: {boundary_error}")
                 serializable_boundary_vertices = []
 
+            # 处理参考点信息
+            ref_info = episode_data.get('reference_point_info')
+            try:
+                serializable_ref_info = self._deep_clean_for_json(ref_info)
+            except Exception as ref_err:
+                print(f"处理reference_point_info时发生错误: {ref_err}")
+                serializable_ref_info = None
+
             # 更新实时统计信息
             self._stats.update({
                 'episode': episode_data.get('episode', 0),
@@ -179,7 +188,8 @@ class TrainingManager:
                 'boundary_vertices': episode_data.get('boundary_size', 0),
                 'buffer_size': episode_data.get('buffer_size', 0),
                 'mesh_data': serializable_mesh_data,
-                'boundary_vertices_data': serializable_boundary_vertices
+                'boundary_vertices_data': serializable_boundary_vertices,
+                'reference_point_info': serializable_ref_info
             })
 
             # 添加最近的损失信息，确保是可序列化的浮点数
@@ -202,7 +212,8 @@ class TrainingManager:
                 'boundary_vertices': 0,
                 'buffer_size': 0,
                 'mesh_data': {},
-                'boundary_vertices_data': []
+                'boundary_vertices_data': [],
+                'reference_point_info': None
             }
 
     def stop_training(self) -> None:
@@ -324,6 +335,7 @@ class TrainingManager:
                     'boundary_vertices': 0,
                     'buffer_size': 0,
                     'mesh_data': {},
-                    'boundary_vertices_data': []
+                    'boundary_vertices_data': [],
+                    'reference_point_info': None
                 }
             }

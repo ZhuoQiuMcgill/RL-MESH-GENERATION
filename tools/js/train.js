@@ -532,6 +532,15 @@ class TrainingManager {
         // 新增：处理参考点信息
         if (stats.reference_point_info) {
             this.refPointInfo = stats.reference_point_info;
+
+            const refEl = document.getElementById('ref-point');
+            if (refEl && stats.reference_point_info.ref_vertex) {
+                const [rx, ry] = stats.reference_point_info.ref_vertex;
+                refEl.textContent = `(${formatNumber(rx)}, ${formatNumber(ry)})`;
+            }
+        } else {
+            const refEl = document.getElementById('ref-point');
+            if (refEl) refEl.textContent = 'N/A';
         }
 
         // 统一渲染mesh和boundary数据，避免坐标变换不一致导致的错位问题
