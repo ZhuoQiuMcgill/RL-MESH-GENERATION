@@ -286,14 +286,37 @@ export class UIController {
     }
 
     /**
-     * 获取训练配置
+     * 获取训练配置 - 修复版本，正确处理数字输入
      * @returns {Object} 训练配置
      */
     getTrainingConfig() {
+        // 修复：正确处理数字输入，避免将有效数字转换为null
+        const maxEpisodesValue = this.getElementValue('max-episodes');
+        const maxStepsValue = this.getElementValue('max-steps');
+
+        let maxEpisodes = null;
+        let maxSteps = null;
+
+        // 安全地解析max_episodes
+        if (maxEpisodesValue && maxEpisodesValue.trim() !== '') {
+            const parsed = parseInt(maxEpisodesValue.trim());
+            if (!isNaN(parsed) && parsed > 0) {
+                maxEpisodes = parsed;
+            }
+        }
+
+        // 安全地解析max_steps
+        if (maxStepsValue && maxStepsValue.trim() !== '') {
+            const parsed = parseInt(maxStepsValue.trim());
+            if (!isNaN(parsed) && parsed > 0) {
+                maxSteps = parsed;
+            }
+        }
+
         return {
             mesh_name: this.getElementValue('mesh-select'),
-            max_episodes: parseInt(this.getElementValue('max-episodes')) || null,
-            max_steps: parseInt(this.getElementValue('max-steps')) || null
+            max_episodes: maxEpisodes,
+            max_steps: maxSteps
         };
     }
 

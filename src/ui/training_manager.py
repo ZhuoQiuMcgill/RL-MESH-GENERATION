@@ -103,8 +103,8 @@ class TrainingManager:
             """训练线程函数"""
             try:
                 final_stats = self._trainer.train(
-                    max_episodes=max_episodes or 100,
-                    max_steps=max_steps or 1000,
+                    max_episodes=max_episodes if max_episodes is not None else 100,
+                    max_steps=max_steps if max_steps is not None else 1000,
                     stop_event=self._stop_event,
                 )
                 # 训练完成后更新最终统计信息

@@ -290,19 +290,19 @@ class MeshTrainer:
 
         print("边界加载完成")
 
-    def _init_environments(self):
+    def _init_environments(self, max_steps=None):
         """初始化训练和评估环境"""
         env_config = self.config.get("environment", {})
 
-        # 训练环境
         self.env = MeshEnv(
             initial_boundary=self.initial_boundary,
+            max_steps=max_steps,
             config=self.config
         )
 
-        # 评估环境（使用相同的边界）
         self.eval_env = MeshEnv(
             initial_boundary=self.initial_boundary,
+            max_steps=max_steps,
             config=self.config
         )
 
@@ -464,8 +464,8 @@ class MeshTrainer:
         training_config = self.config.get("training", {})
         if max_episodes is None:
             max_episodes = int(training_config.get("max_episodes", 1000))
-        if max_steps is None:
-            max_steps = int(training_config.get("max_steps_per_episode", 1000))
+        if max_steps != self.env.max_steps:
+            self._init_environments(max_steps=max_steps)
 
         # 从配置中读取其他训练参数，确保类型正确
         save_frequency = int(training_config.get("save_frequency", 100))

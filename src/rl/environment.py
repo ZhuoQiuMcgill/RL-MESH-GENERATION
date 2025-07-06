@@ -19,7 +19,7 @@ class MeshEnv(gym.Env):
     """
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, initial_boundary, n=None, g=None, alpha=None, beta=None, config=None):
+    def __init__(self, initial_boundary, n=None, g=None, alpha=None, beta=None, max_steps=None, config=None):
         """
         初始化网格生成环境
 
@@ -39,7 +39,7 @@ class MeshEnv(gym.Env):
         self.g = g if g is not None else env_cfg.get("g", 3)
         self.alpha = alpha if alpha is not None else env_cfg.get("alpha", 2)
         self.beta = beta if beta is not None else env_cfg.get("beta", 6)
-        self.max_steps = env_cfg.get("max_steps", 1000)
+        self.max_steps = max_steps if max_steps is not None else env_cfg.get("max_steps", 1000)
         self.upsilon = env_cfg.get("upsilon", 1.0)
         self.kappa = env_cfg.get("kappa", 4.0)
         self.M_angle = env_cfg.get("M_angle", 60.0)
