@@ -101,6 +101,10 @@
                         disabled>
                     停止训练
                 </button>
+                <button id="update-status-btn"
+                        class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-medium py-2 px-4 text-sm rounded-lg transition-colors duration-200">
+                    🔄 更新训练状态
+                </button>
                 <button id="refresh-btn"
                         class="w-full bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 text-sm rounded-lg transition-colors duration-200">
                     刷新Mesh列表
@@ -177,7 +181,8 @@
                 <h3 class="text-sm font-medium text-gray-700">训练日志</h3>
                 <button id="clear-log-btn" class="text-xs text-gray-500 hover:text-gray-700">清除</button>
             </div>
-            <div id="log-container" class="h-16 overflow-y-auto bg-gray-50 rounded px-2 py-1 text-xs font-mono custom-scrollbar">
+            <div id="log-container"
+                 class="h-16 overflow-y-auto bg-gray-50 rounded px-2 py-1 text-xs font-mono custom-scrollbar">
                 <div class="text-gray-500">等待训练开始...</div>
             </div>
         </div>
@@ -191,36 +196,86 @@
         <span class="text-gray-700">处理中...</span>
     </div>
 </div>
-
+>
 <!-- 引入模块化的JavaScript文件 -->
 <script type="module">
     // 导入并初始化训练管理器
     import {TrainingManager} from './js';
 
-    // 当页面加载完成后初始化应用
-    document.addEventListener('DOMContentLoaded', () => {
-        window.trainingManager = new TrainingManager();
+    // 确保DOM完全加载后才初始化应用
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log('DOM加载完成，开始初始化应用...');
 
-        // 添加调试功能到全局作用域
-        window.debugMeshList = () => {
-            if (window.trainingManager) {
-                window.trainingManager.debugLoadMeshList();
-            } else {
-                console.error('trainingManager未初始化');
+        try {
+            // 创建训练管理器实例
+            window.trainingManager = new TrainingManager();
+
+            // 等待初始化完成
+            await window.trainingManager.init();
+
+            console.log('应用初始化完成');
+
+            // 添加调试功能到全局作用域
+            window.debugMeshList = () => {
+                if (window.trainingManager) {
+                    window.trainingManager.debugLoadMeshList();
+                } else {
+                    console.error('trainingManager未初始化');
+                }
+            };
+
+            window.reloadMeshList = () => {
+                if (window.trainingManager) {
+                    window.trainingManager.loadMeshList();
+                } else {
+                    console.error('trainingManager未初始化');
+                }
+            };
+
+            console.log('调试功能已加载:');
+            console.log('- 在控制台运行 debugMeshList() 来调试mesh列表加载');
+            console.log('- 在控制台运行 reloadMeshList() 来重新加载mesh列表');
+
+        } catch (error) {
+            console.error('应用初始化失败:', error);
+
+            // 显示错误信息到用户界面
+            const logContainer = document.getElementById('log-container');
+            if (logContainer) {
+                logContainer.innerHTML = `
+                    <div style="color: #DC2626; font-weight: bold;">
+                        应用初始化失败: ${error.message}
+                    </div>
+                    <div style="color: #9CA3AF; margin-top: 5px;">
+                        请检查控制台获取详细错误信息
+                    </div>
+                `;
             }
-        };
+        }
+    });
 
-        window.reloadMeshList = () => {
-            if (window.trainingManager) {
-                window.trainingManager.loadMeshList();
-            } else {
-                console.error('trainingManager未初始化');
-            }
-        };
+    // 添加页面可见性变化检测
+    document.addEventListener('visibilitychange', () => {
+        if (window.trainingManager) {
+            console.log('页面可见性状态:', document.hidden ? '隐藏' : '可见');
+        }
+    });
 
-        console.log('调试功能已加载:');
-        console.log('- 在控制台运行 debugMeshList() 来调试mesh列表加载');
-        console.log('- 在控制台运行 reloadMeshList() 来重新加载mesh列表');
+    // 添加页面卸载前的清理
+    window.addEventListener('beforeunload', () => {
+        if (window.trainingManager) {
+            console.log('页面即将卸载，执行清理...');
+            // 这里可以添加必要的清理代码
+        }
+    });
+
+    // 添加错误处理
+    window.addEventListener('error', (event) => {
+        console.error('全局错误捕获:', event.error);
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+        console.error('未处理的Promise拒绝:', event.reason);
     });
 </script>
 </body>
