@@ -210,34 +210,9 @@ class MeshEnv(gym.Env):
         if boundary_size < 3:
             return 0
 
-        min_avg_angle = float('inf')
-        reference_idx = 0
-
-        for i in range(boundary_size):
-            total_angle = 0.0
-            count = 0
-
-            # 计算该顶点周围的平均角度
-            for j in range(1, min(self.n + 1, boundary_size // 2)):
-                left_idx = (i - j) % boundary_size
-                right_idx = (i + j) % boundary_size
-
-                # 计算角度 ∠Vl,j Vi Vr,j
-                left_vertex = vertices[left_idx]
-                center_vertex = vertices[i]
-                right_vertex = vertices[right_idx]
-
-                angle = self._calculate_angle(left_vertex, center_vertex, right_vertex)
-                total_angle += angle
-                count += 1
-
-            if count > 0:
-                avg_angle = total_angle / count
-                if avg_angle < min_avg_angle:
-                    min_avg_angle = avg_angle
-                    reference_idx = i
-
-        return reference_idx
+        # 使用Boundary类提供的内角计算函数，选择内角最小的顶点作为参考点
+        angles = self.boundary._interior_angles()
+        return int(np.argmin(angles))
 
     def _calculate_angle(self, p1, center, p2):
         """
