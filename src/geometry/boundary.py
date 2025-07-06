@@ -64,21 +64,23 @@ class Boundary:
     # 内角计算工具
     # ------------------------------------------------------------
     def _interior_angles(self) -> np.ndarray:
-        """
-        计算每个顶点的内角（度数）
+        """Return the clockwise interior angle of each vertex in degrees."""
 
-        Returns:
-            np.ndarray: 每个顶点的内角数组
-        """
         v_prev = np.roll(self._verts, 1, axis=0)
         v_next = np.roll(self._verts, -1, axis=0)
-        a = v_prev - self._verts  # BA
-        b = v_next - self._verts  # BC
-        dot = np.einsum('ij,ij->i', a, b)
-        norm_prod = np.linalg.norm(a, axis=1) * np.linalg.norm(b, axis=1)
-        # 防止除零错误
-        cos_theta = np.clip(dot / np.where(norm_prod == 0, 1, norm_prod), -1.0, 1.0)
-        return np.degrees(np.arccos(cos_theta))
+
+        # 向量指向前一个和后一个顶点
+        vec_prev = v_prev - self._verts
+        vec_next = v_next - self._verts
+
+        # 计算与x轴的绝对角度然后取差值。
+        ang_prev = np.arctan2(vec_prev[:, 1], vec_prev[:, 0])
+        ang_next = np.arctan2(vec_next[:, 1], vec_next[:, 0])
+
+        # 因为顶点按顺时针给出，内角 = (ang_next - ang_prev) mod 2π
+        angles = (ang_next - ang_prev) % (2 * np.pi)
+
+        return np.degrees(angles)
 
     def get_min_interior_angles(self) -> Tuple[Tuple[float, float], float]:
         """
