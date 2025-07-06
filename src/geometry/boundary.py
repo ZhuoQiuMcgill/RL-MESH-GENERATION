@@ -77,8 +77,8 @@ class Boundary:
         ang_prev = np.arctan2(vec_prev[:, 1], vec_prev[:, 0])
         ang_next = np.arctan2(vec_next[:, 1], vec_next[:, 0])
 
-        # 因为顶点按顺时针给出，内角 = (ang_next - ang_prev) mod 2π
-        angles = (ang_next - ang_prev) % (2 * np.pi)
+        # 因为顶点按顺时针给出，内角 = (ang_prev - ang_next) mod 2π
+        angles = (ang_prev - ang_next) % (2 * np.pi)
 
         return np.degrees(angles)
 
@@ -171,9 +171,8 @@ class Boundary:
         严格判定输入的边是否与任意边界的边有相交
 
         判断条件：
-        - 输入边的一个组成点为边界的组成点 -> False
         - 输入边与任意一个边界的边相交 -> True
-        - 输入边的任意一个点位于边界的某一个边上 -> True
+        - 输入边的任意一个点位于边界的某一个边上 (但不是其端点) -> True
 
         Args:
             edge: 输入的边((x1, y1), (x2, y2))
@@ -183,16 +182,65 @@ class Boundary:
         """
         p1, p2 = edge
 
-        # 检查输入边的组成点是否为边界组成点
-        if self.part_of_boundary(p1) or self.part_of_boundary(p2):
-            return False
+        # [FIXED] The original check here was flawed and has been removed.
+        # The intersection logic itself is now robust enough.
 
         # 检查输入边的点是否在边界的某个边上
         if self._point_on_boundary_edge(p1) or self._point_on_boundary_edge(p2):
-            return True
+            # This check is now implicitly handled by the robust _edge_intersects_boundary
+            # which correctly checks for touching/collinear cases.
+            pass
 
         # 检查输入边是否与任何边界边相交
         return self._edge_intersects_boundary(edge)
+
+    def _orientation(self, p: Tuple[float, float], q: Tuple[float, float], r: Tuple[float, float]) -> int:
+        """
+        Find orientation of ordered triplet (p, q, r).
+        Returns:
+        0 --> p, q and r are collinear
+        1 --> Clockwise
+        2 --> Counterclockwise
+        """
+        val = (q[1] - p[1]) * (r[0] - q[0]) - \
+              (q[0] - p[0]) * (r[1] - q[1])
+
+        if abs(val) < 1e-10: return 0  # Collinear
+        return 1 if val > 0 else 2  # Clockwise or Counterclockwise
+
+    def _line_segments_intersect(self, p1: Tuple[float, float], q1: Tuple[float, float],
+                                 p2: Tuple[float, float], q2: Tuple[float, float]) -> bool:
+        """
+        A robust function to check if line segment 'p1q1' and 'p2q2' intersect.
+        This handles all general, collinear, and touching cases.
+        """
+        o1 = self._orientation(p1, q1, p2)
+        o2 = self._orientation(p1, q1, q2)
+        o3 = self._orientation(p2, q2, p1)
+        o4 = self._orientation(p2, q2, q1)
+
+        # General case: segments cross each other
+        if o1 != o2 and o3 != o4:
+            return True
+
+        # Special Cases for collinear points
+        # p1, q1 and p2 are collinear and p2 lies on segment p1q1
+        if o1 == 0 and self._point_on_line_segment(np.array(p2), np.array(p1), np.array(q1)):
+            return True
+
+        # p1, q1 and q2 are collinear and q2 lies on segment p1q1
+        if o2 == 0 and self._point_on_line_segment(np.array(q2), np.array(p1), np.array(q1)):
+            return True
+
+        # p2, q2 and p1 are collinear and p1 lies on segment p2q2
+        if o3 == 0 and self._point_on_line_segment(np.array(p1), np.array(p2), np.array(q2)):
+            return True
+
+        # p2, q2 and q1 are collinear and q1 lies on segment p2q2
+        if o4 == 0 and self._point_on_line_segment(np.array(q1), np.array(p2), np.array(q2)):
+            return True
+
+        return False  # Doesn't fall in any of the above cases
 
     def edge_inside_boundary(self, edge: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
         """
@@ -469,48 +517,68 @@ class Boundary:
 
         return inside
 
-    def _edge_intersects_boundary(self, edge: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
+    def _edge_intersects_boundary(
+            self, edge: Tuple[Tuple[float, float], Tuple[float, float]]
+    ) -> bool:
         """
-        检查边是否与边界的任何边相交
+        Return True **only if** the interior of `edge` intersects
+        any boundary edge.
 
-        Args:
-            edge: 要检查的边((x1, y1), (x2, y2))
-
-        Returns:
-            bool: 如果边与边界相交返回True，否则返回False
+        ── Allowed ──────────────────────────────────────────────
+        • Sharing one or two endpoints with the boundary.
+          (Typical case: make a fan from boundary vertices.)
+        ── Forbidden ────────────────────────────────────────────
+        • Proper cross-intersection.
+        • Colinear overlap by a positive length (including
+          being exactly the same as an existing boundary edge).
         """
         p1, p2 = edge
 
         for i in range(len(self._verts)):
-            v1 = self._verts[i]
-            v2 = self._verts[(i + 1) % len(self._verts)]
+            v1 = tuple(self._verts[i])
+            v2 = tuple(self._verts[(i + 1) % len(self._verts)])
 
-            if self._line_segments_intersect(p1, p2, tuple(v1), tuple(v2)):
+            # Fast-path: the two segments share at least one endpoint
+            shared = {p1, p2}.intersection({v1, v2})
+            if shared:
+                # -- Colinear ?  If yes, still need to check real overlap
+                if (
+                        self._orientation(p1, p2, v1) == 0
+                        and self._orientation(p1, p2, v2) == 0
+                ):
+                    if self._segments_overlap_interior(p1, p2, v1, v2):
+                        return True  # positive-length overlap ⇒ intersection
+                # Not colinear → only touch at common vertex ⇒ allowed
+                continue
+
+            # No shared endpoints – use the full intersection test
+            if self._line_segments_intersect(p1, p2, v1, v2):
                 return True
 
         return False
 
-    def _line_segments_intersect(self, p1: Tuple[float, float], p2: Tuple[float, float],
-                                 p3: Tuple[float, float], p4: Tuple[float, float]) -> bool:
+    def _segments_overlap_interior(
+            self,
+            a: Tuple[float, float],
+            b: Tuple[float, float],
+            c: Tuple[float, float],
+            d: Tuple[float, float],
+            eps: float = 1e-10,
+    ) -> bool:
         """
-        检查两个线段是否相交
-
-        Args:
-            p1: 第一个线段的起点
-            p2: 第一个线段的终点
-            p3: 第二个线段的起点
-            p4: 第二个线段的终点
-
-        Returns:
-            bool: 如果两个线段相交返回True，否则返回False
+        Segments a-b and c-d are assumed colinear.
+        Return True iff they overlap by more than a single point.
         """
+        # Project onto the dominant axis to measure one-dim overlap
+        if abs(a[0] - b[0]) >= abs(a[1] - b[1]):
+            s1 = sorted([a[0], b[0]])
+            s2 = sorted([c[0], d[0]])
+        else:
+            s1 = sorted([a[1], b[1]])
+            s2 = sorted([c[1], d[1]])
 
-        def ccw(A: Tuple[float, float], B: Tuple[float, float], C: Tuple[float, float]) -> bool:
-            """检查三个点是否按逆时针顺序排列"""
-            return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
-
-        # 如果两个线段相交，则它们的端点应该在对方的两侧
-        return (ccw(p1, p3, p4) != ccw(p2, p3, p4)) and (ccw(p1, p2, p3) != ccw(p1, p2, p4))
+        overlap_len = min(s1[1], s2[1]) - max(s1[0], s2[0])
+        return overlap_len > eps  # positive-length ⇒ real overlap
 
     def _is_angle_in_slice(self, angle: float, start_angle: float, end_angle: float) -> bool:
         """检查角度是否在切片内（处理角度环绕问题）"""
