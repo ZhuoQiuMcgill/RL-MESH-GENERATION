@@ -512,30 +512,59 @@ class TrainingManager {
      * 更新训练统计数据
      */
     updateTrainingStats(stats) {
-        if (!this.statsContainer) return;
-
         const formatNumber = (num) => (num !== undefined && num !== null) ? num.toFixed(3) : 'N/A';
 
-        this.statsContainer.innerHTML = `
-            <span>Episode: ${stats.episode || 'N/A'}</span>
-            <span>Episode奖励: ${formatNumber(stats.episode_reward)}</span>
-            <span>平均奖励: ${formatNumber(stats.average_reward)}</span>
-            <span>Episode长度: ${stats.episode_length || 'N/A'}</span>
-            <span>边界顶点: ${stats.boundary_vertices || 'N/A'}</span>
-            <span>Buffer大小: ${stats.buffer_size || 'N/A'}</span>
-            <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
-            <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
-            <span>Alpha: ${formatNumber(stats.current_alpha)}</span>
-        `;
+        // 如果页面中存在statsContainer，则更新其内容
+        if (this.statsContainer) {
+            this.statsContainer.innerHTML = `
+                <span>Episode: ${stats.episode || 'N/A'}</span>
+                <span>Episode奖励: ${formatNumber(stats.episode_reward)}</span>
+                <span>平均奖励: ${formatNumber(stats.average_reward)}</span>
+                <span>Episode长度: ${stats.episode_length || 'N/A'}</span>
+                <span>边界顶点: ${stats.boundary_vertices || 'N/A'}</span>
+                <span>Buffer大小: ${stats.buffer_size || 'N/A'}</span>
+                <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
+                <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
+                <span>Alpha: ${formatNumber(stats.current_alpha)}</span>
+            `;
+        }
 
         // 新增：处理参考点信息
         if (stats.reference_point_info) {
             this.refPointInfo = stats.reference_point_info;
+
+            const refEl = document.getElementById('ref-point');
+            if (refEl && stats.reference_point_info.ref_vertex) {
+                const [rx, ry] = stats.reference_point_info.ref_vertex;
+                refEl.textContent = `(${formatNumber(rx)}, ${formatNumber(ry)})`;
+            }
+        } else {
+            const refEl = document.getElementById('ref-point');
+            if (refEl) refEl.textContent = 'N/A';
         }
 
         // 统一渲染mesh和boundary数据，避免坐标变换不一致导致的错位问题
-        const meshData = stats.mesh_data || this.meshData;
-        const boundaryData = stats.boundary_vertices_data || this.boundaryData;
+        let meshData = stats.mesh_data || this.meshData;
+        let boundaryData = stats.boundary_vertices_data || this.boundaryData;
+
+        // 如果后端返回的mesh或boundary数据是字符串，尝试解析
+        try {
+            if (typeof meshData === 'string') {
+                meshData = JSON.parse(meshData);
+            }
+        } catch (e) {
+            console.error('解析mesh数据失败:', e);
+            meshData = null;
+        }
+
+        try {
+            if (typeof boundaryData === 'string') {
+                boundaryData = JSON.parse(boundaryData);
+            }
+        } catch (e) {
+            console.error('解析boundary数据失败:', e);
+            boundaryData = null;
+        }
 
         if (meshData || boundaryData) {
             this.meshData = meshData;
@@ -548,7 +577,28 @@ class TrainingManager {
      * 统一渲染Mesh和Boundary，避免坐标变换不一致导致的错位问题
      */
     renderMeshAndBoundary(meshData, boundaryVertices) {
+        // 兼容后端可能返回字符串的情况
+        try {
+            if (typeof meshData === 'string') {
+                meshData = JSON.parse(meshData);
+            }
+        } catch (e) {
+            console.error('解析mesh数据失败:', e);
+            meshData = null;
+        }
+
+        try {
+            if (typeof boundaryVertices === 'string') {
+                boundaryVertices = JSON.parse(boundaryVertices);
+            }
+        } catch (e) {
+            console.error('解析boundary数据失败:', e);
+            boundaryVertices = null;
+        }
+
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // 重新绘制背景网格
+        this.drawGrid();
 
         const allVertices = [];
         if (boundaryVertices) {
