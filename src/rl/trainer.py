@@ -329,7 +329,14 @@ class MeshTrainer:
         self.replay_buffer = create_replay_buffer(config=self.config)
         buffer_info = get_buffer_info(self.replay_buffer)
         print(f"经验回放缓冲区类型: {buffer_info['type']}")
-        print(f"缓冲区容量: {self.replay_buffer.get_capacity()}")
+
+        # 检查是否为在线学习模式
+        if buffer_info['type'] == 'off':
+            print("启用在线学习模式 - 关闭经验回放缓冲区")
+            self.online_learning_mode = True
+        else:
+            print(f"缓冲区容量: {self.replay_buffer.get_capacity()}")
+            self.online_learning_mode = False
 
     def _init_training_stats(self):
         """初始化训练统计信息"""
@@ -407,6 +414,9 @@ class MeshTrainer:
         # 计算统计信息
         avg_reward = np.mean(list(self.recent_rewards)) if self.recent_rewards else 0
 
+        # 获取缓冲区大小（在线学习模式下为0）
+        buffer_size = 0 if self.online_learning_mode else len(self.replay_buffer)
+
         episode_data = {
             'episode': episode,
             'episode_reward': float(episode_reward),
@@ -416,10 +426,11 @@ class MeshTrainer:
             'mesh_data': mesh_data,
             'boundary_vertices': boundary_vertices,
             'boundary_size': len(boundary_vertices),
-            'buffer_size': len(self.replay_buffer),
+            'buffer_size': buffer_size,
+            'online_learning_mode': self.online_learning_mode,  # 新增字段
             'timestamp': time.time(),
             'episode_info': info,
-            'reference_point_info': ref_point_info  # <--- 新增字段
+            'reference_point_info': ref_point_info
         }
 
         # 添加最近的损失信息（如果有的话）
@@ -466,7 +477,13 @@ class MeshTrainer:
         start_training_steps = int(sac_config.get("start_training_steps", 1000))
         batch_size = int(sac_config.get("batch_size", 256))
 
-        print(f"开始训练: 最大episodes={max_episodes}, 每episode最大步数={max_steps}")
+        # 在线学习模式下，立即开始训练，不需要等待缓冲区填满
+        if self.online_learning_mode:
+            start_training_steps = 0
+            print(f"开始在线学习训练: 最大episodes={max_episodes}, 每episode最大步数={max_steps}")
+        else:
+            print(f"开始训练: 最大episodes={max_episodes}, 每episode最大步数={max_steps}")
+
         start_time = time.time()
 
         for episode in range(max_episodes):
@@ -479,12 +496,17 @@ class MeshTrainer:
             # 重置环境
             state, info = self.env.reset()
 
+            # 存储前一步的状态和动作，用于在线学习
+            prev_state = None
+            prev_action = None
+
             for step in range(max_steps):
                 if stop_event is not None and stop_event.is_set():
                     break
+
                 # 选择动作
                 if self.training_stats['total_steps'] < start_training_steps:
-                    # 前期使用随机动作进行探索
+                    # 前期使用随机动作进行探索（仅在经验回放模式下）
                     action = self.env.action_space.sample()
                 else:
                     action = self.agent.select_action(state)
@@ -493,23 +515,42 @@ class MeshTrainer:
                 next_state, reward, terminated, truncated, info = self.env.step(action)
                 done = terminated or truncated
 
-                # 存储经验
-                self.replay_buffer.add(state, action, reward, next_state, done)
+                # 根据模式选择不同的训练策略
+                if self.online_learning_mode:
+                    # 在线学习模式：使用当前转换立即训练
+                    if self.training_stats['total_steps'] >= start_training_steps:
+                        try:
+                            train_info = self.agent.train_online(state, action, reward, next_state, done)
+
+                            # 记录训练损失
+                            self.training_stats['actor_losses'].append(train_info['actor_loss'])
+                            self.training_stats['critic_losses'].append(train_info['critic_loss'])
+                            self.training_stats['alpha_values'].append(train_info['alpha'])
+
+                        except Exception as e:
+                            print(f"在线训练时发生错误: {e}")
+                else:
+                    # 经验回放模式：存储经验到缓冲区
+                    self.replay_buffer.add(state, action, reward, next_state, done)
+
+                    # 训练智能体
+                    if (len(self.replay_buffer) > batch_size and
+                            self.training_stats['total_steps'] >= start_training_steps):
+                        try:
+                            train_info = self.agent.train(self.replay_buffer, batch_size)
+
+                            # 记录训练损失
+                            self.training_stats['actor_losses'].append(train_info['actor_loss'])
+                            self.training_stats['critic_losses'].append(train_info['critic_loss'])
+                            self.training_stats['alpha_values'].append(train_info['alpha'])
+
+                        except Exception as e:
+                            print(f"训练时发生错误: {e}")
 
                 # 更新统计
                 episode_reward += reward
                 episode_length += 1
                 self.training_stats['total_steps'] += 1
-
-                # 训练智能体
-                if (len(self.replay_buffer) > batch_size and
-                        self.training_stats['total_steps'] >= start_training_steps):
-                    train_info = self.agent.train(self.replay_buffer, batch_size)
-
-                    # 记录训练损失
-                    self.training_stats['actor_losses'].append(train_info['actor_loss'])
-                    self.training_stats['critic_losses'].append(train_info['critic_loss'])
-                    self.training_stats['alpha_values'].append(train_info['alpha'])
 
                 state = next_state
 
@@ -546,26 +587,37 @@ class MeshTrainer:
         if stop_event is not None and stop_event.is_set():
             print("训练被外部停止")
         else:
-            print(
-                f"训练完成! 总耗时: {self.training_stats['training_time']:.2f}秒"
-            )
-
-        # 保存最终模型和统计信息
-        self._save_final_results()
+            mode_str = "在线学习" if self.online_learning_mode else "经验回放"
+            print(f"训练完成! 模式: {mode_str}, 总计{max_episodes}个episodes")
 
         return self.training_stats
 
-    def _log_training_progress(self, episode: int, reward: float, length: int):
-        """记录训练进度"""
-        avg_reward = np.mean(list(self.recent_rewards)) if self.recent_rewards else 0
-        buffer_size = len(self.replay_buffer)
+    def _log_training_progress(self, episode, episode_reward, episode_length):
+        """
+        记录训练进度
 
-        print(f"Episode {episode:4d} | "
-              f"奖励: {reward:8.3f} | "
-              f"长度: {length:3d} | "
-              f"平均奖励: {avg_reward:8.3f} | "
-              f"缓冲区: {buffer_size:6d} | "
-              f"总步数: {self.training_stats['total_steps']:6d}")
+        Args:
+            episode: 当前episode编号
+            episode_reward: episode总奖励
+            episode_length: episode长度
+        """
+        avg_reward = np.mean(list(self.recent_rewards)) if self.recent_rewards else 0
+
+        # 获取最近的损失信息
+        recent_actor_loss = self.training_stats['actor_losses'][-1] if self.training_stats['actor_losses'] else 0
+        recent_critic_loss = self.training_stats['critic_losses'][-1] if self.training_stats['critic_losses'] else 0
+        current_alpha = self.training_stats['alpha_values'][-1] if self.training_stats['alpha_values'] else 0
+
+        # 根据模式显示不同的信息
+        if self.online_learning_mode:
+            buffer_info = "在线学习模式"
+        else:
+            buffer_info = f"缓冲区: {len(self.replay_buffer)}/{self.replay_buffer.get_capacity()}"
+
+        print(f"Episode {episode}: 奖励={episode_reward:.3f}, 平均奖励={avg_reward:.3f}, "
+              f"步数={episode_length}, {buffer_info}")
+        print(f"    Actor损失={recent_actor_loss:.6f}, Critic损失={recent_critic_loss:.6f}, "
+              f"Alpha={current_alpha:.6f}, 总步数={self.training_stats['total_steps']}")
 
     def _evaluate_agent(self, num_eval_episodes: int = 5) -> float:
         """

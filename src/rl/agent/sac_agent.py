@@ -8,7 +8,7 @@ from ..config import load_config
 class SACAgent:
     """
     实现了Soft Actor-Critic (SAC)算法的智能体。
-    支持普通经验回放和优先级经验回放(PER)。
+    支持普通经验回放、优先级经验回放(PER)和在线学习模式。
     """
 
     def __init__(self, state_dim, action_dim, max_action, device, config=None):
@@ -54,15 +54,22 @@ class SACAgent:
     def train(self, replay_buffer, batch_size=256):
         """
         执行一次参数更新，对应论文 Algorithm 1 的主要循环
-        支持普通经验回放和优先级经验回放(PER)
+        支持普通经验回放、优先级经验回放(PER)和在线学习模式
 
         Args:
-            replay_buffer: 经验回放缓冲区，可以是ReplayBuffer或PrioritizedReplayBuffer
+            replay_buffer: 经验回放缓冲区，可以是ReplayBuffer、PrioritizedReplayBuffer或NoReplayBuffer
             batch_size: 批次大小
 
         Returns:
             dict: 包含损失和指标的字典
+
+        Raises:
+            RuntimeError: 当在线学习模式下调用此方法时
         """
+        # 检查是否为在线学习模式
+        if hasattr(replay_buffer, 'get_statistics') and replay_buffer.get_statistics().get("mode") == "online_learning":
+            raise RuntimeError("在线学习模式下请使用 train_online() 方法")
+
         # 检测是否为优先级经验回放
         is_prioritized = hasattr(replay_buffer, 'update_priorities')
 
@@ -86,43 +93,36 @@ class SACAgent:
         with torch.no_grad():
             next_action, next_log_prob, _ = self.actor(next_state)
             target_q1, target_q2 = self.critic_target(next_state, next_action)
-            target_q = torch.min(target_q1, target_q2)
-            alpha = self.log_alpha.exp()
-            target_q = reward + (1 - done) * self.gamma * (target_q - alpha * next_log_prob)
+            target_q = torch.min(target_q1, target_q2) - self.log_alpha.exp() * next_log_prob
+            target_q = reward + (1 - done) * self.gamma * target_q
 
-        # 计算当前Q值
+        # 获取当前Q值
         current_q1, current_q2 = self.critic(state, action)
 
-        # 计算TD误差（用于PER的优先级更新）
-        td_error1 = torch.abs(current_q1 - target_q).detach()
-        td_error2 = torch.abs(current_q2 - target_q).detach()
-        td_errors = torch.max(td_error1, td_error2).squeeze().cpu().numpy()
+        # 计算TD误差（用于PER）
+        td_errors = torch.abs(current_q1 - target_q).detach().cpu().numpy().flatten()
 
-        # Critic损失，应用重要性采样权重
-        critic_loss1 = (weights * F.mse_loss(current_q1, target_q, reduction='none')).mean()
-        critic_loss2 = (weights * F.mse_loss(current_q2, target_q, reduction='none')).mean()
-        critic_loss = critic_loss1 + critic_loss2
+        # 计算Critic损失
+        critic_loss = (weights * F.mse_loss(current_q1, target_q, reduction='none')).mean() + \
+                      (weights * F.mse_loss(current_q2, target_q, reduction='none')).mean()
 
-        # 更新Critic网络
+        # 更新Critic
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        # 计算Actor损失
+        # 更新Actor
         new_action, log_prob, _ = self.actor(state)
-        q1_pi, q2_pi = self.critic(state, new_action)
-        min_q_pi = torch.min(q1_pi, q2_pi)
-        alpha = self.log_alpha.exp()
+        q1_new, q2_new = self.critic(state, new_action)
+        q_new = torch.min(q1_new, q2_new)
 
-        # Actor损失，应用重要性采样权重
-        actor_loss = (weights * (alpha * log_prob - min_q_pi)).mean()
+        actor_loss = (self.log_alpha.exp() * log_prob - q_new).mean()
 
-        # 更新Actor网络
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         self.actor_optimizer.step()
 
-        # 更新温度参数alpha
+        # 更新Alpha（温度参数）
         alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach()).mean()
 
         self.alpha_optimizer.zero_grad()
@@ -144,6 +144,78 @@ class SACAgent:
             "alpha": float(self.log_alpha.exp().item()),
             "mean_td_error": float(td_errors.mean()),
             "max_td_error": float(td_errors.max()),
+        }
+
+    def train_online(self, state, action, reward, next_state, done):
+        """
+        在线学习模式：使用单个样本进行训练
+
+        Args:
+            state: 当前状态
+            action: 执行的动作
+            reward: 获得的奖励
+            next_state: 下一个状态
+            done: 是否结束episode
+
+        Returns:
+            dict: 包含损失和指标的字典
+        """
+        # 转换为torch张量并添加batch维度
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        action = torch.FloatTensor(action).unsqueeze(0).to(self.device)
+        reward = torch.FloatTensor([reward]).unsqueeze(0).to(self.device)
+        next_state = torch.FloatTensor(next_state).unsqueeze(0).to(self.device)
+        done = torch.FloatTensor([done]).unsqueeze(0).to(self.device)
+
+        # 计算目标Q值
+        with torch.no_grad():
+            next_action, next_log_prob, _ = self.actor(next_state)
+            target_q1, target_q2 = self.critic_target(next_state, next_action)
+            target_q = torch.min(target_q1, target_q2) - self.log_alpha.exp() * next_log_prob
+            target_q = reward + (1 - done) * self.gamma * target_q
+
+        # 获取当前Q值
+        current_q1, current_q2 = self.critic(state, action)
+
+        # 计算TD误差
+        td_error = torch.abs(current_q1 - target_q).item()
+
+        # 计算Critic损失
+        critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
+
+        # 更新Critic
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
+
+        # 更新Actor
+        new_action, log_prob, _ = self.actor(state)
+        q1_new, q2_new = self.critic(state, new_action)
+        q_new = torch.min(q1_new, q2_new)
+
+        actor_loss = (self.log_alpha.exp() * log_prob - q_new).mean()
+
+        self.actor_optimizer.zero_grad()
+        actor_loss.backward()
+        self.actor_optimizer.step()
+
+        # 更新Alpha（温度参数）
+        alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach()).mean()
+
+        self.alpha_optimizer.zero_grad()
+        alpha_loss.backward()
+        self.alpha_optimizer.step()
+
+        # 软更新目标网络
+        for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+
+        return {
+            "critic_loss": float(critic_loss.item()),
+            "actor_loss": float(actor_loss.item()),
+            "alpha_loss": float(alpha_loss.item()),
+            "alpha": float(self.log_alpha.exp().item()),
+            "td_error": float(td_error),
         }
 
     def save(self, filename):

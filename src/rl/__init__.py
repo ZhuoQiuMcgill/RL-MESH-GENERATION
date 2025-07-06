@@ -10,6 +10,7 @@
     Critic: Q值网络
     ReplayBuffer: 经验回放缓冲区
     PrioritizedReplayBuffer: 优先级经验回放缓冲区
+    NoReplayBuffer: 空缓冲区（用于在线学习模式）
     MeshEnv: 网格生成环境
 
 主要函数:
@@ -25,22 +26,28 @@
     env = MeshEnv(boundary)
     agent = SACAgent(state_dim, action_dim, max_action, device)
 
-    # 根据配置创建缓冲区（自动选择普通或优先级回放）
+    # 根据配置创建缓冲区（自动选择普通、优先级回放或在线学习）
     replay_buffer = create_replay_buffer()
 
     # 或手动指定类型
     per_buffer = create_replay_buffer(buffer_type="prioritized", capacity=100000)
+    online_buffer = create_replay_buffer(buffer_type="off")
 
-    # 训练
+    # 训练（支持三种模式）
     state, _ = env.reset()
     for step in range(total_steps):
         action = agent.select_action(state)
         next_state, reward, done, _, info = env.step(action)
-        replay_buffer.add(state, action, reward, next_state, done)
 
-        if len(replay_buffer) > batch_size:
-            # SAC agent会自动检测缓冲区类型并处理PER的权重和优先级更新
-            agent.train(replay_buffer, batch_size)
+        # 根据缓冲区类型选择训练方式
+        if hasattr(replay_buffer, 'get_statistics') and replay_buffer.get_statistics().get("mode") == "online_learning":
+            # 在线学习模式
+            agent.train_online(state, action, reward, next_state, done)
+        else:
+            # 经验回放模式
+            replay_buffer.add(state, action, reward, next_state, done)
+            if len(replay_buffer) > batch_size:
+                agent.train(replay_buffer, batch_size)
 
         state = next_state if not done else env.reset()[0]
 """
@@ -48,7 +55,7 @@
 from .agent.sac_agent import SACAgent
 from .agent.network import Actor, Critic
 from .replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from .buffer_factory import create_replay_buffer, get_buffer_info
+from .buffer_factory import create_replay_buffer, get_buffer_info, NoReplayBuffer
 from .environment import MeshEnv
 from .config import load_config
 
@@ -59,6 +66,7 @@ __all__ = [
     'Critic',
     'ReplayBuffer',
     'PrioritizedReplayBuffer',
+    'NoReplayBuffer',
     'create_replay_buffer',
     'get_buffer_info',
     'MeshEnv',
