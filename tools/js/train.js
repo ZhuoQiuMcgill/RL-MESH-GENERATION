@@ -18,6 +18,7 @@ class TrainingManager {
         this.meshData = null;
         this.boundaryData = null;
         this.refPointInfo = null; // 新增属性
+        this.currentTransform = null; // 存储当前变换参数，用于坐标转换
 
         this.init();
     }
@@ -99,8 +100,22 @@ class TrainingManager {
 
         // 考虑padding
         const padding = 32; // 对应p-4 = 16px * 2
-        this.canvas.width = rect.width - padding;
-        this.canvas.height = rect.height - padding;
+        const displayWidth = rect.width - padding;
+        const displayHeight = rect.height - padding;
+
+        // 获取设备像素比
+        const devicePixelRatio = window.devicePixelRatio || 1;
+
+        // 设置Canvas的实际像素大小
+        this.canvas.width = displayWidth * devicePixelRatio;
+        this.canvas.height = displayHeight * devicePixelRatio;
+
+        // 设置Canvas的显示大小
+        this.canvas.style.width = displayWidth + 'px';
+        this.canvas.style.height = displayHeight + 'px';
+
+        // 缩放Canvas上下文以匹配设备像素比
+        this.ctx.scale(devicePixelRatio, devicePixelRatio);
 
         // 重新绘制，使用统一的渲染函数
         if (this.meshData || this.boundaryData) {
@@ -132,6 +147,7 @@ class TrainingManager {
         // 清除缓存的数据
         this.meshData = null;
         this.boundaryData = null;
+        this.currentTransform = null;
     }
 
     /**
@@ -187,6 +203,50 @@ class TrainingManager {
         document.getElementById('mesh-select').addEventListener('change', (e) => {
             this.onMeshSelectionChange(e.target.value);
         });
+
+        // Canvas点击事件 - 显示点击坐标
+        this.canvas.addEventListener('click', (e) => {
+            this.handleCanvasClick(e);
+        });
+    }
+
+    /**
+     * 处理Canvas点击事件，显示点击位置的世界坐标
+     */
+    handleCanvasClick(event) {
+        if (!this.currentTransform) {
+            // 如果没有变换参数，显示提示信息
+            document.getElementById('click-coordinates').textContent = '无变换数据';
+            return;
+        }
+
+        // 获取鼠标相对于canvas的位置（逻辑像素）
+        const rect = this.canvas.getBoundingClientRect();
+        const screenX = event.clientX - rect.left;
+        const screenY = event.clientY - rect.top;
+
+        // 转换为世界坐标
+        const worldCoords = this.screenToWorld(screenX, screenY, this.currentTransform);
+
+        // 显示坐标（保留3位小数）
+        const coordText = `(${worldCoords[0].toFixed(3)}, ${worldCoords[1].toFixed(3)})`;
+        document.getElementById('click-coordinates').textContent = coordText;
+
+        // 在日志中也记录点击坐标
+        this.logMessage(`点击坐标: ${coordText}`, 'info');
+    }
+
+    /**
+     * 屏幕坐标转世界坐标
+     * @param {number} screenX 屏幕X坐标
+     * @param {number} screenY 屏幕Y坐标
+     * @param {Object} transform 变换参数 {scale, offsetX, offsetY}
+     * @returns {Array} [worldX, worldY]
+     */
+    screenToWorld(screenX, screenY, transform) {
+        const worldX = (screenX - transform.offsetX) / transform.scale;
+        const worldY = (screenY - transform.offsetY) / transform.scale;
+        return [worldX, worldY];
     }
 
     /**
@@ -616,7 +676,10 @@ class TrainingManager {
             });
         }
 
-        if (allVertices.length === 0) return;
+        if (allVertices.length === 0) {
+            this.currentTransform = null;
+            return;
+        }
 
         const xCoords = allVertices.map(v => v[0]);
         const yCoords = allVertices.map(v => v[1]);
@@ -628,19 +691,27 @@ class TrainingManager {
         const dataWidth = maxX - minX;
         const dataHeight = maxY - minY;
 
+        // 使用逻辑像素计算，因为ctx已经被缩放了
+        const devicePixelRatio = window.devicePixelRatio || 1;
+        const logicalWidth = this.canvas.width / devicePixelRatio;
+        const logicalHeight = this.canvas.height / devicePixelRatio;
+
         const padding = 50;
-        const scaleX = (this.canvas.width - 2 * padding) / (dataWidth || 1);
-        const scaleY = (this.canvas.height - 2 * padding) / (dataHeight || 1);
+        const scaleX = (logicalWidth - 2 * padding) / (dataWidth || 1);
+        const scaleY = (logicalHeight - 2 * padding) / (dataHeight || 1);
         const scale = Math.min(scaleX, scaleY);
 
-        const offsetX = (this.canvas.width - dataWidth * scale) / 2 - minX * scale;
-        const offsetY = (this.canvas.height - dataHeight * scale) / 2 - minY * scale;
+        const offsetX = (logicalWidth - dataWidth * scale) / 2 - minX * scale;
+        const offsetY = (logicalHeight - dataHeight * scale) / 2 - minY * scale;
 
         const transform = {
             scale,
             offsetX,
             offsetY
         };
+
+        // 保存当前变换参数供点击事件使用
+        this.currentTransform = transform;
 
         // 首先渲染mesh（如果存在）
         if (meshData && Object.keys(meshData).length > 0) {
