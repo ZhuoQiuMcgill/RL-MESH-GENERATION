@@ -691,35 +691,73 @@ class TrainingManager {
     }
 
     /**
-     * 使用指定变换参数渲染Mesh
+     * 使用指定变换参数渲染 Mesh
+     * @param {Object} meshData  形如 { "[x,y]": [[x2,y2], …], … }
+     * @param {Object} transform { scale, offsetX, offsetY }
      */
     renderMeshWithTransform(meshData, transform) {
-        // 绘制边
+        /* 1. 先画蓝色网格边 */
         this.ctx.strokeStyle = '#6366F1';
         this.ctx.lineWidth = 2;
 
         Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
             try {
-                // 后端现在发送的是JSON字符串，所以可以直接解析
                 const [x1, y1] = JSON.parse(vertexStr);
-                const screenPos1 = this.worldToScreen([x1, y1], transform);
+                const p1 = this.worldToScreen([x1, y1], transform);
 
                 adjacentVertices.forEach(([x2, y2]) => {
-                    const screenPos2 = this.worldToScreen([x2, y2], transform);
+                    const p2 = this.worldToScreen([x2, y2], transform);
 
                     this.ctx.beginPath();
-                    this.ctx.moveTo(screenPos1[0], screenPos1[1]);
-                    this.ctx.lineTo(screenPos2[0], screenPos2[1]);
+                    this.ctx.moveTo(p1[0], p1[1]);
+                    this.ctx.lineTo(p2[0], p2[1]);
                     this.ctx.stroke();
                 });
             } catch (e) {
-                // 如果解析失败，在控制台打印错误，避免整个应用崩溃
                 console.error('无法解析顶点数据:', vertexStr, e);
             }
         });
 
-        // 绘制mesh顶点... (这部分代码无需修改)
+        /* 2. 再画蓝色网格顶点 */
+        const VERTEX_RADIUS = 6;                 // 比红点(4)大一点
+        const drawn = new Set();                 // 防止重复绘制
+
+        this.ctx.fillStyle = '#3B82F6';        // 填充色
+        this.ctx.strokeStyle = '#1E40AF';        // 描边色
+        this.ctx.lineWidth = 1.5;
+
+        Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
+            try {
+                // ① 当前 key 自身
+                const center = JSON.parse(vertexStr);
+                const key = vertexStr;
+                if (!drawn.has(key)) {
+                    const pos = this.worldToScreen(center, transform);
+                    this.ctx.beginPath();
+                    this.ctx.arc(pos[0], pos[1], VERTEX_RADIUS, 0, 2 * Math.PI);
+                    this.ctx.fill();
+                    this.ctx.stroke();
+                    drawn.add(key);
+                }
+
+                // ② 邻接顶点
+                adjacentVertices.forEach(([x, y]) => {
+                    const k = JSON.stringify([x, y]);
+                    if (!drawn.has(k)) {
+                        const pos = this.worldToScreen([x, y], transform);
+                        this.ctx.beginPath();
+                        this.ctx.arc(pos[0], pos[1], VERTEX_RADIUS, 0, 2 * Math.PI);
+                        this.ctx.fill();
+                        this.ctx.stroke();
+                        drawn.add(k);
+                    }
+                });
+            } catch {
+                /* 忽略格式不正确的记录 */
+            }
+        });
     }
+
 
     /**
      * 使用指定变换参数渲染Boundary
