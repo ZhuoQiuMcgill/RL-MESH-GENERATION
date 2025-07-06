@@ -1,0 +1,384 @@
+/**
+ * 强化学习网格生成训练管理系统
+ * 主要的TrainingManager类，整合所有功能模块
+ */
+
+import {CONSTANTS, STATUS, LOG_TYPES, formatNumber, throttle} from './utils.js';
+import {ApiClient, withErrorHandling, withRetry} from './api-client.js';
+import {CanvasRenderer} from './canvas-renderer.js';
+import {UIController} from './ui-controller.js';
+
+export class TrainingManager {
+    constructor() {
+        // 初始化各个模块
+        this.apiClient = new ApiClient();
+        this.uiController = new UIController();
+        this.canvasRenderer = null; // 延迟初始化
+
+        // 状态管理
+        this.isTraining = false;
+        this.updateInterval = null;
+
+        // 创建带错误处理的API方法
+        this.safeApiCall = withErrorHandling.bind(this);
+
+        this.init();
+    }
+
+    /**
+     * 初始化应用程序
+     */
+    async init() {
+        try {
+            this.setupCanvas();
+            this.bindEvents();
+
+            // 检查后端连接
+            const isConnected = await this.checkBackendConnection();
+            if (isConnected) {
+                await this.loadMeshList();
+            } else {
+                this.uiController.logMessage('无法连接到后端服务器，请确保Flask应用正在运行在 http://localhost:5000', LOG_TYPES.ERROR);
+            }
+
+            this.uiController.updateButtonStates(false);
+            this.uiController.logMessage('系统初始化完成', LOG_TYPES.INFO);
+        } catch (error) {
+            console.error('初始化失败:', error);
+            this.uiController.showError('系统初始化失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 设置Canvas
+     */
+    setupCanvas() {
+        const canvas = document.getElementById('mesh-canvas');
+        if (canvas) {
+            this.canvasRenderer = new CanvasRenderer(canvas);
+        } else {
+            console.error('未找到Canvas元素');
+        }
+    }
+
+    /**
+     * 绑定事件监听器
+     */
+    bindEvents() {
+        // 开始训练按钮
+        const startBtn = document.getElementById('start-btn');
+        if (startBtn) {
+            startBtn.addEventListener('click', () => this.startTraining());
+        }
+
+        // 停止训练按钮
+        const stopBtn = document.getElementById('stop-btn');
+        if (stopBtn) {
+            stopBtn.addEventListener('click', () => this.stopTraining());
+        }
+
+        // 刷新状态按钮
+        const refreshBtn = document.getElementById('refresh-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.refreshStatus());
+        }
+
+        // 清除日志按钮
+        const clearLogBtn = document.getElementById('clear-log-btn');
+        if (clearLogBtn) {
+            clearLogBtn.addEventListener('click', () => this.uiController.clearLogs());
+        }
+
+        // Mesh选择变化
+        const meshSelect = document.getElementById('mesh-select');
+        if (meshSelect) {
+            meshSelect.addEventListener('change', (e) => this.onMeshSelectionChange(e.target.value));
+        }
+
+        // Canvas点击事件
+        const canvas = document.getElementById('mesh-canvas');
+        if (canvas && this.canvasRenderer) {
+            canvas.addEventListener('click', this.handleCanvasClickThrottled);
+        }
+    }
+
+    /**
+     * 检查后端连接状态
+     * @returns {Promise<boolean>} 连接状态
+     */
+    async checkBackendConnection() {
+        try {
+            const connected = await this.apiClient.checkConnection();
+            if (connected) {
+                this.uiController.logMessage('后端连接正常', LOG_TYPES.SUCCESS);
+            }
+            return connected;
+        } catch (error) {
+            this.uiController.logMessage('后端连接失败: ' + error.message, LOG_TYPES.ERROR);
+            return false;
+        }
+    }
+
+    /**
+     * 加载可用的Mesh列表
+     */
+    async loadMeshList() {
+        try {
+            this.uiController.showLoading(true);
+
+            const data = await withRetry(() => this.apiClient.getMeshList());
+
+            this.uiController.populateMeshList(data.meshes || []);
+
+            if (data.meshes && data.meshes.length > 0) {
+                this.uiController.logMessage(`成功加载 ${data.meshes.length} 个Mesh文件`, LOG_TYPES.SUCCESS);
+            } else {
+                this.uiController.logMessage('未找到可用的Mesh文件', LOG_TYPES.WARNING);
+            }
+
+        } catch (error) {
+            console.error('加载Mesh列表失败:', error);
+            this.uiController.showError('加载Mesh列表失败: ' + error.message);
+        } finally {
+            this.uiController.showLoading(false);
+        }
+    }
+
+    /**
+     * Mesh选择变化事件处理
+     * @param {string} meshName - 选中的mesh名称
+     */
+    async onMeshSelectionChange(meshName) {
+        if (!meshName) {
+            this.uiController.hideMeshInfo();
+            return;
+        }
+
+        try {
+            const info = await this.apiClient.getMeshInfo(meshName);
+            this.uiController.showMeshInfo(info);
+            this.uiController.logMessage(`选择了Mesh: ${meshName}`, LOG_TYPES.INFO);
+        } catch (error) {
+            console.error('获取Mesh信息失败:', error);
+            this.uiController.showError('获取Mesh信息失败: ' + error.message);
+            this.uiController.hideMeshInfo();
+        }
+    }
+
+    /**
+     * 处理Canvas点击事件
+     * @param {MouseEvent} event - 鼠标事件
+     */
+    handleCanvasClick(event) {
+        if (!this.canvasRenderer) return;
+
+        const transform = this.canvasRenderer.getCurrentTransform();
+        if (!transform) {
+            this.uiController.updateClickCoordinates(null);
+            return;
+        }
+
+        // 获取鼠标相对于canvas的位置
+        const rect = event.target.getBoundingClientRect();
+        const screenX = event.clientX - rect.left;
+        const screenY = event.clientY - rect.top;
+
+        // 转换为世界坐标
+        const worldCoords = this.canvasRenderer.screenToWorld(screenX, screenY, transform);
+
+        // 更新显示
+        this.uiController.updateClickCoordinates(worldCoords);
+
+        // 记录到日志
+        const coordText = `(${worldCoords[0].toFixed(3)}, ${worldCoords[1].toFixed(3)})`;
+        this.uiController.logMessage(`点击坐标: ${coordText}`, LOG_TYPES.INFO);
+    }
+
+    /**
+     * 开始训练
+     */
+    async startTraining() {
+        // 验证配置
+        const validation = this.uiController.validateTrainingConfig();
+        if (!validation.valid) {
+            this.uiController.showError(validation.message);
+            return;
+        }
+
+        const config = this.uiController.getTrainingConfig();
+
+        try {
+            this.uiController.showLoading(true);
+
+            const result = await this.apiClient.startTraining(config);
+            this.uiController.logMessage('训练已启动: ' + result.message, LOG_TYPES.SUCCESS);
+
+            this.isTraining = true;
+            this.uiController.updateButtonStates(true);
+            this.uiController.updateStatusIndicator(STATUS.RUNNING);
+            this.startPeriodicUpdate();
+
+        } catch (error) {
+            console.error('启动训练失败:', error);
+            this.uiController.showError('启动训练失败: ' + error.message);
+        } finally {
+            this.uiController.showLoading(false);
+        }
+    }
+
+    /**
+     * 停止训练
+     */
+    async stopTraining() {
+        // 立即停止轮询和更新UI
+        this.stopPeriodicUpdate();
+        this.isTraining = false;
+        this.uiController.updateButtonStates(false);
+        this.uiController.updateStatusIndicator(STATUS.STOPPING);
+
+        try {
+            this.uiController.showLoading(true);
+
+            const result = await this.apiClient.stopTraining();
+            this.uiController.logMessage('训练停止请求已发送: ' + result.message, LOG_TYPES.INFO);
+
+        } catch (error) {
+            console.error('停止训练失败:', error);
+            this.uiController.showError('停止训练失败: ' + error.message);
+        } finally {
+            this.uiController.showLoading(false);
+        }
+    }
+
+    /**
+     * 刷新训练状态
+     */
+    async refreshStatus() {
+        await this.updateTrainingStatus();
+    }
+
+    /**
+     * 开始定期更新
+     */
+    startPeriodicUpdate() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
+
+        const interval = this.uiController.getUpdateInterval();
+
+        this.updateInterval = setInterval(async () => {
+            await this.updateTrainingStatus();
+        }, interval);
+
+        // 立即执行一次更新
+        this.updateTrainingStatus();
+    }
+
+    /**
+     * 停止定期更新
+     */
+    stopPeriodicUpdate() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+        }
+    }
+
+    /**
+     * 更新训练状态
+     */
+    async updateTrainingStatus() {
+        try {
+            const status = await this.apiClient.getTrainingStatus();
+            this.handleStatusUpdate(status);
+        } catch (error) {
+            console.error('获取训练状态失败:', error);
+            this.uiController.logMessage('获取训练状态失败: ' + error.message, LOG_TYPES.ERROR);
+        }
+    }
+
+    /**
+     * 处理状态更新
+     * @param {Object} status - 状态数据
+     */
+    handleStatusUpdate(status) {
+        // 更新运行状态
+        this.isTraining = status.running;
+
+        // 更新状态指示器
+        this.uiController.updateStatusIndicator(status.status);
+
+        // 更新统计数据
+        if (status.stats) {
+            this.uiController.updateTrainingStats(status.stats);
+        }
+
+        // 更新进度信息
+        if (status.progress) {
+            this.uiController.updateProgressInfo(status.progress);
+        }
+
+        // 更新渲染
+        this.updateRendering();
+
+        // 如果训练明确结束，停止定期更新
+        const isFinished = !status.running || [STATUS.STOPPED, STATUS.COMPLETED, STATUS.ERROR].includes(status.status);
+        if (isFinished && this.updateInterval) {
+            this.stopPeriodicUpdate();
+        }
+
+        this.uiController.updateButtonStates(this.isTraining);
+    }
+
+    /**
+     * 更新渲染
+     */
+    updateRendering() {
+        if (!this.canvasRenderer) return;
+
+        const renderData = this.uiController.getRenderData();
+
+        if (renderData.meshData || renderData.boundaryData) {
+            this.canvasRenderer.renderScene(
+                renderData.meshData,
+                renderData.boundaryData,
+                renderData.refPointInfo
+            );
+        }
+    }
+
+    /**
+     * 处理Canvas点击事件的节流版本
+     */
+    handleCanvasClickThrottled = throttle((event) => {
+        this.handleCanvasClick(event);
+    }, 100);
+
+    /**
+     * 获取应用程序状态
+     * @returns {Object} 应用程序状态
+     */
+    getApplicationState() {
+        return {
+            isTraining: this.isTraining,
+            hasUpdateInterval: !!this.updateInterval,
+            canvasReady: !!this.canvasRenderer,
+            uiReady: !!this.uiController
+        };
+    }
+
+    /**
+     * 销毁管理器，清理资源
+     */
+    destroy() {
+        this.stopPeriodicUpdate();
+        this.uiController.reset();
+
+        // 清理事件监听器
+        // 注：在实际应用中，应该存储事件监听器引用并在此处移除
+
+        console.log('TrainingManager已销毁');
+    }
+}
+

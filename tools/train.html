@@ -76,7 +76,7 @@
                 </div>
 
                 <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">更新间隔 (Episodes)</label>
+                    <label class="block text-xs text-gray-600 mb-1">更新间隔 (秒)</label>
                     <input id="update-interval" type="number" value="10" min="1"
                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
                 </div>
@@ -183,6 +183,15 @@
     </div>
 </div>
 
-<script src="js/train.js"></script>
+<!-- 引入模块化的JavaScript文件 -->
+<script type="module">
+    // 导入并初始化训练管理器
+    import {TrainingManager} from './js';
+
+    // 当页面加载完成后初始化应用
+    document.addEventListener('DOMContentLoaded', () => {
+        window.trainingManager = new TrainingManager();
+    });
+</script>
 </body>
 </html>
