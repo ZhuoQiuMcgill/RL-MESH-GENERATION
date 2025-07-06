@@ -77,15 +77,18 @@ class ActionType2(ActionType):
         V2 = tuple(new_vertex_V2_coords)
         V3 = tuple(new_vertex_V3_coords)
 
+        # 检查新顶点是否在边界内部
         if not boundary.vertex_inside_boundary(V2):
             return False
         if not boundary.vertex_inside_boundary(V3):
             return False
 
+        # 定义三条新边
         edge_V1_V2 = (V1, V2)
         edge_V2_V3 = (V2, V3)
         edge_V3_V0 = (V3, V0)
 
+        # 检查新边是否在边界内部
         if not boundary.edge_inside_boundary(edge_V1_V2):
             return False
         if not boundary.edge_inside_boundary(edge_V2_V3):
@@ -93,11 +96,17 @@ class ActionType2(ActionType):
         if not boundary.edge_inside_boundary(edge_V3_V0):
             return False
 
+        # 检查新边是否与现有边界相交
         if boundary.edge_cross(edge_V1_V2):
             return False
         if boundary.edge_cross(edge_V2_V3):
             return False
         if boundary.edge_cross(edge_V3_V0):
+            return False
+
+        # 检查新增边之间是否相交（除了共同端点）
+        # 重点检查V1-V2边和V3-V0边是否相交，因为它们没有共同端点
+        if boundary._line_segments_intersect(V1, V2, V3, V0):
             return False
 
         return True
