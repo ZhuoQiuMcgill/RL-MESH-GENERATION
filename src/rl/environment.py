@@ -278,9 +278,72 @@ class MeshEnv(gym.Env):
         """计算两点间欧几里得距离"""
         return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
+    def _normalize_coordinates(self, vertices, reference_vertex_idx):
+        """
+        按照论文方法将坐标标准化为以参考点为中心的坐标系统
+
+        Args:
+            vertices: 顶点列表
+            reference_vertex_idx: 参考顶点索引
+
+        Returns:
+            list: 标准化后的坐标列表 [(r, theta), ...]
+        """
+        if len(vertices) <= reference_vertex_idx:
+            return []
+
+        reference_vertex = vertices[reference_vertex_idx]
+        boundary_size = len(vertices)
+
+        # 获取参考方向：V0 -> Vr,1 (右侧第一个邻居)
+        right_neighbor_idx = (reference_vertex_idx + 1) % boundary_size
+        right_neighbor = vertices[right_neighbor_idx]
+
+        # 计算参考方向向量
+        ref_direction = np.array([
+            right_neighbor[0] - reference_vertex[0],
+            right_neighbor[1] - reference_vertex[1]
+        ])
+
+        # 计算参考方向的角度
+        ref_angle = math.atan2(ref_direction[1], ref_direction[0])
+
+        # 计算基础长度作为缩放因子
+        base_length = self._calculate_base_length(reference_vertex_idx)
+        scale_factor = 1.0 / base_length if base_length > 0 else 1.0
+
+        normalized_coords = []
+
+        for vertex in vertices:
+            # 1. 平移：以参考顶点为原点
+            translated = np.array([
+                vertex[0] - reference_vertex[0],
+                vertex[1] - reference_vertex[1]
+            ])
+
+            # 2. 旋转：以V0Vr,1为参考方向（x轴）
+            cos_ref = math.cos(-ref_angle)
+            sin_ref = math.sin(-ref_angle)
+            rotated = np.array([
+                translated[0] * cos_ref - translated[1] * sin_ref,
+                translated[0] * sin_ref + translated[1] * cos_ref
+            ])
+
+            # 3. 缩放：基于基础长度标准化
+            scaled = rotated * scale_factor
+
+            # 4. 转换为极坐标（论文要求）
+            r = math.sqrt(scaled[0] ** 2 + scaled[1] ** 2)
+            theta = math.atan2(scaled[1], scaled[0])
+
+            normalized_coords.append((r, theta))
+
+        return normalized_coords
+
     def _get_obs(self):
         """
         获取当前状态观察，实现公式(4)的状态表示
+        严格按照论文方法进行坐标标准化
 
         Returns:
             np.ndarray: 状态向量
@@ -294,6 +357,7 @@ class MeshEnv(gym.Env):
 
         # 获取参考顶点
         reference_idx = self._get_reference_vertex()
+
         try:
             ref_vertex_coords = vertices[reference_idx]
             local_env_indices = [(reference_idx + i) % boundary_size for i in range(-self.n, self.n + 1)]
@@ -306,35 +370,41 @@ class MeshEnv(gym.Env):
         except IndexError:
             self.last_reference_info = None
 
-        reference_vertex = vertices[reference_idx]
-
         state_components = []
 
-        # 获取左右邻居顶点（相对坐标）
+        # 获取左右邻居顶点的标准化坐标
+        neighbor_vertices = []
         for i in range(-self.n, self.n + 1):
-            if i == 0:
-                # 参考顶点，相对坐标为(0, 0)
-                state_components.extend([0.0, 0.0])
-            else:
-                neighbor_idx = (reference_idx + i) % boundary_size
-                neighbor_vertex = vertices[neighbor_idx]
+            neighbor_idx = (reference_idx + i) % boundary_size
+            neighbor_vertices.append(vertices[neighbor_idx])
 
-                # 转换为相对坐标
-                rel_x = neighbor_vertex[0] - reference_vertex[0]
-                rel_y = neighbor_vertex[1] - reference_vertex[1]
-                state_components.extend([rel_x, rel_y])
+        # 按论文方法标准化邻居顶点坐标
+        normalized_neighbors = self._normalize_coordinates(neighbor_vertices, self.n)  # 参考点在中间位置
 
-        # 获取扇形区域内的观察点
+        # 添加邻居顶点的标准化坐标到状态
+        for r, theta in normalized_neighbors:
+            state_components.extend([r, theta])
+
+        # 获取扇形区域内的观察点并标准化
         try:
             fan_points = self.boundary.get_fan_points(
                 reference_idx, self.g,
                 self.beta * self._calculate_base_length(reference_idx)
             )
 
-            for point in fan_points:
-                rel_x = point[0] - reference_vertex[0]
-                rel_y = point[1] - reference_vertex[1]
-                state_components.extend([rel_x, rel_y])
+            # 将参考顶点加入fan_points列表的开头以便标准化
+            fan_vertices_with_ref = [vertices[reference_idx]] + list(fan_points)
+            normalized_fan = self._normalize_coordinates(fan_vertices_with_ref, 0)  # 参考点在位置0
+
+            # 跳过参考点本身，只添加扇形点的坐标
+            for r, theta in normalized_fan[1:]:
+                state_components.extend([r, theta])
+
+            # 如果扇形点不足，用零填充
+            while len(normalized_fan) - 1 < self.g:
+                state_components.extend([0.0, 0.0])
+                if len(normalized_fan) - 1 >= self.g:
+                    break
 
         except Exception:
             # 如果获取扇形点失败，用零填充
