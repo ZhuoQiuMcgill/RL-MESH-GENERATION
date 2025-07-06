@@ -93,7 +93,7 @@ export class TrainingManager {
     }
 
     /**
-     * 开始训练 - 确保真实启动
+     * 开始训练 - 修复重复启动问题
      */
     async startTraining() {
         // 验证配置
@@ -105,6 +105,19 @@ export class TrainingManager {
 
         try {
             this.uiController.showLoading(true);
+            this.uiController.logMessage('正在检查训练状态...', LOG_TYPES.INFO);
+
+            // 首先检查训练是否已在运行
+            const currentStatus = await this.safeApiCall(async () => {
+                return await this.apiClient.getTrainingStatus();
+            });
+
+            if (currentStatus && currentStatus.running === true) {
+                this.uiController.showError('训练已在运行中，请勿重复启动');
+                this.uiController.logMessage('检测到训练正在运行，无需重复启动', LOG_TYPES.WARNING);
+                return;
+            }
+
             this.uiController.logMessage('正在启动训练...', LOG_TYPES.INFO);
 
             const config = this.uiController.getTrainingConfig();
@@ -113,7 +126,7 @@ export class TrainingManager {
                 console.log('发送训练配置:', config);
             }
 
-            // 步骤1: 发送启动请求
+            // 发送启动请求
             const response = await this.safeApiCall(async () => {
                 return await this.apiClient.startTraining(config);
             });
@@ -126,7 +139,7 @@ export class TrainingManager {
             if (response && response.success === true && response.message === "training_started") {
                 this.uiController.logMessage('训练启动请求已发送，等待后端确认...', LOG_TYPES.INFO);
 
-                // 步骤2: 等待并验证训练真正开始
+                // 等待并验证训练真正开始
                 const trainingStarted = await this.waitForTrainingToStart();
 
                 if (trainingStarted) {
@@ -374,7 +387,7 @@ export class TrainingManager {
     }
 
     /**
-     * 设置进度条检查间隔 - 关键修复！确保真实发送API请求
+     * 设置进度条检查间隔 - 移除不必要的状态检查
      */
     setupProgressCheckInterval() {
         console.log('⏰ 设置进度条检查间隔');
@@ -384,17 +397,14 @@ export class TrainingManager {
             clearInterval(this.progressCheckInterval);
         }
 
-        // 每100ms检查一次进度条是否完成
+        // 每100ms检查一次进度条是否完成，直接发送API请求
         this.progressCheckInterval = setInterval(() => {
-            if (this.isTraining) {
-                const completed = this.uiController.updateProgressBar();
-                if (completed) {
-                    // 🚨 关键修复：进度条完成一个周期，立即发送真实的API请求
-                    console.log('📡 进度条完成，发送训练状态请求...');
-                    this.fetchTrainingData().catch(error => {
-                        console.error('获取训练数据失败:', error);
-                    });
-                }
+            const completed = this.uiController.updateProgressBar();
+            if (completed) {
+                console.log('📡 进度条完成，发送训练状态请求...');
+                this.fetchTrainingData().catch(error => {
+                    console.error('获取训练数据失败:', error);
+                });
             }
         }, 100);
 
@@ -504,16 +514,9 @@ export class TrainingManager {
     }
 
     /**
-     * 获取训练数据 - 🚨 关键修复！确保真实发送API请求
+     * 获取训练数据 - 移除状态检查，确保API请求发送
      */
     async fetchTrainingData() {
-        if (!this.isTraining) {
-            if (this.debugMode) {
-                console.log('⚠️ 训练未运行，跳过状态更新');
-            }
-            return;
-        }
-
         try {
             console.log('📡 发送训练状态请求: GET /training/status');
 

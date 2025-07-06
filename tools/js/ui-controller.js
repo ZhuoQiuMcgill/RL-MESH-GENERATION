@@ -48,17 +48,11 @@ export class UIController {
     }
 
     /**
-     * 启动更新进度条 - 确保只有在真正训练时才启动
+     * 启动更新进度条 - 移除状态检查，由TrainingManager控制
      * @param {number} intervalSeconds - 更新间隔（秒）
      */
     startUpdateProgressBar(intervalSeconds) {
         console.log(`🎯 启动进度条，间隔: ${intervalSeconds}秒`);
-
-        // 确保只有在训练真正开始时才启动进度条
-        if (!this.isTraining) {
-            console.warn('⚠️ 尝试启动进度条，但训练未确认开始');
-            return;
-        }
 
         this.stopUpdateProgressBar(); // 先停止现有的计时器
 
@@ -241,8 +235,8 @@ export class UIController {
     }
 
     /**
-     * 更新进度数据 - 仅接受真实的后端数据
-     * @param {Object} progress - 进度数据（必须来自后端）
+     * 更新进度数据 - 移除状态检查，接受真实的后端数据
+     * @param {Object} progress - 进度数据（来自后端）
      */
     updateProgress(progress) {
         if (!progress) {
@@ -253,12 +247,6 @@ export class UIController {
         // 验证数据来源，确保不是mock数据
         if (typeof progress !== 'object' || Array.isArray(progress)) {
             console.error('❌ 无效的进度数据格式:', progress);
-            return;
-        }
-
-        // 只有在训练真正运行时才更新进度数据
-        if (!this.isTraining) {
-            console.warn('⚠️ 尝试更新进度数据，但训练未运行');
             return;
         }
 
