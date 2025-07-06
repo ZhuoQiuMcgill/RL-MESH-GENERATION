@@ -1,77 +1,26 @@
 /**
- * Canvas渲染模块 - 修复版本
+ * Canvas渲染模块
  * 负责所有Canvas相关的绘制功能
- * 修复了DOM元素获取和初始化的问题
+ * 优化了缩放支持和布局适配
  */
 
 import {CONSTANTS, isValidCoordinate, parseBackendData} from './utils.js';
 
 export class CanvasRenderer {
-    constructor(canvasElement = null) {
-        this.canvas = null;
-        this.ctx = null;
+    constructor(canvasElement) {
+        this.canvas = canvasElement;
+        this.ctx = canvasElement.getContext('2d');
         this.currentTransform = null;
         this.isResizing = false;
-        this.lastRenderData = null;
-        this.currentPixelRatio = 1;
 
-        // 如果传入了canvas元素，立即初始化
-        if (canvasElement) {
-            this.init(canvasElement);
-        }
-    }
-
-    /**
-     * 初始化Canvas渲染器
-     * @param {HTMLCanvasElement} canvasElement - Canvas元素
-     */
-    init(canvasElement = null) {
-        if (canvasElement) {
-            this.canvas = canvasElement;
-        } else {
-            // 尝试从DOM获取canvas元素
-            this.canvas = document.getElementById('mesh-canvas');
-        }
-
-        if (!this.canvas) {
-            console.error('未找到Canvas元素，无法初始化CanvasRenderer');
-            return false;
-        }
-
-        try {
-            this.ctx = this.canvas.getContext('2d');
-            if (!this.ctx) {
-                console.error('无法获取Canvas 2D上下文');
-                return false;
-            }
-
-            this.setupCanvas();
-            this.bindEvents();
-            console.log('CanvasRenderer初始化成功');
-            return true;
-        } catch (error) {
-            console.error('CanvasRenderer初始化失败:', error);
-            return false;
-        }
-    }
-
-    /**
-     * 检查是否已初始化
-     * @returns {boolean} 是否已初始化
-     */
-    isInitialized() {
-        return this.canvas && this.ctx;
+        this.setupCanvas();
+        this.bindEvents();
     }
 
     /**
      * 设置Canvas基本配置
      */
     setupCanvas() {
-        if (!this.isInitialized()) {
-            console.warn('Canvas未初始化，无法设置');
-            return;
-        }
-
         this.resizeCanvas();
         this.clearCanvas();
     }
@@ -80,11 +29,6 @@ export class CanvasRenderer {
      * 绑定事件监听器
      */
     bindEvents() {
-        if (!this.isInitialized()) {
-            console.warn('Canvas未初始化，无法绑定事件');
-            return;
-        }
-
         // 防抖的resize处理
         let resizeTimeout;
         const debouncedResize = () => {
@@ -114,20 +58,12 @@ export class CanvasRenderer {
      * 调整Canvas大小 - 优化缩放支持
      */
     resizeCanvas() {
-        if (!this.isInitialized()) {
-            console.warn('Canvas未初始化，无法调整大小');
-            return;
-        }
-
         if (this.isResizing) return;
         this.isResizing = true;
 
         try {
             const container = this.canvas.parentElement;
-            if (!container) {
-                console.warn('Canvas容器不存在');
-                return;
-            }
+            if (!container) return;
 
             const rect = container.getBoundingClientRect();
 
@@ -176,10 +112,6 @@ export class CanvasRenderer {
      * 重新绘制当前内容
      */
     redrawCurrentContent() {
-        if (!this.isInitialized()) {
-            return;
-        }
-
         if (this.lastRenderData) {
             this.renderScene(
                 this.lastRenderData.meshData,
@@ -195,10 +127,6 @@ export class CanvasRenderer {
      * 清空Canvas
      */
     clearCanvas() {
-        if (!this.isInitialized()) {
-            return;
-        }
-
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.drawGrid();
         this.drawWaitingText();
@@ -210,10 +138,6 @@ export class CanvasRenderer {
      * 绘制网格背景
      */
     drawGrid() {
-        if (!this.isInitialized()) {
-            return;
-        }
-
         const gridSize = 20; // 固定网格大小
         this.ctx.strokeStyle = '#F3F4F6';
         this.ctx.lineWidth = 0.5;
@@ -242,10 +166,6 @@ export class CanvasRenderer {
      * 绘制等待文本
      */
     drawWaitingText() {
-        if (!this.isInitialized()) {
-            return;
-        }
-
         this.ctx.fillStyle = '#9CA3AF';
         this.ctx.font = '16px sans-serif';
         this.ctx.textAlign = 'center';
@@ -267,13 +187,8 @@ export class CanvasRenderer {
      * @param {Object} refPointInfo - 参考点信息
      */
     renderScene(meshData, boundaryVertices, refPointInfo = null) {
-        if (!this.isInitialized()) {
-            console.warn('Canvas未初始化，无法渲染场景');
-            return;
-        }
-
         // 保存渲染数据用于重绘
-        this.lastRenderData = {meshData, boundaryVertices, refPointInfo};
+        this.lastRenderData = { meshData, boundaryVertices, refPointInfo };
 
         // 解析数据
         meshData = parseBackendData(meshData);
@@ -287,7 +202,6 @@ export class CanvasRenderer {
 
         if (allVertices.length === 0) {
             this.currentTransform = null;
-            this.drawWaitingText();
             return;
         }
 
@@ -373,7 +287,7 @@ export class CanvasRenderer {
         const offsetX = (logicalWidth - dataWidth * scale) / 2 - minX * scale;
         const offsetY = (logicalHeight - dataHeight * scale) / 2 - minY * scale;
 
-        return {scale, offsetX, offsetY};
+        return { scale, offsetX, offsetY };
     }
 
     /**
@@ -382,10 +296,6 @@ export class CanvasRenderer {
      * @param {Object} transform - 变换参数
      */
     renderMeshWithTransform(meshData, transform) {
-        if (!this.isInitialized()) {
-            return;
-        }
-
         // 绘制网格边
         this.ctx.strokeStyle = '#6366F1';
         this.ctx.lineWidth = 2;
@@ -393,26 +303,29 @@ export class CanvasRenderer {
         Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
             try {
                 const vertex = JSON.parse(vertexStr);
-                if (isValidCoordinate(vertex) && Array.isArray(adjacentVertices)) {
-                    adjacentVertices.forEach(adjVertex => {
-                        if (isValidCoordinate(adjVertex)) {
-                            const [x1, y1] = this.transformPoint(vertex, transform);
-                            const [x2, y2] = this.transformPoint(adjVertex, transform);
-
-                            this.ctx.beginPath();
-                            this.ctx.moveTo(x1, y1);
-                            this.ctx.lineTo(x2, y2);
-                            this.ctx.stroke();
-                        }
-                    });
+                if (!isValidCoordinate(vertex) || !Array.isArray(adjacentVertices)) {
+                    return;
                 }
+
+                const [x1, y1] = this.transformPoint(vertex, transform);
+
+                adjacentVertices.forEach(adjVertex => {
+                    if (isValidCoordinate(adjVertex)) {
+                        const [x2, y2] = this.transformPoint(adjVertex, transform);
+
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(x1, y1);
+                        this.ctx.lineTo(x2, y2);
+                        this.ctx.stroke();
+                    }
+                });
             } catch (e) {
-                console.warn('渲染网格边失败:', e);
+                console.warn('渲染mesh顶点失败:', vertexStr);
             }
         });
 
-        // 绘制网格顶点
-        this.ctx.fillStyle = '#4F46E5';
+        // 绘制顶点
+        this.ctx.fillStyle = '#3B82F6';
         Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
             try {
                 const vertex = JSON.parse(vertexStr);
@@ -423,47 +336,49 @@ export class CanvasRenderer {
                     this.ctx.fill();
                 }
             } catch (e) {
-                console.warn('渲染网格顶点失败:', e);
+                console.warn('渲染mesh顶点失败:', vertexStr);
             }
         });
     }
 
     /**
      * 使用指定变换参数渲染边界
-     * @param {Array} boundaryVertices - 边界顶点数组
+     * @param {Array} boundaryVertices - 边界顶点
      * @param {Object} transform - 变换参数
      */
     renderBoundaryWithTransform(boundaryVertices, transform) {
-        if (!this.isInitialized() || !Array.isArray(boundaryVertices) || boundaryVertices.length === 0) {
+        if (!Array.isArray(boundaryVertices) || boundaryVertices.length < 2) {
             return;
         }
 
         // 绘制边界线
-        this.ctx.strokeStyle = '#059669';
+        this.ctx.strokeStyle = '#EF4444';
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
 
-        const validVertices = boundaryVertices.filter(isValidCoordinate);
-        if (validVertices.length === 0) return;
+        const firstPoint = this.transformPoint(boundaryVertices[0], transform);
+        this.ctx.moveTo(firstPoint[0], firstPoint[1]);
 
-        const firstVertex = this.transformPoint(validVertices[0], transform);
-        this.ctx.moveTo(firstVertex[0], firstVertex[1]);
+        for (let i = 1; i < boundaryVertices.length; i++) {
+            if (isValidCoordinate(boundaryVertices[i])) {
+                const point = this.transformPoint(boundaryVertices[i], transform);
+                this.ctx.lineTo(point[0], point[1]);
+            }
+        }
 
-        validVertices.slice(1).forEach(vertex => {
-            const [x, y] = this.transformPoint(vertex, transform);
-            this.ctx.lineTo(x, y);
-        });
-
+        // 闭合路径
         this.ctx.closePath();
         this.ctx.stroke();
 
         // 绘制边界顶点
         this.ctx.fillStyle = '#DC2626';
-        validVertices.forEach(vertex => {
-            const [x, y] = this.transformPoint(vertex, transform);
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, 4, 0, 2 * Math.PI);
-            this.ctx.fill();
+        boundaryVertices.forEach(vertex => {
+            if (isValidCoordinate(vertex)) {
+                const [x, y] = this.transformPoint(vertex, transform);
+                this.ctx.beginPath();
+                this.ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                this.ctx.fill();
+            }
         });
     }
 
@@ -473,7 +388,7 @@ export class CanvasRenderer {
      * @param {Object} transform - 变换参数
      */
     renderReferencePointInfo(refPointInfo, transform) {
-        if (!this.isInitialized() || !refPointInfo || !refPointInfo.coordinates) {
+        if (!refPointInfo || !refPointInfo.coordinates) {
             return;
         }
 
@@ -508,34 +423,13 @@ export class CanvasRenderer {
     }
 
     /**
-     * 获取点击坐标对应的世界坐标
-     * @param {Event} event - 点击事件
-     * @returns {Array} 世界坐标 [x, y] 或 null
-     */
-    getClickCoordinates(event) {
-        if (!this.isInitialized() || !this.currentTransform) {
-            return null;
-        }
-
-        const rect = this.canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-
-        // 考虑设备像素比
-        const worldX = (x - this.currentTransform.offsetX) / this.currentTransform.scale;
-        const worldY = (y - this.currentTransform.offsetY) / this.currentTransform.scale;
-
-        return [worldX, worldY];
-    }
-
-    /**
      * 屏幕坐标转世界坐标
      * @param {number} screenX - 屏幕X坐标
      * @param {number} screenY - 屏幕Y坐标
      * @returns {Object|null} 世界坐标 {x, y} 或 null
      */
     screenToWorld(screenX, screenY) {
-        if (!this.isInitialized() || !this.currentTransform) {
+        if (!this.currentTransform) {
             return null;
         }
 
@@ -547,18 +441,14 @@ export class CanvasRenderer {
         const worldX = (x - this.currentTransform.offsetX) / this.currentTransform.scale;
         const worldY = (y - this.currentTransform.offsetY) / this.currentTransform.scale;
 
-        return {x: worldX, y: worldY};
+        return { x: worldX, y: worldY };
     }
 
     /**
      * 销毁渲染器
      */
     destroy() {
-        if (this.isInitialized()) {
-            this.clearCanvas();
-        }
-        this.canvas = null;
-        this.ctx = null;
+        this.clearCanvas();
         this.currentTransform = null;
         this.lastRenderData = null;
     }

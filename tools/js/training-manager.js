@@ -1,340 +1,116 @@
 /**
- * 训练管理器模块 - 修复真实状态更新版本
- * 彻底修复进度条假更新和按钮绑定错误的问题
+ * 强化学习网格生成训练管理系统
+ * 主要的TrainingManager类，整合所有功能模块
  */
 
-import {STATUS, LOG_TYPES, CONSTANTS, delay} from './utils.js';
-import {ApiClient} from './api-client.js';
-import {UIController} from './ui-controller.js';
+import {CONSTANTS, STATUS, LOG_TYPES, formatNumber, throttle} from './utils.js';
+import {ApiClient, withErrorHandling, withRetry} from './api-client.js';
 import {CanvasRenderer} from './canvas-renderer.js';
+import {UIController} from './ui-controller.js';
 
 export class TrainingManager {
     constructor() {
+        // 初始化各个模块
         this.apiClient = new ApiClient();
         this.uiController = new UIController();
         this.canvasRenderer = null; // 延迟初始化
 
+        // 状态管理
         this.isTraining = false;
+        this.updateInterval = null;
         this.progressCheckInterval = null;
-        this.trainingVerificationTimeout = null;
 
-        // 添加调试标记
-        this.debugMode = true;
+        // 创建带错误处理的API方法
+        this.safeApiCall = withErrorHandling.bind(this);
+
+        this.init();
     }
 
     /**
-     * 初始化训练管理器
+     * 初始化应用程序
      */
     async init() {
-        console.log('初始化训练管理器...');
-
         try {
-            // 先初始化Canvas渲染器
-            await this.initializeCanvas();
-
-            // 设置事件监听器
-            this.setupEventListeners();
+            this.setupCanvas();
+            this.bindEvents();
 
             // 检查后端连接
-            const connected = await this.checkBackendConnection();
-            if (connected) {
-                this.uiController.logMessage('后端连接成功', LOG_TYPES.SUCCESS);
+            const isConnected = await this.checkBackendConnection();
 
-                // 加载初始数据
-                await this.loadMeshList();
-            } else {
-                this.uiController.logMessage('后端连接失败，请检查服务是否启动', LOG_TYPES.ERROR);
+            // 无论连接状态如何，都尝试加载mesh列表
+            this.uiController.logMessage('尝试加载Mesh列表...', LOG_TYPES.INFO);
+            await this.loadMeshList();
+
+            if (!isConnected) {
+                this.uiController.logMessage('无法连接到后端服务器，请确保Flask应用正在运行在 http://localhost:5000', LOG_TYPES.ERROR);
+                this.uiController.logMessage('如果后端未运行，请启动后端服务器，然后点击"刷新Mesh列表"按钮', LOG_TYPES.INFO);
             }
 
-            console.log('训练管理器初始化完成');
+            this.uiController.updateButtonStates(false);
+            this.uiController.logMessage('系统初始化完成', LOG_TYPES.INFO);
+
+            // 添加调试信息
+            console.log('系统初始化完成, 后端连接状态:', isConnected);
 
         } catch (error) {
             console.error('初始化失败:', error);
-            this.uiController.logMessage('初始化失败: ' + error.message, LOG_TYPES.ERROR);
+            this.uiController.showError('系统初始化失败: ' + error.message);
         }
     }
 
     /**
-     * 初始化Canvas渲染器
+     * 设置Canvas
      */
-    async initializeCanvas() {
-        console.log('正在初始化Canvas...');
-
-        try {
-            // 创建CanvasRenderer实例
-            this.canvasRenderer = new CanvasRenderer();
-
-            // 尝试初始化，如果失败则等待重试
-            let retryCount = 0;
-            const maxRetries = 5;
-            const retryDelay = 100;
-
-            while (retryCount < maxRetries) {
-                if (this.canvasRenderer.init()) {
-                    console.log('Canvas初始化成功');
-                    return;
-                }
-
-                console.log(`Canvas初始化失败，重试 ${retryCount + 1}/${maxRetries}`);
-                retryCount++;
-
-                if (retryCount < maxRetries) {
-                    await delay(retryDelay);
-                }
-            }
-
-            console.warn('Canvas初始化最终失败，将在没有Canvas的情况下继续');
-            this.canvasRenderer = null;
-
-        } catch (error) {
-            console.error('Canvas初始化出错:', error);
-            this.canvasRenderer = null;
+    setupCanvas() {
+        const canvas = document.getElementById('mesh-canvas');
+        if (canvas) {
+            this.canvasRenderer = new CanvasRenderer(canvas);
+        } else {
+            console.error('未找到Canvas元素');
         }
     }
 
     /**
-     * 开始训练 - 确保真实启动
+     * 绑定事件监听器
      */
-    async startTraining() {
-        // 验证配置
-        const validation = this.uiController.validateTrainingConfig();
-        if (!validation.valid) {
-            this.uiController.showError(validation.message);
-            return;
-        }
-
-        try {
-            this.uiController.showLoading(true);
-            this.uiController.logMessage('正在启动训练...', LOG_TYPES.INFO);
-
-            const config = this.uiController.getTrainingConfig();
-
-            if (this.debugMode) {
-                console.log('发送训练配置:', config);
-            }
-
-            // 步骤1: 发送启动请求
-            const response = await this.safeApiCall(async () => {
-                return await this.apiClient.startTraining(config);
-            });
-
-            if (this.debugMode) {
-                console.log('训练启动API响应:', response);
-            }
-
-            // 按照API文档检查响应格式
-            if (response && response.success === true && response.message === "training_started") {
-                this.uiController.logMessage('训练启动请求已发送，等待后端确认...', LOG_TYPES.INFO);
-
-                // 步骤2: 等待并验证训练真正开始
-                const trainingStarted = await this.waitForTrainingToStart();
-
-                if (trainingStarted) {
-                    // 只有在确认训练真正开始后才更新UI状态
-                    this.isTraining = true;
-                    this.uiController.updateButtonStates(true);
-                    this.uiController.updateStatusIndicator(STATUS.RUNNING);
-
-                    // 开始真正的进度条和数据更新循环
-                    this.startUpdateLoop();
-
-                    this.uiController.logMessage('训练已确认开始', LOG_TYPES.SUCCESS);
-                } else {
-                    this.uiController.showError('训练启动失败：后端未能开始训练');
-                    this.uiController.updateStatusIndicator(STATUS.ERROR);
-                }
-            } else {
-                const errorMessage = response?.error || '启动训练失败';
-                this.uiController.showError(errorMessage);
-            }
-
-        } catch (error) {
-            console.error('启动训练失败:', error);
-            this.uiController.showError('启动训练失败: ' + error.message);
-            this.uiController.updateStatusIndicator(STATUS.ERROR);
-        } finally {
-            this.uiController.showLoading(false);
-        }
-    }
-
-    /**
-     * 等待训练真正开始
-     */
-    async waitForTrainingToStart() {
-        const maxWaitTime = 10000; // 最大等待10秒
-        const checkInterval = 1000; // 每秒检查一次
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < maxWaitTime) {
-            try {
-                if (this.debugMode) {
-                    console.log('检查训练是否已开始...');
-                }
-
-                const status = await this.safeApiCall(async () => {
-                    return await this.apiClient.getTrainingStatus();
-                });
-
-                if (this.debugMode) {
-                    console.log('训练状态检查响应:', status);
-                }
-
-                // 检查训练是否真正在运行
-                if (status && status.running === true) {
-                    this.uiController.logMessage('后端确认训练已开始', LOG_TYPES.SUCCESS);
-                    return true;
-                }
-
-                // 检查是否有错误状态
-                if (status && status.status === 'error') {
-                    this.uiController.logMessage('后端报告训练启动失败', LOG_TYPES.ERROR);
-                    return false;
-                }
-
-                // 等待下一次检查
-                await delay(checkInterval);
-                this.uiController.logMessage(`等待训练开始... (${Math.ceil((Date.now() - startTime) / 1000)}s)`, LOG_TYPES.INFO);
-
-            } catch (error) {
-                console.error('检查训练状态失败:', error);
-                await delay(checkInterval);
-            }
-        }
-
-        this.uiController.logMessage('等待训练开始超时', LOG_TYPES.ERROR);
-        return false;
-    }
-
-    /**
-     * 停止训练
-     */
-    async stopTraining() {
-        try {
-            this.uiController.updateStatusIndicator(STATUS.STOPPING);
-            this.uiController.logMessage('正在停止训练...', LOG_TYPES.INFO);
-
-            const response = await this.safeApiCall(async () => {
-                return await this.apiClient.stopTraining();
-            });
-
-            if (response && response.success === true && response.message === "stop_requested") {
-                // 立即停止前端更新循环
-                this.stopUpdateLoop();
-                this.isTraining = false;
-                this.uiController.updateButtonStates(false);
-                this.uiController.updateStatusIndicator(STATUS.STOPPED);
-                this.uiController.logMessage('训练已停止', LOG_TYPES.WARNING);
-            } else {
-                const errorMessage = response?.error || '停止训练失败';
-                this.uiController.showError(errorMessage);
-            }
-        } catch (error) {
-            console.error('停止训练失败:', error);
-            this.uiController.showError('停止训练失败: ' + error.message);
-        }
-    }
-
-    /**
-     * 开始更新循环 - 确保真实发送API请求
-     */
-    startUpdateLoop() {
-        console.log('🔄 开始真实更新循环');
-
-        // 启动进度条
-        const intervalSeconds = this.uiController.getUpdateInterval() / 1000;
-        this.uiController.startUpdateProgressBar(intervalSeconds);
-
-        // 设置进度条检查 - 关键修复
-        this.setupProgressCheckInterval();
-
-        // 立即获取一次数据
-        this.fetchTrainingData();
-
-        this.uiController.logMessage(`开始数据更新循环，间隔: ${intervalSeconds}秒`, LOG_TYPES.INFO);
-    }
-
-    /**
-     * 停止更新循环
-     */
-    stopUpdateLoop() {
-        console.log('⏹️ 停止更新循环');
-
-        this.uiController.stopUpdateProgressBar();
-
-        if (this.progressCheckInterval) {
-            clearInterval(this.progressCheckInterval);
-            this.progressCheckInterval = null;
-        }
-
-        if (this.trainingVerificationTimeout) {
-            clearTimeout(this.trainingVerificationTimeout);
-            this.trainingVerificationTimeout = null;
-        }
-
-        this.uiController.logMessage('数据更新循环已停止', LOG_TYPES.INFO);
-    }
-
-    /**
-     * 设置事件监听器 - 修复按钮绑定
-     */
-    setupEventListeners() {
-        console.log('🔗 设置事件监听器');
-
+    bindEvents() {
         // 开始训练按钮
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => this.startTraining());
-            console.log('✅ 绑定开始训练按钮');
         }
 
         // 停止训练按钮
         const stopBtn = document.getElementById('stop-btn');
         if (stopBtn) {
             stopBtn.addEventListener('click', () => this.stopTraining());
-            console.log('✅ 绑定停止训练按钮');
         }
 
-        // 刷新mesh列表按钮 - 确保正确绑定
+        // 刷新按钮
         const refreshBtn = document.getElementById('refresh-btn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => {
-                console.log('🔄 手动刷新mesh列表');
+                console.log('手动刷新mesh列表');
                 this.loadMeshList();
             });
-            console.log('✅ 绑定刷新mesh列表按钮');
-        }
-
-        // 手动更新训练状态按钮 - 新增！
-        const updateStatusBtn = document.getElementById('update-status-btn');
-        if (updateStatusBtn) {
-            updateStatusBtn.addEventListener('click', () => {
-                console.log('🔄 手动更新训练状态');
-                this.manualUpdateTrainingStatus();
-            });
-            console.log('✅ 绑定手动更新状态按钮');
-        } else {
-            console.warn('⚠️ 未找到update-status-btn元素');
         }
 
         // 清除日志按钮
         const clearLogBtn = document.getElementById('clear-log-btn');
         if (clearLogBtn) {
             clearLogBtn.addEventListener('click', () => this.uiController.clearLog());
-            console.log('✅ 绑定清除日志按钮');
         }
 
         // Mesh选择变化
         const meshSelect = document.getElementById('mesh-select');
         if (meshSelect) {
             meshSelect.addEventListener('change', () => this.handleMeshSelection());
-            console.log('✅ 绑定Mesh选择变化事件');
         }
 
         // Canvas点击事件
         const canvas = document.getElementById('mesh-canvas');
         if (canvas && this.canvasRenderer) {
             canvas.addEventListener('click', (event) => this.handleCanvasClick(event));
-            console.log('✅ 绑定Canvas点击事件');
         }
 
         // 监听更新间隔输入变化，实时更新进度条
@@ -346,39 +122,22 @@ export class TrainingManager {
                     this.restartProgressBar(newInterval);
                 }
             });
-            console.log('✅ 绑定更新间隔输入变化事件');
-        }
-    }
-
-    /**
-     * 手动更新训练状态 - 新增方法
-     */
-    async manualUpdateTrainingStatus() {
-        this.uiController.logMessage('手动更新训练状态...', LOG_TYPES.INFO);
-
-        try {
-            await this.fetchTrainingData();
-            this.uiController.logMessage('手动更新完成', LOG_TYPES.SUCCESS);
-        } catch (error) {
-            this.uiController.logMessage('手动更新失败: ' + error.message, LOG_TYPES.ERROR);
         }
     }
 
     /**
      * 重启进度条（当更新间隔改变时）
+     * @param {number} intervalSeconds - 新的间隔秒数
      */
     restartProgressBar(intervalSeconds) {
-        console.log(`🔄 重启进度条，新间隔: ${intervalSeconds}秒`);
         this.uiController.startUpdateProgressBar(intervalSeconds);
         this.setupProgressCheckInterval();
     }
 
     /**
-     * 设置进度条检查间隔 - 关键修复！确保真实发送API请求
+     * 设置进度条检查间隔
      */
     setupProgressCheckInterval() {
-        console.log('⏰ 设置进度条检查间隔');
-
         // 清除现有的检查间隔
         if (this.progressCheckInterval) {
             clearInterval(this.progressCheckInterval);
@@ -389,46 +148,54 @@ export class TrainingManager {
             if (this.isTraining) {
                 const completed = this.uiController.updateProgressBar();
                 if (completed) {
-                    // 🚨 关键修复：进度条完成一个周期，立即发送真实的API请求
-                    console.log('📡 进度条完成，发送训练状态请求...');
-                    this.fetchTrainingData().catch(error => {
-                        console.error('获取训练数据失败:', error);
-                    });
+                    // 进度条完成一个周期，触发数据更新
+                    this.fetchTrainingData();
                 }
             }
         }, 100);
-
-        console.log('✅ 进度条检查间隔已设置');
     }
 
     /**
      * 检查后端连接状态
+     * @returns {Promise<boolean>} 连接状态
      */
     async checkBackendConnection() {
         try {
-            console.log('🔍 开始检查后端连接...');
+            console.log('开始检查后端连接...');
 
-            // 使用综合健康检查
-            const healthStatus = await this.apiClient.checkAllHealth();
-
-            if (healthStatus.training.healthy) {
-                this.uiController.logMessage('Training API连接正常', LOG_TYPES.SUCCESS);
-            } else if (healthStatus.training.error) {
-                this.uiController.logMessage(`Training API连接失败: ${healthStatus.training.error}`, LOG_TYPES.WARNING);
+            // 先检查mesh API
+            try {
+                const meshHealth = await this.apiClient.checkMeshHealth();
+                console.log('Mesh API健康检查结果:', meshHealth);
+                if (meshHealth && meshHealth.status === 'healthy') {
+                    this.uiController.logMessage('Mesh API连接正常', LOG_TYPES.SUCCESS);
+                    return true;
+                }
+            } catch (meshError) {
+                console.warn('Mesh API健康检查失败:', meshError);
             }
 
-            if (healthStatus.mesh.healthy) {
-                this.uiController.logMessage('Mesh API连接正常', LOG_TYPES.SUCCESS);
-            } else if (healthStatus.mesh.error) {
-                this.uiController.logMessage(`Mesh API连接失败: ${healthStatus.mesh.error}`, LOG_TYPES.WARNING);
+            // 再检查训练API
+            try {
+                const trainingHealth = await this.apiClient.checkTrainingHealth();
+                console.log('Training API健康检查结果:', trainingHealth);
+                if (trainingHealth && trainingHealth.status === 'healthy') {
+                    this.uiController.logMessage('Training API连接正常', LOG_TYPES.SUCCESS);
+                    return true;
+                }
+            } catch (trainingError) {
+                console.warn('Training API健康检查失败:', trainingError);
             }
 
-            if (healthStatus.overall) {
+            // 如果以上都失败，尝试基本连接测试
+            const connected = await this.apiClient.checkConnection();
+            if (connected) {
+                this.uiController.logMessage('后端基本连接正常', LOG_TYPES.SUCCESS);
                 return true;
-            } else {
-                this.uiController.logMessage('所有后端API连接失败', LOG_TYPES.ERROR);
-                return false;
             }
+
+            this.uiController.logMessage('所有后端API连接失败', LOG_TYPES.ERROR);
+            return false;
 
         } catch (error) {
             console.error('后端连接检查失败:', error);
@@ -445,23 +212,36 @@ export class TrainingManager {
             this.uiController.showLoading(true);
             this.uiController.logMessage('正在加载Mesh列表...', LOG_TYPES.INFO);
 
-            console.log('📡 发送Mesh列表请求...');
+            // 直接调用API方法，增加调试信息
+            console.log('开始调用getMeshList API...');
+            const data = await this.apiClient.getMeshList();
+            console.log('API响应数据:', data);
 
-            const meshes = await this.safeApiCall(async () => {
-                return await this.apiClient.getMeshList();
-            });
-
-            if (Array.isArray(meshes) && meshes.length > 0) {
-                this.uiController.populateMeshList(meshes);
-                this.uiController.logMessage(`成功加载 ${meshes.length} 个Mesh`, LOG_TYPES.SUCCESS);
+            // 检查返回的数据格式
+            if (data && data.meshes) {
+                this.uiController.populateMeshList(data.meshes);
+                this.uiController.logMessage(`成功加载 ${data.meshes.length} 个Mesh文件`, LOG_TYPES.SUCCESS);
+                console.log('成功填充mesh列表:', data.meshes);
+            } else if (data && Array.isArray(data)) {
+                // 如果直接返回数组
+                this.uiController.populateMeshList(data);
+                this.uiController.logMessage(`成功加载 ${data.length} 个Mesh文件`, LOG_TYPES.SUCCESS);
+                console.log('成功填充mesh列表(数组格式):', data);
             } else {
+                console.warn('API返回的数据格式不正确:', data);
                 this.uiController.logMessage('未找到可用的Mesh文件', LOG_TYPES.WARNING);
                 this.uiController.populateMeshList([]);
             }
+
         } catch (error) {
             console.error('加载Mesh列表失败:', error);
             this.uiController.showError('加载Mesh列表失败: ' + error.message);
-            this.uiController.populateMeshList([]);
+            this.uiController.logMessage('加载Mesh列表失败: ' + error.message, LOG_TYPES.ERROR);
+
+            // 尝试添加一些默认的mesh选项用于测试
+            const defaultMeshes = ['简单正方形', '三角形', '矩形', '五边形', '六边形'];
+            this.uiController.populateMeshList(defaultMeshes);
+            this.uiController.logMessage('已加载默认Mesh列表用于测试', LOG_TYPES.WARNING);
         } finally {
             this.uiController.showLoading(false);
         }
@@ -471,30 +251,31 @@ export class TrainingManager {
      * 处理Mesh选择
      */
     async handleMeshSelection() {
-        const meshName = this.uiController.getSelectedMesh();
+        const meshName = this.uiController.getElementValue('mesh-select');
+
         if (!meshName) {
             this.uiController.hideMeshInfo();
+            if (this.canvasRenderer) {
+                this.canvasRenderer.clearCanvas();
+            }
             return;
         }
 
         try {
             this.uiController.showLoading(true);
 
-            const meshInfo = await this.safeApiCall(async () => {
-                return await this.apiClient.getMeshInfo(meshName);
-            });
+            const meshInfo = await withRetry(() => this.apiClient.getMeshInfo(meshName));
 
-            if (meshInfo && meshInfo.exists === true && !meshInfo.error) {
+            if (meshInfo && !meshInfo.error) {
                 this.uiController.updateMeshInfo({
-                    vertices: meshInfo.vertices || 0,
+                    vertices: meshInfo.vertex_count,
                     size: meshInfo.file_size,
                     boundary_vertices: meshInfo.boundary_vertices || 0
                 });
 
                 this.uiController.logMessage(`已加载Mesh: ${meshName}`, LOG_TYPES.SUCCESS);
             } else {
-                const errorMessage = meshInfo?.error || '获取Mesh信息失败';
-                this.uiController.showError(`加载Mesh失败: ${errorMessage}`);
+                this.uiController.showError(`加载Mesh失败: ${meshInfo?.error || '未知错误'}`);
             }
         } catch (error) {
             this.uiController.showError('加载Mesh失败: ' + error.message);
@@ -504,51 +285,123 @@ export class TrainingManager {
     }
 
     /**
-     * 获取训练数据 - 🚨 关键修复！确保真实发送API请求
+     * 开始训练
      */
-    async fetchTrainingData() {
-        if (!this.isTraining) {
-            if (this.debugMode) {
-                console.log('⚠️ 训练未运行，跳过状态更新');
-            }
+    async startTraining() {
+        // 验证配置
+        const validation = this.uiController.validateTrainingConfig();
+        if (!validation.valid) {
+            this.uiController.showError(validation.message);
             return;
         }
 
         try {
-            console.log('📡 发送训练状态请求: GET /training/status');
+            this.uiController.showLoading(true);
 
+            const config = this.uiController.getTrainingConfig();
+            const response = await this.safeApiCall(async () => {
+                return await this.apiClient.startTraining(config);
+            });
+
+            if (response && !response.error) {
+                this.isTraining = true;
+                this.uiController.updateButtonStates(true);
+                this.uiController.updateStatusIndicator(STATUS.RUNNING);
+
+                // 开始进度条和数据更新循环
+                this.startUpdateLoop();
+
+                this.uiController.logMessage('训练已开始', LOG_TYPES.SUCCESS);
+            } else {
+                this.uiController.showError('启动训练失败: ' + (response?.error || '未知错误'));
+            }
+        } catch (error) {
+            this.uiController.showError('启动训练失败: ' + error.message);
+        } finally {
+            this.uiController.showLoading(false);
+        }
+    }
+
+    /**
+     * 停止训练
+     */
+    async stopTraining() {
+        try {
+            this.uiController.updateStatusIndicator(STATUS.STOPPING);
+
+            const response = await this.safeApiCall(async () => {
+                return await this.apiClient.stopTraining();
+            });
+
+            if (response && !response.error) {
+                this.stopUpdateLoop();
+                this.isTraining = false;
+                this.uiController.updateButtonStates(false);
+                this.uiController.updateStatusIndicator(STATUS.STOPPED);
+                this.uiController.logMessage('训练已停止', LOG_TYPES.WARNING);
+            } else {
+                this.uiController.showError('停止训练失败: ' + (response?.error || '未知错误'));
+            }
+        } catch (error) {
+            this.uiController.showError('停止训练失败: ' + error.message);
+        }
+    }
+
+    /**
+     * 开始更新循环
+     */
+    startUpdateLoop() {
+        // 启动进度条
+        const intervalSeconds = this.uiController.getUpdateInterval() / 1000;
+        this.uiController.startUpdateProgressBar(intervalSeconds);
+
+        // 设置进度条检查
+        this.setupProgressCheckInterval();
+
+        // 立即获取一次数据
+        this.fetchTrainingData();
+
+        this.uiController.logMessage(`开始数据更新循环，间隔: ${intervalSeconds}秒`, LOG_TYPES.INFO);
+    }
+
+    /**
+     * 停止更新循环
+     */
+    stopUpdateLoop() {
+        this.uiController.stopUpdateProgressBar();
+
+        if (this.progressCheckInterval) {
+            clearInterval(this.progressCheckInterval);
+            this.progressCheckInterval = null;
+        }
+
+        this.uiController.logMessage('数据更新循环已停止', LOG_TYPES.INFO);
+    }
+
+    /**
+     * 获取训练数据
+     */
+    async fetchTrainingData() {
+        if (!this.isTraining) return;
+
+        try {
             const data = await this.safeApiCall(async () => {
                 return await this.apiClient.getTrainingStatus();
             });
 
-            console.log('📨 收到训练状态响应:', data);
-
-            if (data && typeof data === 'object') {
-                // 检查训练是否仍在运行
-                if (data.running === false) {
-                    this.uiController.logMessage('检测到训练已停止', LOG_TYPES.WARNING);
-                    this.handleTrainingCompleted(data);
-                    return;
-                }
-
+            if (data && !data.error) {
                 // 更新统计数据
-                if (data.stats && typeof data.stats === 'object') {
-                    if (this.debugMode) {
-                        console.log('📊 更新统计数据:', data.stats);
-                    }
+                if (data.stats) {
                     this.uiController.updateTrainingStats(data.stats);
                 }
 
                 // 更新进度数据
-                if (data.progress && typeof data.progress === 'object') {
-                    if (this.debugMode) {
-                        console.log('📈 更新进度数据:', data.progress);
-                    }
+                if (data.progress) {
                     this.uiController.updateProgress(data.progress);
                 }
 
-                // 更新Canvas渲染（如果Canvas可用）
-                if (this.canvasRenderer && this.canvasRenderer.isInitialized()) {
+                // 更新Canvas渲染
+                if (this.canvasRenderer) {
                     if (data.mesh_data || data.boundary_vertices) {
                         this.canvasRenderer.renderScene(
                             data.mesh_data || {},
@@ -558,93 +411,117 @@ export class TrainingManager {
                     }
                 }
 
-                // 记录成功
-                if (this.debugMode) {
-                    console.log('✅ 训练状态更新成功');
+                // 检查训练状态
+                if (data.status) {
+                    if (data.status === 'completed') {
+                        this.handleTrainingCompleted();
+                    } else if (data.status === 'error') {
+                        this.handleTrainingError(data.error_message);
+                    }
                 }
 
             } else {
-                console.error('❌ 获取训练数据失败: 响应格式无效', data);
+                console.warn('获取训练数据失败:', data?.error);
             }
         } catch (error) {
-            console.error('❌ 获取训练数据失败:', error);
-            this.uiController.logMessage('无法获取训练数据: ' + error.message, LOG_TYPES.WARNING);
+            console.error('获取训练数据错误:', error);
+            // 不显示错误给用户，避免过多提示
         }
     }
 
     /**
      * 处理训练完成
      */
-    handleTrainingCompleted(finalData) {
+    handleTrainingCompleted() {
         this.stopUpdateLoop();
         this.isTraining = false;
         this.uiController.updateButtonStates(false);
-
-        if (finalData && finalData.status === 'completed') {
-            this.uiController.updateStatusIndicator(STATUS.COMPLETED);
-            this.uiController.logMessage('训练已完成', LOG_TYPES.SUCCESS);
-        } else {
-            this.uiController.updateStatusIndicator(STATUS.STOPPED);
-            this.uiController.logMessage('训练已停止', LOG_TYPES.WARNING);
-        }
+        this.uiController.updateStatusIndicator(STATUS.COMPLETED);
+        this.uiController.logMessage('训练已完成！', LOG_TYPES.SUCCESS);
     }
 
     /**
-     * 处理Canvas点击事件
+     * 处理训练错误
+     * @param {string} errorMessage - 错误消息
+     */
+    handleTrainingError(errorMessage) {
+        this.stopUpdateLoop();
+        this.isTraining = false;
+        this.uiController.updateButtonStates(false);
+        this.uiController.updateStatusIndicator(STATUS.ERROR);
+        this.uiController.logMessage(`训练出错: ${errorMessage}`, LOG_TYPES.ERROR);
+    }
+
+    /**
+     * 处理Canvas点击
+     * @param {MouseEvent} event - 点击事件
      */
     handleCanvasClick(event) {
-        if (this.canvasRenderer && this.canvasRenderer.isInitialized()) {
-            const coordinates = this.canvasRenderer.getClickCoordinates(event);
-            this.uiController.updateClickCoordinates(coordinates);
+        if (!this.canvasRenderer || !this.canvasRenderer.currentTransform) {
+            return;
+        }
+
+        const rect = event.target.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+
+        // 将屏幕坐标转换为世界坐标
+        const worldCoords = this.canvasRenderer.screenToWorld(x, y);
+
+        if (worldCoords) {
+            this.uiController.updateClickCoordinates([worldCoords.x, worldCoords.y]);
         }
     }
 
     /**
-     * 安全的API调用包装器
+     * 销毁方法
      */
-    async safeApiCall(apiCall) {
+    destroy() {
+        this.stopUpdateLoop();
+        this.isTraining = false;
+
+        if (this.canvasRenderer) {
+            this.canvasRenderer.clearCanvas();
+        }
+
+        this.uiController.logMessage('系统已关闭', LOG_TYPES.INFO);
+    }
+
+    /**
+     * 调试方法 - 手动测试mesh列表加载
+     */
+    async debugLoadMeshList() {
+        console.log('=== 开始调试mesh列表加载 ===');
+
+        // 1. 检查DOM元素
+        const selectElement = document.getElementById('mesh-select');
+        console.log('mesh-select元素:', selectElement);
+
+        // 2. 直接测试API调用
         try {
-            return await apiCall();
+            console.log('测试API调用...');
+            const response = await fetch('http://localhost:5000/mesh/list');
+            console.log('原始API响应状态:', response.status);
+            const data = await response.json();
+            console.log('原始API响应数据:', data);
         } catch (error) {
-            console.error('API调用失败:', error);
-            throw error;
+            console.error('直接API调用失败:', error);
         }
-    }
 
-    /**
-     * 调试功能：加载mesh列表
-     */
-    debugLoadMeshList() {
-        console.log('=== 调试：加载Mesh列表 ===');
-        this.loadMeshList().then(() => {
-            console.log('调试：Mesh列表加载完成');
-        }).catch(error => {
-            console.error('调试：Mesh列表加载失败:', error);
-        });
-    }
-
-    /**
-     * 调试功能：强制更新训练状态
-     */
-    debugUpdateTrainingStatus() {
-        console.log('=== 调试：强制更新训练状态 ===');
-        this.fetchTrainingData().then(() => {
-            console.log('调试：训练状态更新完成');
-        }).catch(error => {
-            console.error('调试：训练状态更新失败:', error);
-        });
-    }
-
-    /**
-     * 调试功能：检查API健康状态
-     */
-    async debugApiHealth() {
-        console.log('=== 调试：API健康检查 ===');
+        // 3. 测试通过API客户端调用
         try {
-            const healthStatus = await this.apiClient.checkAllHealth();
-            console.log('健康状态:', healthStatus);
+            console.log('通过API客户端测试...');
+            const data = await this.apiClient.getMeshList();
+            console.log('API客户端返回数据:', data);
         } catch (error) {
-            console.error('健康检查失败:', error);
+            console.error('API客户端调用失败:', error);
         }
+
+        // 4. 强制添加测试数据
+        console.log('强制添加测试数据...');
+        const testMeshes = ['test1', 'test2', 'test3'];
+        this.uiController.populateMeshList(testMeshes);
+
+        console.log('=== 调试完成 ===');
     }
 }

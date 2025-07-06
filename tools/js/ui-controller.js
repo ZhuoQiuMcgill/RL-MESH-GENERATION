@@ -1,7 +1,6 @@
 /**
- * UI控制器模块 - 支持更新状态按钮版本
+ * UI控制器模块
  * 负责所有UI更新和用户交互逻辑
- * 修复进度条假更新问题并支持手动更新状态按钮
  */
 
 import {CONSTANTS, STATUS, LOG_TYPES, formatNumber, getTimestamp, getLogStyle, safeGetElement} from './utils.js';
@@ -33,10 +32,8 @@ export class UIController {
             'buffer-size', 'episode-reward', 'episode-length', 'ref-point',
             'click-coordinates', 'display-episode', 'boundary-vertices',
             'log-container', 'loading-overlay',
-            // 进度条相关元素
-            'update-progress-bar', 'update-progress-text',
-            // 🚨 新增：更新状态按钮
-            'update-status-btn'
+            // 新增进度条相关元素
+            'update-progress-bar', 'update-progress-text'
         ];
 
         const elements = {};
@@ -48,18 +45,10 @@ export class UIController {
     }
 
     /**
-     * 启动更新进度条 - 确保只有在真正训练时才启动
+     * 启动更新进度条
      * @param {number} intervalSeconds - 更新间隔（秒）
      */
     startUpdateProgressBar(intervalSeconds) {
-        console.log(`🎯 启动进度条，间隔: ${intervalSeconds}秒`);
-
-        // 确保只有在训练真正开始时才启动进度条
-        if (!this.isTraining) {
-            console.warn('⚠️ 尝试启动进度条，但训练未确认开始');
-            return;
-        }
-
         this.stopUpdateProgressBar(); // 先停止现有的计时器
 
         this.progressDuration = intervalSeconds * 1000; // 转换为毫秒
@@ -72,8 +61,6 @@ export class UIController {
         this.progressTimer = setInterval(() => {
             this.updateProgressBar();
         }, 100);
-
-        this.logMessage(`进度条已启动，更新间隔: ${intervalSeconds}秒`, LOG_TYPES.INFO);
     }
 
     /**
@@ -83,8 +70,6 @@ export class UIController {
         if (this.progressTimer) {
             clearInterval(this.progressTimer);
             this.progressTimer = null;
-            console.log('⏹️ 进度条已停止');
-            this.logMessage('进度条已停止', LOG_TYPES.INFO);
         }
         this.resetProgressBar();
     }
@@ -107,11 +92,11 @@ export class UIController {
     }
 
     /**
-     * 更新进度条 - 确保真实触发API请求
+     * 更新进度条
      */
     updateProgressBar() {
         if (!this.progressStartTime || this.progressDuration <= 0) {
-            return false;
+            return;
         }
 
         const now = Date.now();
@@ -146,7 +131,6 @@ export class UIController {
         // 如果完成了一个周期，重新开始
         if (progress >= 1) {
             this.progressStartTime = Date.now();
-            console.log('✅ 进度条完成一个周期，应该触发API请求');
             return true; // 返回true表示完成了一个周期
         }
 
@@ -178,41 +162,19 @@ export class UIController {
         const config = statusConfig[status] || statusConfig[STATUS.IDLE];
         indicator.classList.add(config.class);
         text.textContent = config.text;
-
-        // 记录状态变化
-        console.log(`🔄 状态更新: ${config.text}`);
-        this.logMessage(`状态更新: ${config.text}`, LOG_TYPES.INFO);
     }
 
     /**
-     * 更新训练统计数据 - 仅接受真实的后端数据
-     * @param {Object} stats - 统计数据（必须来自后端）
+     * 更新训练统计数据
+     * @param {Object} stats - 统计数据
      */
     updateTrainingStats(stats) {
-        if (!stats) {
-            console.warn('⚠️ 收到空的统计数据');
-            return;
-        }
-
-        // 验证数据来源，确保不是mock数据
-        if (typeof stats !== 'object' || Array.isArray(stats)) {
-            console.error('❌ 无效的统计数据格式:', stats);
-            return;
-        }
-
-        // 只有在训练真正运行时才更新统计数据
-        if (!this.isTraining) {
-            console.warn('⚠️ 尝试更新统计数据，但训练未运行');
-            return;
-        }
-
-        console.log('📊 更新训练统计数据:', stats);
+        if (!stats) return;
 
         // 更新主要统计数据
-        if (stats.current_episode !== undefined || stats.episode !== undefined) {
-            const episode = stats.current_episode || stats.episode;
-            this.updateElement('current-episode', episode);
-            this.updateElement('display-episode', episode);
+        if (stats.current_episode !== undefined) {
+            this.updateElement('current-episode', stats.current_episode);
+            this.updateElement('display-episode', stats.current_episode);
         }
 
         if (stats.total_steps !== undefined) {
@@ -223,46 +185,25 @@ export class UIController {
             this.updateElement('avg-reward', formatNumber(stats.average_reward));
         }
 
-        if (stats.buffer_utilization !== undefined || stats.buffer_size !== undefined) {
-            const bufferSize = stats.buffer_utilization || stats.buffer_size;
-            this.updateElement('buffer-size', bufferSize);
+        if (stats.buffer_utilization !== undefined) {
+            this.updateElement('buffer-size', stats.buffer_utilization);
         }
 
-        if (stats.latest_reward !== undefined || stats.episode_reward !== undefined) {
-            const reward = stats.latest_reward || stats.episode_reward;
-            this.updateElement('episode-reward', formatNumber(reward));
+        if (stats.latest_reward !== undefined) {
+            this.updateElement('episode-reward', formatNumber(stats.latest_reward));
         }
 
         if (stats.episode_length !== undefined) {
             this.updateElement('episode-length', stats.episode_length);
         }
-
-        console.log('✅ 统计数据更新完成');
     }
 
     /**
-     * 更新进度数据 - 仅接受真实的后端数据
-     * @param {Object} progress - 进度数据（必须来自后端）
+     * 更新进度数据
+     * @param {Object} progress - 进度数据
      */
     updateProgress(progress) {
-        if (!progress) {
-            console.warn('⚠️ 收到空的进度数据');
-            return;
-        }
-
-        // 验证数据来源，确保不是mock数据
-        if (typeof progress !== 'object' || Array.isArray(progress)) {
-            console.error('❌ 无效的进度数据格式:', progress);
-            return;
-        }
-
-        // 只有在训练真正运行时才更新进度数据
-        if (!this.isTraining) {
-            console.warn('⚠️ 尝试更新进度数据，但训练未运行');
-            return;
-        }
-
-        console.log('📈 更新进度数据:', progress);
+        if (!progress) return;
 
         if (progress.current_episode !== undefined) {
             this.updateElement('current-episode', progress.current_episode);
@@ -284,17 +225,13 @@ export class UIController {
         if (progress.latest_reward !== undefined) {
             this.updateElement('episode-reward', formatNumber(progress.latest_reward));
         }
-
-        console.log('✅ 进度数据更新完成');
     }
 
     /**
      * 更新UI按钮状态
-     * @param {boolean} isTraining - 是否正在训练（必须是确认的状态）
+     * @param {boolean} isTraining - 是否正在训练
      */
     updateButtonStates(isTraining) {
-        console.log(`🔄 更新按钮状态: isTraining=${isTraining}`);
-
         this.isTraining = isTraining;
 
         const buttonStates = {
@@ -303,27 +240,23 @@ export class UIController {
             'mesh-select': !isTraining,
             'max-episodes': !isTraining,
             'max-steps': !isTraining,
-            'update-interval': !isTraining,
-            // 🚨 新增：更新状态按钮在训练时启用
-            'update-status-btn': isTraining
+            'update-interval': !isTraining
         };
 
         Object.entries(buttonStates).forEach(([elementId, enabled]) => {
             const element = this.elements[elementId];
             if (element) {
                 element.disabled = !enabled;
-                // 添加视觉反馈
-                if (enabled) {
-                    element.classList.remove('opacity-50', 'cursor-not-allowed');
-                } else {
-                    element.classList.add('opacity-50', 'cursor-not-allowed');
-                }
             }
         });
 
-        // 注意：进度条的启动/停止由TrainingManager控制，这里不自动启动
-        // 这确保进度条只有在训练真正确认开始后才会启动
-        console.log('✅ 按钮状态更新完成');
+        // 根据训练状态管理进度条
+        if (isTraining) {
+            const interval = this.getUpdateInterval() / 1000; // 转换为秒
+            this.startUpdateProgressBar(interval);
+        } else {
+            this.stopUpdateProgressBar();
+        }
     }
 
     /**
@@ -342,70 +275,17 @@ export class UIController {
     }
 
     /**
-     * 显示错误信息
-     * @param {string} message - 错误信息
-     */
-    showError(message) {
-        this.logMessage(message, LOG_TYPES.ERROR);
-        console.error('❌ UI错误:', message);
-    }
-
-    /**
-     * 添加日志信息
-     * @param {string} message - 日志信息
-     * @param {string} type - 日志类型
-     */
-    logMessage(message, type = LOG_TYPES.INFO) {
-        const container = this.elements['log-container'];
-        if (!container) return;
-
-        const timestamp = getTimestamp();
-        const style = getLogStyle(type);
-
-        const logEntry = document.createElement('div');
-        logEntry.style.color = style.color;
-        logEntry.innerHTML = `<span style="color: #9ca3af;">[${timestamp}]</span> ${style.icon} ${message}`;
-
-        // 移除初始提示信息
-        const placeholderText = container.querySelector('.text-gray-500');
-        if (placeholderText && placeholderText.textContent === '等待训练开始...') {
-            placeholderText.remove();
-        }
-
-        container.appendChild(logEntry);
-
-        // 限制日志数量
-        const logs = container.children;
-        if (logs.length > CONSTANTS.MAX_LOGS) {
-            container.removeChild(logs[0]);
-        }
-
-        // 滚动到底部
-        container.scrollTop = container.scrollHeight;
-    }
-
-    /**
-     * 清除日志
-     */
-    clearLog() {
-        const container = this.elements['log-container'];
-        if (container) {
-            container.innerHTML = '<div class="text-gray-500">日志已清除</div>';
-        }
-    }
-
-    /**
      * 填充Mesh选择列表
      * @param {Array} meshes - mesh列表
      */
     populateMeshList(meshes) {
         const select = this.elements['mesh-select'];
         if (!select) {
-            console.error('❌ 未找到mesh-select元素');
+            console.error('未找到mesh-select元素');
             return;
         }
 
-        console.log('📋 填充mesh列表, 收到数据:', meshes);
+        console.log('开始填充mesh列表, 收到数据:', meshes);
 
         // 清空现有选项
         select.innerHTML = '<option value="">选择一个Mesh</option>';
@@ -422,77 +302,141 @@ export class UIController {
                     option.value = mesh.name;
                     option.textContent = mesh.name;
                 } else {
-                    console.warn('⚠️ 跳过无效的mesh数据:', mesh);
+                    console.warn('跳过无效的mesh数据:', mesh);
                     return;
                 }
 
                 select.appendChild(option);
-                console.log(`✅ 添加mesh选项 ${index + 1}: ${option.textContent}`);
+                console.log(`添加mesh选项 ${index + 1}: ${option.textContent}`);
             });
 
-            console.log(`✅ 成功添加 ${meshes.length} 个mesh选项`);
+            console.log(`成功添加 ${meshes.length} 个mesh选项`);
         } else {
             const option = document.createElement('option');
             option.value = '';
             option.textContent = '无可用Mesh';
             option.disabled = true;
             select.appendChild(option);
-            console.log('⚠️ 添加了"无可用Mesh"选项');
+            console.log('添加了"无可用Mesh"选项');
         }
+
+        // 验证选项是否正确添加
+        console.log('当前select元素的选项数量:', select.options.length);
+        for (let i = 0; i < select.options.length; i++) {
+            console.log(`选项 ${i}: ${select.options[i].textContent} (value: ${select.options[i].value})`);
+        }
+    }
+
+    /**
+     * 显示错误消息
+     * @param {string} message - 错误消息
+     */
+    showError(message) {
+        console.error('UI错误:', message);
+        this.logMessage(message, LOG_TYPES.ERROR);
+
+        // 可选：显示一个更明显的错误提示
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
+
+        // 3秒后自动移除
+        setTimeout(() => {
+            if (errorDiv.parentNode) {
+                errorDiv.parentNode.removeChild(errorDiv);
+            }
+        }, 3000);
+    }
+
+    /**
+     * 记录消息到日志
+     * @param {string} message - 消息内容
+     * @param {string} type - 消息类型
+     */
+    logMessage(message, type = LOG_TYPES.INFO) {
+        const container = this.elements['log-container'];
+        if (!container) {
+            console.warn('未找到log-container元素');
+            return;
+        }
+
+        const timestamp = getTimestamp();
+        const logStyle = getLogStyle(type);
+
+        const logEntry = document.createElement('div');
+        logEntry.style.color = logStyle.color;
+        logEntry.style.fontWeight = logStyle.fontWeight || 'normal';
+        logEntry.style.marginBottom = '2px';
+        logEntry.innerHTML = `[${timestamp}] ${logStyle.icon || ''} ${message}`;
+
+        container.appendChild(logEntry);
+        container.scrollTop = container.scrollHeight;
+
+        // 限制日志条目数量
+        const maxEntries = 50;
+        while (container.children.length > maxEntries) {
+            container.removeChild(container.firstChild);
+        }
+
+        // 同时输出到控制台
+        console.log(`[${type}] ${message}`);
+    }
+
+    /**
+     * 清除日志
+     */
+    clearLog() {
+        const container = this.elements['log-container'];
+        if (container) {
+            container.innerHTML = '<div class="text-gray-500">日志已清除</div>';
+        }
+        console.log('日志已清除');
+    }
+
+    /**
+     * 更新参考点坐标
+     * @param {Array} coords - 坐标数组 [x, y]
+     */
+    updateReferencePointCoordinates(coords) {
+        if (!coords || coords.length !== 2) {
+            this.updateElement('ref-point', 'N/A');
+            return;
+        }
+
+        const coordText = `(${coords[0].toFixed(3)}, ${coords[1].toFixed(3)})`;
+        this.updateElement('ref-point', coordText);
+    }
+
+    /**
+     * 更新点击坐标
+     * @param {Array} coords - 坐标数组 [x, y]
+     */
+    updateClickCoordinates(coords) {
+        if (!coords || coords.length !== 2) {
+            this.updateElement('click-coordinates', '无变换数据');
+            return;
+        }
+
+        const coordText = `(${coords[0].toFixed(3)}, ${coords[1].toFixed(3)})`;
+        this.updateElement('click-coordinates', coordText);
     }
 
     /**
      * 获取训练配置
-     * @returns {Object} 训练配置对象
+     * @returns {Object} 训练配置
      */
     getTrainingConfig() {
         return {
-            mesh_name: this.getSelectedMesh(),
-            max_episodes: parseInt(this.getElementValue('max-episodes')) || 100,
-            max_steps: parseInt(this.getElementValue('max-steps')) || 1000,
-            update_interval: parseInt(this.getElementValue('update-interval')) || 10
+            mesh_name: this.getElementValue('mesh-select'),
+            max_episodes: parseInt(this.getElementValue('max-episodes')) || null,
+            max_steps: parseInt(this.getElementValue('max-steps')) || null
         };
     }
 
     /**
-     * 验证训练配置
-     * @returns {Object} 验证结果
-     */
-    validateTrainingConfig() {
-        const meshName = this.getSelectedMesh();
-        if (!meshName) {
-            return {valid: false, message: '请选择一个Mesh文件'};
-        }
-
-        const maxEpisodes = parseInt(this.getElementValue('max-episodes'));
-        if (!maxEpisodes || maxEpisodes <= 0) {
-            return {valid: false, message: '最大Episodes必须是正整数'};
-        }
-
-        const maxSteps = parseInt(this.getElementValue('max-steps'));
-        if (!maxSteps || maxSteps <= 0) {
-            return {valid: false, message: '最大Steps必须是正整数'};
-        }
-
-        const updateInterval = parseInt(this.getElementValue('update-interval'));
-        if (!updateInterval || updateInterval <= 0) {
-            return {valid: false, message: '更新间隔必须是正整数'};
-        }
-
-        return {valid: true};
-    }
-
-    /**
-     * 获取选中的Mesh
-     * @returns {string} Mesh名称
-     */
-    getSelectedMesh() {
-        return this.getElementValue('mesh-select');
-    }
-
-    /**
-     * 获取更新间隔（毫秒）
-     * @returns {number} 更新间隔
+     * 获取更新间隔
+     * @returns {number} 更新间隔（毫秒）
      */
     getUpdateInterval() {
         const interval = parseInt(this.getElementValue('update-interval')) || 10;
@@ -500,25 +444,64 @@ export class UIController {
     }
 
     /**
-     * 更新元素内容
+     * 验证训练配置
+     * @returns {Object} 验证结果 {valid: boolean, message: string}
+     */
+    validateTrainingConfig() {
+        const config = this.getTrainingConfig();
+
+        if (!config.mesh_name) {
+            return {
+                valid: false,
+                message: '请先选择一个Mesh文件'
+            };
+        }
+
+        if (config.max_episodes && config.max_episodes < 1) {
+            return {
+                valid: false,
+                message: '最大Episodes数必须大于0'
+            };
+        }
+
+        if (config.max_steps && config.max_steps < 1) {
+            return {
+                valid: false,
+                message: '每Episode最大步数必须大于0'
+            };
+        }
+
+        return {valid: true};
+    }
+
+    /**
+     * 获取mesh和boundary数据
+     * @returns {Object} 包含mesh和boundary数据的对象
+     */
+    getRenderData() {
+        return {
+            meshData: this.meshData,
+            boundaryData: this.boundaryData,
+            refPointInfo: this.refPointInfo
+        };
+    }
+
+    /**
+     * 更新单个元素的文本内容
      * @param {string} elementId - 元素ID
      * @param {any} value - 值
      */
     updateElement(elementId, value) {
         const element = this.elements[elementId];
         if (element) {
-            if (element.tagName === 'INPUT' || element.tagName === 'SELECT') {
-                element.value = value;
-            } else {
-                element.textContent = value;
-            }
+            element.textContent = value;
         }
     }
 
     /**
      * 获取元素的值
      * @param {string} elementId - 元素ID
-     * @returns {any} 元素的值
+     * @returns {string} 元素值
      */
     getElementValue(elementId) {
         const element = this.elements[elementId];
@@ -569,17 +552,6 @@ export class UIController {
         const infoDiv = this.elements['mesh-info'];
         if (infoDiv) {
             infoDiv.classList.add('hidden');
-        }
-    }
-
-    /**
-     * 更新点击坐标显示
-     * @param {Array} coordinates - 坐标数组 [x, y]
-     */
-    updateClickCoordinates(coordinates) {
-        if (coordinates && coordinates.length === 2) {
-            const coordText = `(${coordinates[0].toFixed(2)}, ${coordinates[1].toFixed(2)})`;
-            this.updateElement('click-coordinates', coordText);
         }
     }
 }
