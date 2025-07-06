@@ -512,21 +512,22 @@ class TrainingManager {
      * 更新训练统计数据
      */
     updateTrainingStats(stats) {
-        if (!this.statsContainer) return;
-
         const formatNumber = (num) => (num !== undefined && num !== null) ? num.toFixed(3) : 'N/A';
 
-        this.statsContainer.innerHTML = `
-            <span>Episode: ${stats.episode || 'N/A'}</span>
-            <span>Episode奖励: ${formatNumber(stats.episode_reward)}</span>
-            <span>平均奖励: ${formatNumber(stats.average_reward)}</span>
-            <span>Episode长度: ${stats.episode_length || 'N/A'}</span>
-            <span>边界顶点: ${stats.boundary_vertices || 'N/A'}</span>
-            <span>Buffer大小: ${stats.buffer_size || 'N/A'}</span>
-            <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
-            <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
-            <span>Alpha: ${formatNumber(stats.current_alpha)}</span>
-        `;
+        // 如果页面中存在statsContainer，则更新其内容
+        if (this.statsContainer) {
+            this.statsContainer.innerHTML = `
+                <span>Episode: ${stats.episode || 'N/A'}</span>
+                <span>Episode奖励: ${formatNumber(stats.episode_reward)}</span>
+                <span>平均奖励: ${formatNumber(stats.average_reward)}</span>
+                <span>Episode长度: ${stats.episode_length || 'N/A'}</span>
+                <span>边界顶点: ${stats.boundary_vertices || 'N/A'}</span>
+                <span>Buffer大小: ${stats.buffer_size || 'N/A'}</span>
+                <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
+                <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
+                <span>Alpha: ${formatNumber(stats.current_alpha)}</span>
+            `;
+        }
 
         // 新增：处理参考点信息
         if (stats.reference_point_info) {
