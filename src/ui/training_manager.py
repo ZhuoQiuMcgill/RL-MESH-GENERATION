@@ -142,8 +142,8 @@ class TrainingManager:
                 # 使用json.dumps来确保键是有效的JSON格式
                 import json
                 for vertex, neighbors in mesh_data.items():
-                    # 将顶点坐标元组转换为JSON数组格式的字符串
-                    vertex_key = json.dumps(list(vertex))
+                    # 将顶点坐标元组转换为JSON数组格式的字符串, 并通过separators参数移除空格
+                    vertex_key = json.dumps(list(vertex), separators=(',', ':'))
 
                     # 确保邻居列表也是可序列化的
                     serializable_neighbors = []
