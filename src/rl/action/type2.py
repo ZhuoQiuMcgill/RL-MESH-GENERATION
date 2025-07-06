@@ -25,7 +25,7 @@ class ActionType2(ActionType):
         """
         # 使用新的封装函数获取顶点
         V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
         V2 = tuple(new_vertex_V2_coords)
         V3 = tuple(new_vertex_V3_coords)
 
@@ -34,28 +34,23 @@ class ActionType2(ActionType):
         mesh.add_vertex(V3)
 
         # 创建四边形元素
-        quadrilateral = [V0, V1, V2, V3]
+        quadrilateral = [V0, V3, V2, V1]
 
         # 在网格中添加新的边界边
         mesh.add_edge(V1, V2)
         mesh.add_edge(V2, V3)
         mesh.add_edge(V3, V0)
 
-        # 更新边界：移除被消耗的边界顶点V1，并插入V2和V3
-        boundary.remove_vertex(V1)
-
         boundary_vertices = boundary.get_vertices()
-        v0_idx = -1
+        v1_idx = -1
         for i, v in enumerate(boundary_vertices):
-            if v == V0:
-                v0_idx = i
+            if v == V1:
+                v1_idx = i
                 break
 
-        if v0_idx != -1:
-            # 在V0后面依次插入V3和V2，以匹配 [V0, V1, V2, V3] 的逆时针顺序
-            # 论文图示是V0-V3-V2-V1，所以先插V3再插V2
-            boundary.insert_vertex(V3, v0_idx + 1)
-            boundary.insert_vertex(V2, v0_idx + 2)
+        if v1_idx != -1:
+            boundary.insert_vertex(V2, v1_idx + 1)
+            boundary.insert_vertex(V3, v1_idx + 2)
         else:
             raise RuntimeError("Boundary update failed: V0 not found after removing V1.")
 
@@ -78,7 +73,7 @@ class ActionType2(ActionType):
             return False
 
         V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
         V2 = tuple(new_vertex_V2_coords)
         V3 = tuple(new_vertex_V3_coords)
 

@@ -21,18 +21,23 @@ class ActionType0(ActionType):
         Returns:
             list: 生成的四边形元素（四个顶点的列表）
         """
-        # 使用新的封装函数获取顶点
         V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
-        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
-        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 2)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
 
-        # 创建四边形元素 (V0, V1, V2, V3)
-        quadrilateral = [V0, V1, V2, V3]
+        # 创建四边形元素 (V0, V3, V2, V1)
+        quadrilateral = [V0, V3, V2, V1]
 
-        # 更新边界：移除被消耗的边界顶点V1和V2
+        try:
+            mesh.add_edge(V2, V3)
+        except ValueError:
+            pass
+
+        # 更新边界：移除被消耗的边界顶点V0和V1
+        # 注意：移除V0和V1后，V2和V3会在边界上相邻
+        boundary.remove_vertex(V0)
         boundary.remove_vertex(V1)
-        boundary.remove_vertex(V2)
 
         return quadrilateral
 
@@ -45,13 +50,12 @@ class ActionType0(ActionType):
 
         # 获取构成四边形的四个顶点
         V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
-        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
-        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 2)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
 
-        # ActionType0通过移除V1和V2，将V0和V3连接起来，形成新的内部边。
-        # 我们需要检查这条新形成的边 (V0, V3) 是否有效。
-        new_internal_edge = (V0, V3)
+        # 我们需要检查这条新形成的边 (V3, V3) 是否有效。
+        new_internal_edge = (V2, V3)
 
         # 1. 检查新边是否与任何现有边界边相交（最关键的检查）
         #    注意：这里要排除与V0和V3相邻的边
@@ -60,7 +64,7 @@ class ActionType0(ActionType):
 
         # 2. 检查新边的中点是否在多边形内部，这是一个更严格的检查，可以防止
         #    在凹多边形中形成外部的边。
-        mid_point = ((V0[0] + V3[0]) / 2, (V0[1] + V3[1]) / 2)
+        mid_point = ((V2[0] + V3[0]) / 2, (V2[1] + V3[1]) / 2)
         if not boundary.vertex_inside_boundary(mid_point):
             return False
 

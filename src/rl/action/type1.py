@@ -24,33 +24,33 @@ class ActionType1(ActionType):
         """
         # 使用新的封装函数获取顶点
         V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
-        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
         V2 = tuple(new_vertex_V2_coords)
 
         # 向网格中添加新顶点
         mesh.add_vertex(V2)
 
         # 创建四边形元素
-        quadrilateral = [V0, V1, V2, V3]
+        quadrilateral = [V0, V3, V2, V1]
 
         # 在网格中添加新的边界边
         mesh.add_edge(V1, V2)
         mesh.add_edge(V2, V3)
 
-        # 边界更新：V0被消耗成为内部点
+        # 移除V0（它变成内部点）
         boundary.remove_vertex(V0)
 
-        # 在V3和V1之间插入新顶点V2
+        # 找到V3在更新后边界中的位置
         boundary_vertices = boundary.get_vertices()
-        v3_idx = -1
+        v1_idx = -1
         for i, v in enumerate(boundary_vertices):
-            if v == V3:
-                v3_idx = i
+            if v == V1:
+                v1_idx = i
                 break
 
-        if v3_idx != -1:
-            boundary.insert_vertex(V2, v3_idx + 1)
+        if v1_idx != -1:
+            boundary.insert_vertex(V2, v1_idx + 1)
         else:
             raise RuntimeError("Boundary update failed: V3 not found after removing V0.")
 
@@ -71,8 +71,8 @@ class ActionType1(ActionType):
         if boundary.size() < 3:
             return False
 
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
-        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
         V2 = tuple(new_vertex_V2_coords)
 
         if not boundary.vertex_inside_boundary(V2):

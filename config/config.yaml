@@ -32,7 +32,7 @@ paths:
 
 # Default configuration for RL mesh generation
 sac_agent:
-  actor_lr: 0.0003
+  actor_lr: 0.0005
   critic_lr: 0.0003
   alpha_lr: 0.0003
   gamma: 0.99
@@ -45,7 +45,7 @@ sac_agent:
 # 经验回放缓冲区配置
 replay_buffer:
   # 缓冲区类型: "normal" 或 "prioritized"
-  type: "normal"
+  type: "prioritized"
   capacity: 1000000
 
   # 优先级经验回放(PER)参数 - 仅当type为"prioritized"时使用
