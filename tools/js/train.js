@@ -534,8 +534,27 @@ class TrainingManager {
         }
 
         // 统一渲染mesh和boundary数据，避免坐标变换不一致导致的错位问题
-        const meshData = stats.mesh_data || this.meshData;
-        const boundaryData = stats.boundary_vertices_data || this.boundaryData;
+        let meshData = stats.mesh_data || this.meshData;
+        let boundaryData = stats.boundary_vertices_data || this.boundaryData;
+
+        // 如果后端返回的mesh或boundary数据是字符串，尝试解析
+        try {
+            if (typeof meshData === 'string') {
+                meshData = JSON.parse(meshData);
+            }
+        } catch (e) {
+            console.error('解析mesh数据失败:', e);
+            meshData = null;
+        }
+
+        try {
+            if (typeof boundaryData === 'string') {
+                boundaryData = JSON.parse(boundaryData);
+            }
+        } catch (e) {
+            console.error('解析boundary数据失败:', e);
+            boundaryData = null;
+        }
 
         if (meshData || boundaryData) {
             this.meshData = meshData;
@@ -548,7 +567,28 @@ class TrainingManager {
      * 统一渲染Mesh和Boundary，避免坐标变换不一致导致的错位问题
      */
     renderMeshAndBoundary(meshData, boundaryVertices) {
+        // 兼容后端可能返回字符串的情况
+        try {
+            if (typeof meshData === 'string') {
+                meshData = JSON.parse(meshData);
+            }
+        } catch (e) {
+            console.error('解析mesh数据失败:', e);
+            meshData = null;
+        }
+
+        try {
+            if (typeof boundaryVertices === 'string') {
+                boundaryVertices = JSON.parse(boundaryVertices);
+            }
+        } catch (e) {
+            console.error('解析boundary数据失败:', e);
+            boundaryVertices = null;
+        }
+
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // 重新绘制背景网格
+        this.drawGrid();
 
         const allVertices = [];
         if (boundaryVertices) {
