@@ -399,6 +399,11 @@ class MeshTrainer:
         mesh_data = self.env.mesh.get_mesh() if hasattr(self.env, 'mesh') else {}
         boundary_vertices = self.env.boundary.get_vertices() if hasattr(self.env, 'boundary') else []
 
+        # 获取参考点及其局部环境信息
+        ref_point_info = None
+        if hasattr(self.env, 'get_last_reference_info'):
+            ref_point_info = self.env.get_last_reference_info()
+
         # 计算统计信息
         avg_reward = np.mean(list(self.recent_rewards)) if self.recent_rewards else 0
 
@@ -413,7 +418,8 @@ class MeshTrainer:
             'boundary_size': len(boundary_vertices),
             'buffer_size': len(self.replay_buffer),
             'timestamp': time.time(),
-            'episode_info': info
+            'episode_info': info,
+            'reference_point_info': ref_point_info  # <--- 新增字段
         }
 
         # 添加最近的损失信息（如果有的话）
@@ -757,4 +763,3 @@ class MeshTrainer:
             summary["最佳评估奖励"] = np.max(self.training_stats['evaluation_rewards'])
 
         return summary
-

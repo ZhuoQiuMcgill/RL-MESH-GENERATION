@@ -39,28 +39,29 @@ class ActionType0(ActionType):
     def is_valid(self, boundary, reference_vertex_V0_idx):
         """
         检查Type 0动作的有效性
-
-        Args:
-            boundary: 边界对象
-            reference_vertex_V0_idx: 参考顶点V0在边界中的索引
-
-        Returns:
-            bool: 动作是否有效
         """
         if boundary.size() < 4:
             return False
 
+        # 获取构成四边形的四个顶点
         V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
+        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
         V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
+        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
 
-        diagonal_edge = (V0, V2)
+        # ActionType0通过移除V1和V2，将V0和V3连接起来，形成新的内部边。
+        # 我们需要检查这条新形成的边 (V0, V3) 是否有效。
+        new_internal_edge = (V0, V3)
 
-        # 检查对角线边是否完整位于边界内部
-        if not boundary.edge_inside_boundary(diagonal_edge):
+        # 1. 检查新边是否与任何现有边界边相交（最关键的检查）
+        #    注意：这里要排除与V0和V3相邻的边
+        if boundary.edge_cross(new_internal_edge):
             return False
 
-        # 检查对角线边是否与边界的任何边相交
-        if boundary.edge_cross(diagonal_edge):
+        # 2. 检查新边的中点是否在多边形内部，这是一个更严格的检查，可以防止
+        #    在凹多边形中形成外部的边。
+        mid_point = ((V0[0] + V3[0]) / 2, (V0[1] + V3[1]) / 2)
+        if not boundary.vertex_inside_boundary(mid_point):
             return False
 
         return True

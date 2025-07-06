@@ -135,45 +135,23 @@ class TrainingManager:
             if self._stats is None:
                 self._stats = {}
 
-            # 处理mesh_data，将元组键转换为字符串键以便JSON序列化
+            # 处理mesh_data，将元组键转换为JSON字符串键以便序列化
             mesh_data = episode_data.get('mesh_data', {})
             serializable_mesh_data = {}
             try:
+                # 使用json.dumps来确保键是有效的JSON格式
+                import json
                 for vertex, neighbors in mesh_data.items():
-                    # 将顶点坐标元组转换为字符串
-                    if isinstance(vertex, tuple):
-                        # 确保元组中的每个元素都是Python原生类型
-                        clean_vertex = []
-                        for coord in vertex:
-                            if hasattr(coord, 'item'):  # numpy类型
-                                clean_vertex.append(float(coord.item()))
-                            else:
-                                clean_vertex.append(float(coord))
-                        vertex_key = str(tuple(clean_vertex))
-                    else:
-                        vertex_key = str(vertex)
+                    # 将顶点坐标元组转换为JSON数组格式的字符串
+                    vertex_key = json.dumps(list(vertex))
 
                     # 确保邻居列表也是可序列化的
                     serializable_neighbors = []
                     for neighbor in neighbors:
-                        if isinstance(neighbor, tuple):
-                            clean_neighbor = []
-                            for coord in neighbor:
-                                if hasattr(coord, 'item'):  # numpy类型
-                                    clean_neighbor.append(float(coord.item()))
-                                else:
-                                    clean_neighbor.append(float(coord))
-                            serializable_neighbors.append(clean_neighbor)
-                        elif isinstance(neighbor, list):
-                            clean_neighbor = []
-                            for coord in neighbor:
-                                if hasattr(coord, 'item'):  # numpy类型
-                                    clean_neighbor.append(float(coord.item()))
-                                else:
-                                    clean_neighbor.append(float(coord))
-                            serializable_neighbors.append(clean_neighbor)
-                        else:
-                            serializable_neighbors.append(neighbor)
+                        # 确保邻居坐标是Python原生浮点数列表
+                        clean_neighbor = [float(coord) for coord in neighbor]
+                        serializable_neighbors.append(clean_neighbor)
+
                     serializable_mesh_data[vertex_key] = serializable_neighbors
             except Exception as mesh_error:
                 print(f"处理mesh_data时发生错误: {mesh_error}")
@@ -184,16 +162,9 @@ class TrainingManager:
             serializable_boundary_vertices = []
             try:
                 for vertex in boundary_vertices:
-                    if isinstance(vertex, (tuple, list)):
-                        clean_vertex = []
-                        for coord in vertex:
-                            if hasattr(coord, 'item'):  # numpy类型
-                                clean_vertex.append(float(coord.item()))
-                            else:
-                                clean_vertex.append(float(coord))
-                        serializable_boundary_vertices.append(clean_vertex)
-                    else:
-                        serializable_boundary_vertices.append(vertex)
+                    # 确保顶点坐标是Python原生浮点数列表
+                    clean_vertex = [float(coord) for coord in vertex]
+                    serializable_boundary_vertices.append(clean_vertex)
             except Exception as boundary_error:
                 print(f"处理boundary_vertices时发生错误: {boundary_error}")
                 serializable_boundary_vertices = []

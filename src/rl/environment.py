@@ -61,6 +61,7 @@ class MeshEnv(gym.Env):
         # 环境状态变量
         self.boundary = None
         self.mesh = None
+        self.last_reference_info = None
         self.total_initial_area = 0.0
         self.current_step = 0
 
@@ -318,6 +319,18 @@ class MeshEnv(gym.Env):
 
         # 获取参考顶点
         reference_idx = self._get_reference_vertex()
+        try:
+            ref_vertex_coords = vertices[reference_idx]
+            local_env_indices = [(reference_idx + i) % boundary_size for i in range(-self.n, self.n + 1)]
+            local_env_coords = [vertices[i] for i in local_env_indices]
+
+            self.last_reference_info = {
+                "ref_vertex": tuple(ref_vertex_coords),
+                "local_env_vertices": [tuple(v) for v in local_env_coords]
+            }
+        except IndexError:
+            self.last_reference_info = None
+
         reference_vertex = vertices[reference_idx]
 
         state_components = []
@@ -545,3 +558,7 @@ class MeshEnv(gym.Env):
     def close(self):
         """清理资源"""
         pass
+
+    def get_last_reference_info(self):
+        """返回上一步的参考点及其局部环境信息"""
+        return self.last_reference_info
