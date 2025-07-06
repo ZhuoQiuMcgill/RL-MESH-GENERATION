@@ -12,6 +12,11 @@ export class UIController {
         this.meshData = null;
         this.boundaryData = null;
         this.refPointInfo = null;
+
+        // 进度条相关状态
+        this.progressTimer = null;
+        this.progressStartTime = null;
+        this.progressDuration = 0;
     }
 
     /**
@@ -26,7 +31,9 @@ export class UIController {
             'update-interval', 'current-episode', 'total-steps', 'avg-reward',
             'buffer-size', 'episode-reward', 'episode-length', 'ref-point',
             'click-coordinates', 'display-episode', 'boundary-vertices',
-            'log-container', 'loading-overlay'
+            'log-container', 'loading-overlay',
+            // 新增进度条相关元素
+            'update-progress-bar', 'update-progress-text'
         ];
 
         const elements = {};
@@ -35,6 +42,99 @@ export class UIController {
         });
 
         return elements;
+    }
+
+    /**
+     * 启动更新进度条
+     * @param {number} intervalSeconds - 更新间隔（秒）
+     */
+    startUpdateProgressBar(intervalSeconds) {
+        this.stopUpdateProgressBar(); // 先停止现有的计时器
+
+        this.progressDuration = intervalSeconds * 1000; // 转换为毫秒
+        this.progressStartTime = Date.now();
+
+        // 立即更新一次
+        this.updateProgressBar();
+
+        // 设置定时器，每100ms更新一次进度条
+        this.progressTimer = setInterval(() => {
+            this.updateProgressBar();
+        }, 100);
+    }
+
+    /**
+     * 停止更新进度条
+     */
+    stopUpdateProgressBar() {
+        if (this.progressTimer) {
+            clearInterval(this.progressTimer);
+            this.progressTimer = null;
+        }
+        this.resetProgressBar();
+    }
+
+    /**
+     * 重置进度条
+     */
+    resetProgressBar() {
+        const progressBar = this.elements['update-progress-bar'];
+        const progressText = this.elements['update-progress-text'];
+
+        if (progressBar) {
+            progressBar.style.width = '0%';
+            progressBar.classList.remove('near-complete');
+        }
+
+        if (progressText) {
+            progressText.textContent = '下次更新倒计时: --';
+        }
+    }
+
+    /**
+     * 更新进度条
+     */
+    updateProgressBar() {
+        if (!this.progressStartTime || this.progressDuration <= 0) {
+            return;
+        }
+
+        const now = Date.now();
+        const elapsed = now - this.progressStartTime;
+        const progress = Math.min(elapsed / this.progressDuration, 1);
+        const remaining = Math.max(this.progressDuration - elapsed, 0);
+
+        const progressBar = this.elements['update-progress-bar'];
+        const progressText = this.elements['update-progress-text'];
+
+        if (progressBar) {
+            const percentage = (progress * 100).toFixed(1);
+            progressBar.style.width = percentage + '%';
+
+            // 当进度超过85%时添加脉冲效果
+            if (progress > 0.85) {
+                progressBar.classList.add('near-complete');
+            } else {
+                progressBar.classList.remove('near-complete');
+            }
+        }
+
+        if (progressText) {
+            if (remaining > 0) {
+                const seconds = Math.ceil(remaining / 1000);
+                progressText.textContent = `下次更新倒计时: ${seconds}秒`;
+            } else {
+                progressText.textContent = '正在更新...';
+            }
+        }
+
+        // 如果完成了一个周期，重新开始
+        if (progress >= 1) {
+            this.progressStartTime = Date.now();
+            return true; // 返回true表示完成了一个周期
+        }
+
+        return false;
     }
 
     /**
@@ -71,55 +171,38 @@ export class UIController {
     updateTrainingStats(stats) {
         if (!stats) return;
 
-        // 更新基础统计信息
-        this.updateElement('current-episode', stats.episode || 0);
-        this.updateElement('display-episode', stats.episode || 0);
-        this.updateElement('total-steps', stats.total_steps || 0);
-        this.updateElement('avg-reward', formatNumber(stats.average_reward));
-        this.updateElement('buffer-size', stats.buffer_size || 0);
-        this.updateElement('episode-reward', formatNumber(stats.episode_reward));
-        this.updateElement('episode-length', stats.episode_length || 0);
-        this.updateElement('boundary-vertices', stats.boundary_vertices || 0);
-
-        // 更新参考点信息
-        if (stats.reference_point_info && stats.reference_point_info.ref_vertex) {
-            const [rx, ry] = stats.reference_point_info.ref_vertex;
-            this.updateElement('ref-point', `(${formatNumber(rx)}, ${formatNumber(ry)})`);
-            this.refPointInfo = stats.reference_point_info;
-        } else {
-            this.updateElement('ref-point', 'N/A');
+        // 更新主要统计数据
+        if (stats.current_episode !== undefined) {
+            this.updateElement('current-episode', stats.current_episode);
+            this.updateElement('display-episode', stats.current_episode);
         }
 
-        // 更新详细统计信息（如果statsContainer存在）
-        const statsContainer = document.getElementById('stats-container');
-        if (statsContainer) {
-            statsContainer.innerHTML = `
-                <span>Episode: ${stats.episode || 'N/A'}</span>
-                <span>Episode奖励: ${formatNumber(stats.episode_reward)}</span>
-                <span>平均奖励: ${formatNumber(stats.average_reward)}</span>
-                <span>Episode长度: ${stats.episode_length || 'N/A'}</span>
-                <span>边界顶点: ${stats.boundary_vertices || 'N/A'}</span>
-                <span>Buffer大小: ${stats.buffer_size || 'N/A'}</span>
-                <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
-                <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
-                <span>Alpha: ${formatNumber(stats.current_alpha)}</span>
-            `;
+        if (stats.total_steps !== undefined) {
+            this.updateElement('total-steps', stats.total_steps);
         }
 
-        // 更新mesh和boundary数据
-        if (stats.mesh_data) {
-            this.meshData = stats.mesh_data;
+        if (stats.average_reward !== undefined) {
+            this.updateElement('avg-reward', formatNumber(stats.average_reward));
         }
-        if (stats.boundary_vertices_data) {
-            this.boundaryData = stats.boundary_vertices_data;
+
+        if (stats.buffer_utilization !== undefined) {
+            this.updateElement('buffer-size', stats.buffer_utilization);
+        }
+
+        if (stats.latest_reward !== undefined) {
+            this.updateElement('episode-reward', formatNumber(stats.latest_reward));
+        }
+
+        if (stats.episode_length !== undefined) {
+            this.updateElement('episode-length', stats.episode_length);
         }
     }
 
     /**
-     * 更新进度信息
+     * 更新进度数据
      * @param {Object} progress - 进度数据
      */
-    updateProgressInfo(progress) {
+    updateProgress(progress) {
         if (!progress) return;
 
         if (progress.current_episode !== undefined) {
@@ -166,6 +249,14 @@ export class UIController {
                 element.disabled = !enabled;
             }
         });
+
+        // 根据训练状态管理进度条
+        if (isTraining) {
+            const interval = this.getUpdateInterval() / 1000; // 转换为秒
+            this.startUpdateProgressBar(interval);
+        } else {
+            this.stopUpdateProgressBar();
+        }
     }
 
     /**
@@ -189,94 +280,140 @@ export class UIController {
      */
     populateMeshList(meshes) {
         const select = this.elements['mesh-select'];
-        if (!select) return;
+        if (!select) {
+            console.error('未找到mesh-select元素');
+            return;
+        }
+
+        console.log('开始填充mesh列表, 收到数据:', meshes);
 
         // 清空现有选项
         select.innerHTML = '<option value="">选择一个Mesh</option>';
 
         if (Array.isArray(meshes) && meshes.length > 0) {
-            meshes.forEach(mesh => {
+            meshes.forEach((mesh, index) => {
                 const option = document.createElement('option');
-                option.value = mesh;
-                option.textContent = mesh;
+
+                // 处理不同的数据格式
+                if (typeof mesh === 'string') {
+                    option.value = mesh;
+                    option.textContent = mesh;
+                } else if (mesh && typeof mesh === 'object' && mesh.name) {
+                    option.value = mesh.name;
+                    option.textContent = mesh.name;
+                } else {
+                    console.warn('跳过无效的mesh数据:', mesh);
+                    return;
+                }
+
                 select.appendChild(option);
+                console.log(`添加mesh选项 ${index + 1}: ${option.textContent}`);
             });
+
+            console.log(`成功添加 ${meshes.length} 个mesh选项`);
         } else {
             const option = document.createElement('option');
             option.value = '';
-            option.textContent = '未找到可用的Mesh文件';
+            option.textContent = '无可用Mesh';
+            option.disabled = true;
             select.appendChild(option);
+            console.log('添加了"无可用Mesh"选项');
+        }
+
+        // 验证选项是否正确添加
+        console.log('当前select元素的选项数量:', select.options.length);
+        for (let i = 0; i < select.options.length; i++) {
+            console.log(`选项 ${i}: ${select.options[i].textContent} (value: ${select.options[i].value})`);
         }
     }
 
     /**
-     * 显示Mesh信息
-     * @param {Object} info - mesh信息
+     * 显示错误消息
+     * @param {string} message - 错误消息
      */
-    showMeshInfo(info) {
-        if (!info) return;
+    showError(message) {
+        console.error('UI错误:', message);
+        this.logMessage(message, LOG_TYPES.ERROR);
 
-        this.updateElement('mesh-vertices', info.vertex_count || 0);
-        this.updateElement('mesh-size', info.file_size || 0);
+        // 可选：显示一个更明显的错误提示
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
 
-        const infoDiv = this.elements['mesh-info'];
-        if (infoDiv) {
-            infoDiv.classList.remove('hidden');
-        }
+        // 3秒后自动移除
+        setTimeout(() => {
+            if (errorDiv.parentNode) {
+                errorDiv.parentNode.removeChild(errorDiv);
+            }
+        }, 3000);
     }
 
     /**
-     * 隐藏Mesh信息
-     */
-    hideMeshInfo() {
-        const infoDiv = this.elements['mesh-info'];
-        if (infoDiv) {
-            infoDiv.classList.add('hidden');
-        }
-    }
-
-    /**
-     * 记录日志消息
+     * 记录消息到日志
      * @param {string} message - 消息内容
      * @param {string} type - 消息类型
      */
     logMessage(message, type = LOG_TYPES.INFO) {
         const container = this.elements['log-container'];
-        if (!container) return;
+        if (!container) {
+            console.warn('未找到log-container元素');
+            return;
+        }
 
         const timestamp = getTimestamp();
-        const style = getLogStyle(type);
+        const logStyle = getLogStyle(type);
 
         const logEntry = document.createElement('div');
-        logEntry.className = `log-entry log-${type}`;
-        logEntry.style.color = style.color;
-        logEntry.innerHTML = `<span style="color: #9CA3AF;">[${timestamp}]</span> ${style.icon} ${message}`;
+        logEntry.style.color = logStyle.color;
+        logEntry.style.fontWeight = logStyle.fontWeight || 'normal';
+        logEntry.style.marginBottom = '2px';
+        logEntry.innerHTML = `[${timestamp}] ${logStyle.icon || ''} ${message}`;
 
         container.appendChild(logEntry);
         container.scrollTop = container.scrollHeight;
 
-        // 限制日志条数
-        while (container.children.length > CONSTANTS.MAX_LOGS) {
+        // 限制日志条目数量
+        const maxEntries = 50;
+        while (container.children.length > maxEntries) {
             container.removeChild(container.firstChild);
         }
+
+        // 同时输出到控制台
+        console.log(`[${type}] ${message}`);
     }
 
     /**
      * 清除日志
      */
-    clearLogs() {
+    clearLog() {
         const container = this.elements['log-container'];
         if (container) {
             container.innerHTML = '<div class="text-gray-500">日志已清除</div>';
         }
+        console.log('日志已清除');
     }
 
     /**
-     * 更新点击坐标显示
-     * @param {Array} coords - 世界坐标 [x, y]
+     * 更新参考点坐标
+     * @param {Array} coords - 坐标数组 [x, y]
+     */
+    updateReferencePointCoordinates(coords) {
+        if (!coords || coords.length !== 2) {
+            this.updateElement('ref-point', 'N/A');
+            return;
+        }
+
+        const coordText = `(${coords[0].toFixed(3)}, ${coords[1].toFixed(3)})`;
+        this.updateElement('ref-point', coordText);
+    }
+
+    /**
+     * 更新点击坐标
+     * @param {Array} coords - 坐标数组 [x, y]
      */
     updateClickCoordinates(coords) {
-        if (!coords || !Array.isArray(coords) || coords.length !== 2) {
+        if (!coords || coords.length !== 2) {
             this.updateElement('click-coordinates', '无变换数据');
             return;
         }
@@ -286,37 +423,14 @@ export class UIController {
     }
 
     /**
-     * 获取训练配置 - 修复版本，正确处理数字输入
+     * 获取训练配置
      * @returns {Object} 训练配置
      */
     getTrainingConfig() {
-        // 修复：正确处理数字输入，避免将有效数字转换为null
-        const maxEpisodesValue = this.getElementValue('max-episodes');
-        const maxStepsValue = this.getElementValue('max-steps');
-
-        let maxEpisodes = null;
-        let maxSteps = null;
-
-        // 安全地解析max_episodes
-        if (maxEpisodesValue && maxEpisodesValue.trim() !== '') {
-            const parsed = parseInt(maxEpisodesValue.trim());
-            if (!isNaN(parsed) && parsed > 0) {
-                maxEpisodes = parsed;
-            }
-        }
-
-        // 安全地解析max_steps
-        if (maxStepsValue && maxStepsValue.trim() !== '') {
-            const parsed = parseInt(maxStepsValue.trim());
-            if (!isNaN(parsed) && parsed > 0) {
-                maxSteps = parsed;
-            }
-        }
-
         return {
             mesh_name: this.getElementValue('mesh-select'),
-            max_episodes: maxEpisodes,
-            max_steps: maxSteps
+            max_episodes: parseInt(this.getElementValue('max-episodes')) || null,
+            max_steps: parseInt(this.getElementValue('max-steps')) || null
         };
     }
 
@@ -407,44 +521,37 @@ export class UIController {
     }
 
     /**
-     * 显示错误状态
-     * @param {string} message - 错误消息
+     * 更新mesh信息显示
+     * @param {Object} meshInfo - mesh信息
      */
-    showError(message) {
-        this.logMessage(message, LOG_TYPES.ERROR);
-        this.updateStatusIndicator(STATUS.ERROR);
+    updateMeshInfo(meshInfo) {
+        if (!meshInfo) return;
+
+        const infoDiv = this.elements['mesh-info'];
+        if (infoDiv) {
+            infoDiv.classList.remove('hidden');
+        }
+
+        if (meshInfo.vertices !== undefined) {
+            this.updateElement('mesh-vertices', meshInfo.vertices);
+        }
+
+        if (meshInfo.size !== undefined) {
+            this.updateElement('mesh-size', meshInfo.size);
+        }
+
+        if (meshInfo.boundary_vertices !== undefined) {
+            this.updateElement('boundary-vertices', meshInfo.boundary_vertices);
+        }
     }
 
     /**
-     * 显示成功状态
-     * @param {string} message - 成功消息
+     * 隐藏mesh信息
      */
-    showSuccess(message) {
-        this.logMessage(message, LOG_TYPES.SUCCESS);
-    }
-
-    /**
-     * 显示警告状态
-     * @param {string} message - 警告消息
-     */
-    showWarning(message) {
-        this.logMessage(message, LOG_TYPES.WARNING);
-    }
-
-    /**
-     * 重置UI到初始状态
-     */
-    reset() {
-        this.isTraining = false;
-        this.meshData = null;
-        this.boundaryData = null;
-        this.refPointInfo = null;
-
-        this.updateStatusIndicator(STATUS.IDLE);
-        this.updateButtonStates(false);
-        this.showLoading(false);
-        this.clearLogs();
-        this.updateClickCoordinates(null);
+    hideMeshInfo() {
+        const infoDiv = this.elements['mesh-info'];
+        if (infoDiv) {
+            infoDiv.classList.add('hidden');
+        }
     }
 }
-
