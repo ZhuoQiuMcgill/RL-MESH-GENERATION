@@ -204,15 +204,7 @@ class MeshEnv(gym.Env):
         Returns:
             int: 参考顶点在边界中的索引
         """
-        vertices = self.boundary.get_vertices()
-        boundary_size = len(vertices)
-
-        if boundary_size < 3:
-            return 0
-
-        # 使用Boundary类提供的内角计算函数，选择内角最小的顶点作为参考点
-        angles = self.boundary._interior_angles()
-        return int(np.argmin(angles))
+        return self.boundary.get_ref_vertex()
 
     def _calculate_angle(self, p1, center, p2):
         """

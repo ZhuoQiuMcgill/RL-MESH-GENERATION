@@ -1,3 +1,4 @@
+from math import atan2, pi, degrees
 import numpy as np
 from typing import List, Tuple, Any
 
@@ -31,6 +32,12 @@ class Boundary:
         """
         return [tuple(v) for v in self._verts]
 
+    def get_vertex_index(self, v: Tuple[float, float]):
+        for i, vert in enumerate(self._verts):
+            if abs(vert[0] - v[0]) < 1e-8 and abs(vert[1] - v[1]) < 1e-8:
+                return i
+        return -1
+
     def get_vertex_by_index(self, n: int):
         """Return the vertex at index n, supporting negative and overflow indices."""
         if not isinstance(n, int):
@@ -63,6 +70,37 @@ class Boundary:
     # ------------------------------------------------------------
     # 内角计算工具
     # ------------------------------------------------------------
+    def get_ref_vertex(self):
+        min_interior_angle = 360
+        min_n = 0
+        for n in range(self.size()):
+            avg_interior_angle = self.get_avg_interior_angle(n)
+            if avg_interior_angle < min_interior_angle:
+                min_interior_angle = avg_interior_angle
+                min_n = n
+
+        return min_n
+
+    def get_avg_interior_angle(self, n):
+        """
+        按照论文中的算法，ref_point 为v0，选取两个内角(v-2, v0, v+2)与(v-1, v0, v+1)的平均值
+        :param n: int ref_point的index
+        :return: 角度 0-360
+        """
+        ref_point = self.get_vertex_by_index(n)
+        left_point_1 = self.get_vertex_by_index(n + 1)
+        left_point_2 = self.get_vertex_by_index(n + 2)
+        right_point_1 = self.get_vertex_by_index(n - 1)
+        right_point_2 = self.get_vertex_by_index(n - 2)
+        return (self._interior_angle(right_point_1, ref_point, left_point_1) +
+                self._interior_angle(right_point_2, ref_point, left_point_2)) / 2
+
+    def _interior_angle(self, v1, v2, v3):
+        ax, ay = v1[0] - v2[0], v1[1] - v2[1]
+        bx, by = v3[0] - v2[0], v3[1] - v2[1]
+        theta = (atan2(ay, ax) - atan2(by, bx)) % (2 * pi)
+        return degrees(theta)
+
     def _interior_angles(self) -> np.ndarray:
         """Return the clockwise interior angle of each vertex in degrees."""
 
@@ -81,17 +119,6 @@ class Boundary:
         angles = (ang_prev - ang_next) % (2 * np.pi)
 
         return np.degrees(angles)
-
-    def get_min_interior_angles(self) -> Tuple[Tuple[float, float], float]:
-        """
-        返回具有最小内角的顶点和角度
-
-        Returns:
-            Tuple[Tuple[float, float], float]: (顶点坐标, 角度值)
-        """
-        angles = self._interior_angles()
-        idx = int(angles.argmin())
-        return tuple(self._verts[idx]), float(angles[idx])
 
     # ------------------------------------------------------------
     # 修改器方法
@@ -193,54 +220,6 @@ class Boundary:
 
         # 检查输入边是否与任何边界边相交
         return self._edge_intersects_boundary(edge)
-
-    def _orientation(self, p: Tuple[float, float], q: Tuple[float, float], r: Tuple[float, float]) -> int:
-        """
-        Find orientation of ordered triplet (p, q, r).
-        Returns:
-        0 --> p, q and r are collinear
-        1 --> Clockwise
-        2 --> Counterclockwise
-        """
-        val = (q[1] - p[1]) * (r[0] - q[0]) - \
-              (q[0] - p[0]) * (r[1] - q[1])
-
-        if abs(val) < 1e-10: return 0  # Collinear
-        return 1 if val > 0 else 2  # Clockwise or Counterclockwise
-
-    def _line_segments_intersect(self, p1: Tuple[float, float], q1: Tuple[float, float],
-                                 p2: Tuple[float, float], q2: Tuple[float, float]) -> bool:
-        """
-        A robust function to check if line segment 'p1q1' and 'p2q2' intersect.
-        This handles all general, collinear, and touching cases.
-        """
-        o1 = self._orientation(p1, q1, p2)
-        o2 = self._orientation(p1, q1, q2)
-        o3 = self._orientation(p2, q2, p1)
-        o4 = self._orientation(p2, q2, q1)
-
-        # General case: segments cross each other
-        if o1 != o2 and o3 != o4:
-            return True
-
-        # Special Cases for collinear points
-        # p1, q1 and p2 are collinear and p2 lies on segment p1q1
-        if o1 == 0 and self._point_on_line_segment(np.array(p2), np.array(p1), np.array(q1)):
-            return True
-
-        # p1, q1 and q2 are collinear and q2 lies on segment p1q1
-        if o2 == 0 and self._point_on_line_segment(np.array(q2), np.array(p1), np.array(q1)):
-            return True
-
-        # p2, q2 and p1 are collinear and p1 lies on segment p2q2
-        if o3 == 0 and self._point_on_line_segment(np.array(p1), np.array(p2), np.array(q2)):
-            return True
-
-        # p2, q2 and q1 are collinear and q1 lies on segment p2q2
-        if o4 == 0 and self._point_on_line_segment(np.array(q1), np.array(p2), np.array(q2)):
-            return True
-
-        return False  # Doesn't fall in any of the above cases
 
     def edge_inside_boundary(self, edge: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
         """
@@ -368,9 +347,9 @@ class Boundary:
             raise ValueError("Number of slices g must be positive")
 
         # 1. 定义扇形几何边界
-        v_0 = self._verts[reference_vertex_index]
-        v_l1 = self._verts[(reference_vertex_index - 1) % boundary_size]  # 左邻居
-        v_r1 = self._verts[(reference_vertex_index + 1) % boundary_size]  # 右邻居
+        v_0 = self.get_vertex_by_index(reference_vertex_index)
+        v_l1 = self.get_vertex_by_index(reference_vertex_index + 1)  # 左邻居
+        v_r1 = self.get_vertex_by_index(reference_vertex_index - 1)  # 右邻居
 
         # 计算定义扇形边界的两个向量
         vec_left = v_l1 - v_0
@@ -654,3 +633,51 @@ class Boundary:
             return intersection
 
         return None
+
+    def _orientation(self, p: Tuple[float, float], q: Tuple[float, float], r: Tuple[float, float]) -> int:
+        """
+        Find orientation of ordered triplet (p, q, r).
+        Returns:
+        0 --> p, q and r are collinear
+        1 --> Clockwise
+        2 --> Counterclockwise
+        """
+        val = (q[1] - p[1]) * (r[0] - q[0]) - \
+              (q[0] - p[0]) * (r[1] - q[1])
+
+        if abs(val) < 1e-10: return 0  # Collinear
+        return 1 if val > 0 else 2  # Clockwise or Counterclockwise
+
+    def _line_segments_intersect(self, p1: Tuple[float, float], q1: Tuple[float, float],
+                                 p2: Tuple[float, float], q2: Tuple[float, float]) -> bool:
+        """
+        A robust function to check if line segment 'p1q1' and 'p2q2' intersect.
+        This handles all general, collinear, and touching cases.
+        """
+        o1 = self._orientation(p1, q1, p2)
+        o2 = self._orientation(p1, q1, q2)
+        o3 = self._orientation(p2, q2, p1)
+        o4 = self._orientation(p2, q2, q1)
+
+        # General case: segments cross each other
+        if o1 != o2 and o3 != o4:
+            return True
+
+        # Special Cases for collinear points
+        # p1, q1 and p2 are collinear and p2 lies on segment p1q1
+        if o1 == 0 and self._point_on_line_segment(np.array(p2), np.array(p1), np.array(q1)):
+            return True
+
+        # p1, q1 and q2 are collinear and q2 lies on segment p1q1
+        if o2 == 0 and self._point_on_line_segment(np.array(q2), np.array(p1), np.array(q1)):
+            return True
+
+        # p2, q2 and p1 are collinear and p1 lies on segment p2q2
+        if o3 == 0 and self._point_on_line_segment(np.array(p1), np.array(p2), np.array(q2)):
+            return True
+
+        # p2, q2 and q1 are collinear and q1 lies on segment p2q2
+        if o4 == 0 and self._point_on_line_segment(np.array(q1), np.array(p2), np.array(q2)):
+            return True
+
+        return False  # Doesn't fall in any of the above cases
