@@ -5,7 +5,7 @@ import math
 import copy
 
 # 导入几何模块和动作模块
-from src.geometry import Mesh
+from src.geometry import Mesh, Boundary
 from src.rl.action.type0 import ActionType0
 from src.rl.action.type1 import ActionType1
 from src.rl.action import ActionType2
@@ -19,7 +19,7 @@ class MeshEnv(gym.Env):
     """
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, initial_boundary, n=None, g=None, alpha=None, beta=None, max_steps=None, config=None):
+    def __init__(self, initial_boundary: Boundary, n=None, g=None, alpha=None, beta=None, max_steps=None, config=None):
         """
         初始化网格生成环境
 
@@ -62,7 +62,7 @@ class MeshEnv(gym.Env):
         self.boundary = None
         self.mesh = None
         self.last_reference_info = None
-        self.total_initial_area = 0.0
+        self.total_initial_area = initial_boundary.get_area()
         self.current_step = 0
 
     def reset(self, seed=None, options=None):
@@ -206,32 +206,6 @@ class MeshEnv(gym.Env):
         """
         return self.boundary.get_ref_vertex()
 
-    def _calculate_angle(self, p1, center, p2):
-        """
-        计算三点构成的角度
-
-        Args:
-            p1, center, p2: 三个点的坐标
-
-        Returns:
-            float: 角度值（度数）
-        """
-        v1 = (p1[0] - center[0], p1[1] - center[1])
-        v2 = (p2[0] - center[0], p2[1] - center[1])
-
-        dot_product = v1[0] * v2[0] + v1[1] * v2[1]
-        norm1 = math.sqrt(v1[0] ** 2 + v1[1] ** 2)
-        norm2 = math.sqrt(v2[0] ** 2 + v2[1] ** 2)
-
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-
-        cos_angle = dot_product / (norm1 * norm2)
-        cos_angle = max(-1.0, min(1.0, cos_angle))  # 防止数值误差
-
-        angle_rad = math.acos(cos_angle)
-        return math.degrees(angle_rad)
-
     def _calculate_base_length(self, reference_vertex_idx):
         """
         根据公式(2)计算基础长度L
@@ -340,38 +314,26 @@ class MeshEnv(gym.Env):
         Returns:
             np.ndarray: 状态向量
         """
-        vertices = self.boundary.get_vertices()
-        boundary_size = len(vertices)
 
-        if boundary_size < 3:
-            # 边界太小，返回零状态
+        if self.boundary.size() < 3:
             return np.zeros(self.observation_space.shape, dtype=np.float32)
 
         # 获取参考顶点
-        reference_idx = self._get_reference_vertex()
+        reference_idx = self.boundary.get_ref_vertex()
 
-        try:
-            ref_vertex_coords = vertices[reference_idx]
-            local_env_indices = [(reference_idx + i) % boundary_size for i in range(-self.n, self.n + 1)]
-            local_env_coords = [vertices[i] for i in local_env_indices]
+        ref_vertex_coords = self.boundary.get_vertex_by_index(reference_idx)
+        local_env_coords = [self.boundary.get_vertex_by_index(reference_idx + i) for i in
+                            range(-self.n, self.n + 1)]
 
-            self.last_reference_info = {
-                "ref_vertex": tuple(ref_vertex_coords),
-                "local_env_vertices": [tuple(v) for v in local_env_coords]
-            }
-        except IndexError:
-            self.last_reference_info = None
+        self.last_reference_info = {
+            "ref_vertex": tuple(ref_vertex_coords),
+            "local_env_vertices": [tuple(v) for v in local_env_coords]
+        }
 
         state_components = []
 
-        # 获取左右邻居顶点的标准化坐标
-        neighbor_vertices = []
-        for i in range(-self.n, self.n + 1):
-            neighbor_idx = (reference_idx + i) % boundary_size
-            neighbor_vertices.append(vertices[neighbor_idx])
-
         # 按论文方法标准化邻居顶点坐标
-        normalized_neighbors = self._normalize_coordinates(neighbor_vertices, self.n)  # 参考点在中间位置
+        normalized_neighbors = self._normalize_coordinates(local_env_coords, self.n)  # 参考点在中间位置
 
         # 添加邻居顶点的标准化坐标到状态
         for r, theta in normalized_neighbors:
@@ -385,7 +347,7 @@ class MeshEnv(gym.Env):
             )
 
             # 将参考顶点加入fan_points列表的开头以便标准化
-            fan_vertices_with_ref = [vertices[reference_idx]] + list(fan_points)
+            fan_vertices_with_ref = [ref_vertex_coords] + list(fan_points)
             normalized_fan = self._normalize_coordinates(fan_vertices_with_ref, 0)  # 参考点在位置0
 
             # 跳过参考点本身，只添加扇形点的坐标
@@ -473,7 +435,7 @@ class MeshEnv(gym.Env):
             v_prev = element[(i - 1) % 4]
             v_curr = element[i]
             v_next = element[(i + 1) % 4]
-            angle = self._calculate_angle(v_prev, v_curr, v_next)
+            angle = Boundary.get_interior_angle(v_prev, v_curr, v_next)
             angles.append(angle)
 
         # 计算角度质量 q_angle
@@ -585,8 +547,7 @@ class MeshEnv(gym.Env):
         Returns:
             bool: 是否终止
         """
-        vertices = self.boundary.get_vertices()
-        return len(vertices) <= 4
+        return self.boundary.size() <= 4
 
     def render(self):
         """可视化当前状态（可选实现）"""

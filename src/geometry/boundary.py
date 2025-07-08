@@ -92,12 +92,13 @@ class Boundary:
         left_point_2 = self.get_vertex_by_index(n + 2)
         right_point_1 = self.get_vertex_by_index(n - 1)
         right_point_2 = self.get_vertex_by_index(n - 2)
-        return (self._interior_angle(right_point_1, ref_point, left_point_1) +
-                self._interior_angle(right_point_2, ref_point, left_point_2)) / 2
+        return (self.get_interior_angle(right_point_1, ref_point, left_point_1) +
+                self.get_interior_angle(right_point_2, ref_point, left_point_2)) / 2
 
-    def _interior_angle(self, v1, v2, v3):
-        ax, ay = v1[0] - v2[0], v1[1] - v2[1]
-        bx, by = v3[0] - v2[0], v3[1] - v2[1]
+    @staticmethod
+    def get_interior_angle(right, center, left):
+        ax, ay = right[0] - center[0], right[1] - center[1]
+        bx, by = left[0] - center[0], left[1] - center[1]
         theta = (atan2(ay, ax) - atan2(by, bx)) % (2 * pi)
         return degrees(theta)
 
