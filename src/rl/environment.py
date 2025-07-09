@@ -64,6 +64,8 @@ class MeshEnv(gym.Env):
         self.last_reference_info = None
         self.total_initial_area = initial_boundary.get_area()
         self.current_step = 0
+        self.generated_elements = 0
+        self.first_invalid_action = True
 
     def reset(self, seed=None, options=None):
         """
@@ -79,6 +81,8 @@ class MeshEnv(gym.Env):
         self.mesh = Mesh(self.boundary)
         self.total_initial_area = self.boundary.get_area()
         self.current_step = 0
+        self.generated_elements = 0
+        self.first_invalid_action = True
 
         observation = self._get_obs()
         info = {"step": self.current_step, "boundary_vertices": len(self.boundary.get_vertices())}
@@ -124,6 +128,9 @@ class MeshEnv(gym.Env):
         except Exception as e:
             # 动作执行失败
             action_valid = False
+
+        if action_valid:
+            self.generated_elements += 1
 
         # 计算奖励
         reward = self._calculate_reward(action_valid, generated_element, old_boundary)
@@ -384,9 +391,12 @@ class MeshEnv(gym.Env):
         Returns:
             float: 奖励值
         """
-        # 无效动作的惩罚
+        # 无效动作的惩罚，首次为-1，之后为-1/生成元素数量
         if not action_was_valid:
-            return -0.1
+            if self.first_invalid_action or self.generated_elements == 0:
+                self.first_invalid_action = False
+                return -1
+            return -1 / self.generated_elements
 
         # 检查是否生成了最后一个元素（完成网格）
         if self._is_terminated():
@@ -412,40 +422,27 @@ class MeshEnv(gym.Env):
         if element is None or len(element) != 4:
             return 0.0
 
-        # 计算边长
-        edges = []
-        for i in range(4):
-            v1 = element[i]
-            v2 = element[(i + 1) % 4]
-            edge_length = self._euclidean_distance(v1, v2)
-            edges.append(edge_length)
-
-        # 计算对角线长度
-        diag1 = self._euclidean_distance(element[0], element[2])
-        diag2 = self._euclidean_distance(element[1], element[3])
-        max_diagonal = max(diag1, diag2)
-
-        # 计算边质量 q_edge
+        # edge lengths
+        edges = [self._euclidean_distance(element[i], element[(i + 1) % 4]) for i in range(4)]
         min_edge = min(edges)
-        q_edge = (math.sqrt(2) * min_edge) / max_diagonal if max_diagonal > 0 else 0
+        max_edge = max(edges)
+        if min_edge == 0:
+            return 0.0
+        aspect_ratio = max_edge / min_edge
 
-        # 计算内角
-        angles = []
+        # angle deviations
+        angle_errors = []
         for i in range(4):
             v_prev = element[(i - 1) % 4]
             v_curr = element[i]
             v_next = element[(i + 1) % 4]
             angle = Boundary.get_interior_angle(v_prev, v_curr, v_next)
-            angles.append(angle)
+            angle_errors.append(abs(angle - math.pi / 2))
+        max_angle_error = max(angle_errors)
 
-        # 计算角度质量 q_angle
-        min_angle = min(angles)
-        max_angle = max(angles)
-        q_angle = min_angle / max_angle if max_angle > 0 else 0
-
-        # 元素质量
-        eta_e = math.sqrt(q_edge * q_angle)
-        return min(1.0, max(0.0, eta_e))
+        denom = aspect_ratio + max_angle_error
+        quality = 1.0 / denom if denom > 0 else 0.0
+        return min(1.0, max(0.0, quality))
 
     def _calculate_boundary_quality(self, element, old_boundary):
         """
@@ -547,7 +544,7 @@ class MeshEnv(gym.Env):
         Returns:
             bool: 是否终止
         """
-        return self.boundary.size() <= 4
+        return self.boundary.size() <= 5
 
     def render(self):
         """可视化当前状态（可选实现）"""
