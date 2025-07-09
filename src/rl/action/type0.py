@@ -1,4 +1,6 @@
 from .action import ActionType
+from src.utils import get_interior_angle
+import math
 
 
 class ActionType0(ActionType):
@@ -6,6 +8,20 @@ class ActionType0(ActionType):
     实现Type 0动作：不增加新顶点，直接连接边界上的四个点形成一个四边形。
     对应论文中的 Figure 5(a)。
     """
+
+    def get_element(self, boundary, reference_vertex_V0_idx):
+        v0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
+        v1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+        v2 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 2)
+        v3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        return [v0, v3, v2, v1]
+
+    def get_generated_angle(self, boundary, reference_vertex_V0_idx):
+        v2 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 2)
+        v3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        angle_1 = [v2, v3, boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)]
+        angle_2 = [boundary.get_vertex_by_index(reference_vertex_V0_idx - 3), v2, v3]
+        return angle_1, angle_2
 
     def execute(self, mesh, boundary, reference_vertex_V0_idx):
         """
@@ -21,23 +37,18 @@ class ActionType0(ActionType):
         Returns:
             list: 生成的四边形元素（四个顶点的列表）
         """
-        V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
-        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 2)
-        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
 
-        # 创建四边形元素 (V0, V3, V2, V1)
-        quadrilateral = [V0, V3, V2, V1]
-
+        quadrilateral = self.get_element(boundary, reference_vertex_V0_idx)
+        v0, v3, v2, v1 = quadrilateral
         try:
-            mesh.add_edge(V2, V3)
+            mesh.add_edge(v2, v3)
         except ValueError:
             pass
 
         # 更新边界：移除被消耗的边界顶点V0和V1
         # 注意：移除V0和V1后，V2和V3会在边界上相邻
-        boundary.remove_vertex(V0)
-        boundary.remove_vertex(V1)
+        boundary.remove_vertex(v0)
+        boundary.remove_vertex(v1)
 
         return quadrilateral
 
@@ -49,13 +60,15 @@ class ActionType0(ActionType):
             return False
 
         # 获取构成四边形的四个顶点
-        V0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        V1 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
-        V2 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 2)
-        V3 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
+        quadrilateral = self.get_element(boundary, reference_vertex_V0_idx)
+
+        if self.element_quality(quadrilateral) < self.QUALITY_THRESHOLD:
+            return False
+
+        v0, v3, v2, v1 = quadrilateral
 
         # 我们需要检查这条新形成的边 (V3, V3) 是否有效。
-        new_internal_edge = (V2, V3)
+        new_internal_edge = (v2, v3)
 
         # 1. 检查新边是否与任何现有边界边相交（最关键的检查）
         #    注意：这里要排除与V0和V3相邻的边
@@ -64,8 +77,19 @@ class ActionType0(ActionType):
 
         # 2. 检查新边的中点是否在多边形内部，这是一个更严格的检查，可以防止
         #    在凹多边形中形成外部的边。
-        mid_point = ((V2[0] + V3[0]) / 2, (V2[1] + V3[1]) / 2)
+        mid_point = ((v2[0] + v3[0]) / 2, (v2[1] + v3[1]) / 2)
         if not boundary.vertex_inside_boundary(mid_point):
             return False
 
         return True
+
+    def get_element_quality(self, boundary, reference_vertex_V0_idx):
+        quadrilateral = self.get_element(boundary, reference_vertex_V0_idx)
+        return self.element_quality(quadrilateral)
+
+    def get_boundary_quality(self, boundary, reference_vertex_V0_idx, M_angle):
+        a1, a2 = self.get_generated_angle(boundary, reference_vertex_V0_idx)
+        angle1 = get_interior_angle(a1[0], a1[1], a1[2])
+        angle2 = get_interior_angle(a2[0], a2[1], a2[2])
+        q_dist = 1
+        return math.sqrt(min([angle1, angle2, M_angle]) / M_angle * q_dist) - 1

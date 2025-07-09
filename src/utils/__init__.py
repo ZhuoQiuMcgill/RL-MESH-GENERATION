@@ -33,11 +33,25 @@
 """
 
 from .importer import MeshImporter, create_default_importer
+from .angle import euclidean_distance, get_interior_angle, is_angle_in_slice
+from .segment import ray_segment_intersection, orientation, point_on_line_segment, line_segments_intersect, \
+    segments_overlap_interior, point_to_segment_distance
 
 # 定义模块的公共API
 __all__ = [
     'MeshImporter',
-    'create_default_importer'
+    'create_default_importer',
+
+    'euclidean_distance',
+    'get_interior_angle',
+    'is_angle_in_slice',
+
+    'ray_segment_intersection',
+    'orientation',
+    'point_on_line_segment',
+    'line_segments_intersect',
+    'segments_overlap_interior',
+    'point_to_segment_distance'
 ]
 
 # 版本信息

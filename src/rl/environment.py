@@ -10,6 +10,7 @@ from src.rl.action.type0 import ActionType0
 from src.rl.action.type1 import ActionType1
 from src.rl.action import ActionType2
 from .config import load_config
+from src.utils import euclidean_distance
 
 
 class MeshEnv(gym.Env):
@@ -109,31 +110,58 @@ class MeshEnv(gym.Env):
         generated_element = None
         old_boundary = copy.deepcopy(self.boundary)
 
+        def get_invalid_penalty():
+            # 无效动作的惩罚，首次为-1，之后为-1/生成元素数量
+            if self.first_invalid_action or self.generated_elements == 0:
+                self.first_invalid_action = False
+                return -1
+            return -1 / self.generated_elements
+
+        element_quality_reward = 0
+        boundary_quality_reward = -1
+
         try:
             if action_type == 0:
                 if self.action_type_0.is_valid(self.boundary, reference_vertex_idx):
-                    generated_element = self.action_type_0.execute(
-                        self.mesh, self.boundary, reference_vertex_idx)
+                    element_quality_reward = self.action_type_0.get_element_quality(self.boundary, reference_vertex_idx)
+                    boundary_quality_reward = self.action_type_0.get_boundary_quality(self.boundary,
+                                                                                      reference_vertex_idx,
+                                                                                      self.M_angle)
+                    generated_element = self.action_type_0.execute(self.mesh, self.boundary, reference_vertex_idx)
                     action_valid = True
+
             elif action_type == 1:
                 if self.action_type_1.is_valid(self.boundary, reference_vertex_idx, new_coords[0]):
-                    generated_element = self.action_type_1.execute(
-                        self.mesh, self.boundary, reference_vertex_idx, new_coords[0])
+                    element_quality_reward = self.action_type_1.get_element_quality(self.boundary, reference_vertex_idx,
+                                                                                    new_coords[0])
+                    boundary_quality_reward = self.action_type_1.get_boundary_quality(self.boundary,
+                                                                                      reference_vertex_idx,
+                                                                                      new_coords[0], self.M_angle)
+                    generated_element = self.action_type_1.execute(self.mesh, self.boundary, reference_vertex_idx,
+                                                                   new_coords[0])
                     action_valid = True
+
             elif action_type == 2:
                 if self.action_type_2.is_valid(self.boundary, reference_vertex_idx, new_coords[0], new_coords[1]):
-                    generated_element = self.action_type_2.execute(
-                        self.mesh, self.boundary, reference_vertex_idx, new_coords[0], new_coords[1])
+                    element_quality_reward = self.action_type_2.get_element_quality(self.boundary, reference_vertex_idx,
+                                                                                    new_coords[0], new_coords[1])
+                    boundary_quality_reward = self.action_type_2.get_boundary_quality(self.boundary,
+                                                                                      reference_vertex_idx,
+                                                                                      new_coords[0], new_coords[1],
+                                                                                      self.M_angle)
+
+                    generated_element = self.action_type_2.execute(self.mesh, self.boundary, reference_vertex_idx,
+                                                                   new_coords[0], new_coords[1])
                     action_valid = True
-        except Exception as e:
-            # 动作执行失败
+        except Exception:
             action_valid = False
 
         if action_valid:
             self.generated_elements += 1
-
-        # 计算奖励
-        reward = self._calculate_reward(action_valid, generated_element, old_boundary)
+            reward = element_quality_reward + boundary_quality_reward + self._calculate_density_reward(
+                generated_element)
+        else:
+            reward = get_invalid_penalty()
 
         # 判断结束条件
         terminated = self._is_terminated()
@@ -235,21 +263,17 @@ class MeshEnv(gym.Env):
             # 左侧边长度
             left_idx1 = (reference_vertex_idx - j) % boundary_size
             left_idx2 = (reference_vertex_idx - j - 1) % boundary_size
-            left_length = self._euclidean_distance(vertices[left_idx1], vertices[left_idx2])
+            left_length = euclidean_distance(vertices[left_idx1], vertices[left_idx2])
 
             # 右侧边长度
             right_idx1 = (reference_vertex_idx + j) % boundary_size
             right_idx2 = (reference_vertex_idx + j + 1) % boundary_size
-            right_length = self._euclidean_distance(vertices[right_idx1], vertices[right_idx2])
+            right_length = euclidean_distance(vertices[right_idx1], vertices[right_idx2])
 
             total_length += left_length + right_length
             count += 2
 
         return total_length / count if count > 0 else 1.0
-
-    def _euclidean_distance(self, p1, p2):
-        """计算两点间欧几里得距离"""
-        return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
     def _normalize_coordinates(self, vertices, reference_vertex_idx):
         """
@@ -379,98 +403,6 @@ class MeshEnv(gym.Env):
 
         return np.array(state_components, dtype=np.float32)
 
-    def _calculate_reward(self, action_was_valid, generated_element, old_boundary):
-        """
-        计算奖励函数，实现公式(5)-(9)
-
-        Args:
-            action_was_valid: 动作是否有效
-            generated_element: 生成的元素
-            old_boundary: 执行动作前的边界
-
-        Returns:
-            float: 奖励值
-        """
-        # 无效动作的惩罚，首次为-1，之后为-1/生成元素数量
-        if not action_was_valid:
-            if self.first_invalid_action or self.generated_elements == 0:
-                self.first_invalid_action = False
-                return -1
-            return -1 / self.generated_elements
-
-        # 检查是否生成了最后一个元素（完成网格）
-        if self._is_terminated():
-            return 10.0
-
-        # 计算三个奖励组成部分 mt = η_e + η_b + μ_t
-        eta_e = self._calculate_element_quality(generated_element)
-        eta_b = self._calculate_boundary_quality(generated_element, old_boundary)
-        mu_t = self._calculate_density_reward(generated_element)
-
-        return eta_e + eta_b + mu_t
-
-    def _calculate_element_quality(self, element):
-        """
-        计算元素质量 η_e，实现公式(7)
-
-        Args:
-            element: 四边形元素的四个顶点
-
-        Returns:
-            float: 元素质量值
-        """
-        if element is None or len(element) != 4:
-            return 0.0
-
-        # edge lengths
-        edges = [self._euclidean_distance(element[i], element[(i + 1) % 4]) for i in range(4)]
-        min_edge = min(edges)
-        max_edge = max(edges)
-        if min_edge == 0:
-            return 0.0
-        aspect_ratio = max_edge / min_edge
-
-        # angle deviations
-        angle_errors = []
-        for i in range(4):
-            v_prev = element[(i - 1) % 4]
-            v_curr = element[i]
-            v_next = element[(i + 1) % 4]
-            angle = Boundary.get_interior_angle(v_prev, v_curr, v_next)
-            angle_errors.append(abs(angle - math.pi / 2))
-        max_angle_error = max(angle_errors)
-
-        denom = aspect_ratio + max_angle_error
-        quality = 1.0 / denom if denom > 0 else 0.0
-        return min(1.0, max(0.0, quality))
-
-    def _calculate_boundary_quality(self, element, old_boundary):
-        """
-        计算剩余边界质量 η_b，实现公式(8)
-
-        Args:
-            element: 生成的元素
-            old_boundary: 旧边界
-
-        Returns:
-            float: 边界质量值（-1到0之间）
-        """
-        # 简化实现：基于新形成的角度
-        M_angle = self.M_angle  # 最小角度阈值
-
-        # 计算新形成的角度（这里简化处理）
-        # 在实际实现中，需要分析新边界的角度变化
-        min_angle = 90.0  # 默认值，实际需要从边界几何计算
-
-        # 角度质量部分
-        angle_quality = min(min_angle, M_angle) / M_angle
-
-        # 距离质量部分（如果有新顶点添加）
-        q_dist = 1.0  # 简化假设
-
-        eta_b = math.sqrt(angle_quality) * q_dist - 1
-        return max(-1.0, min(0.0, eta_b))
-
     def _calculate_density_reward(self, element):
         """
         计算密度奖励 μ_t，实现公式(9)
@@ -497,7 +429,7 @@ class MeshEnv(gym.Env):
         for i in range(len(vertices)):
             v1 = vertices[i]
             v2 = vertices[(i + 1) % len(vertices)]
-            edge_lengths.append(self._euclidean_distance(v1, v2))
+            edge_lengths.append(euclidean_distance(v1, v2))
 
         e_min = min(edge_lengths)
         e_max = max(edge_lengths)

@@ -1,6 +1,7 @@
-from math import atan2, pi, degrees
 import numpy as np
-from typing import List, Tuple, Any
+from typing import List, Tuple
+from src.utils import *
+from math import inf
 
 
 class Boundary:
@@ -48,7 +49,7 @@ class Boundary:
         idx = n % self.size()  # 支持负数和越界
         return tuple(self._verts[idx])
 
-    def get_edges(self) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
+    def get_edges(self):
         """
         返回边的列表，每条边由(前一个顶点, 当前顶点)元组表示
 
@@ -57,6 +58,35 @@ class Boundary:
         """
         return [(tuple(self._verts[i - 1]), tuple(self._verts[i]))
                 for i in range(len(self._verts))]
+
+    def get_closest_edge_distance(self, vertex, ignore_edges):
+        """
+        Return the shortest distance from *vertex* to any boundary edge, skipping
+        edges listed in *ignore_edges*.  Edge comparison is direction-agnostic and
+        works whether endpoints are tuples or NumPy arrays.
+        """
+
+        def to_tuple(pt):
+            """Convert array-like point to plain (x, y) tuple of floats."""
+            if isinstance(pt, np.ndarray):
+                return tuple(float(x) for x in pt)
+            return tuple(pt)
+
+        def normalize(edge):
+            """Return direction-free, hashable representation of an edge."""
+            p1, p2 = edge
+            return frozenset((to_tuple(p1), to_tuple(p2)))
+
+        normalized_ignore = {normalize(edge) for edge in ignore_edges}
+
+        min_distance = inf
+        for seg_start, seg_end in self.get_edges():
+            if normalize((seg_start, seg_end)) in normalized_ignore:
+                continue
+            distance = point_to_segment_distance(vertex, seg_start, seg_end)
+            if distance < min_distance:
+                min_distance = distance
+        return min_distance
 
     def size(self) -> int:
         """
@@ -92,34 +122,8 @@ class Boundary:
         left_point_2 = self.get_vertex_by_index(n + 2)
         right_point_1 = self.get_vertex_by_index(n - 1)
         right_point_2 = self.get_vertex_by_index(n - 2)
-        return (self.get_interior_angle(right_point_1, ref_point, left_point_1) +
-                self.get_interior_angle(right_point_2, ref_point, left_point_2)) / 2
-
-    @staticmethod
-    def get_interior_angle(right, center, left):
-        ax, ay = right[0] - center[0], right[1] - center[1]
-        bx, by = left[0] - center[0], left[1] - center[1]
-        theta = (atan2(ay, ax) - atan2(by, bx)) % (2 * pi)
-        return degrees(theta)
-
-    def _interior_angles(self) -> np.ndarray:
-        """Return the clockwise interior angle of each vertex in degrees."""
-
-        v_prev = np.roll(self._verts, 1, axis=0)
-        v_next = np.roll(self._verts, -1, axis=0)
-
-        # 向量指向前一个和后一个顶点
-        vec_prev = v_prev - self._verts
-        vec_next = v_next - self._verts
-
-        # 计算与x轴的绝对角度然后取差值。
-        ang_prev = np.arctan2(vec_prev[:, 1], vec_prev[:, 0])
-        ang_next = np.arctan2(vec_next[:, 1], vec_next[:, 0])
-
-        # 因为顶点按顺时针给出，内角 = (ang_prev - ang_next) mod 2π
-        angles = (ang_prev - ang_next) % (2 * np.pi)
-
-        return np.degrees(angles)
+        return (get_interior_angle(right_point_1, ref_point, left_point_1) +
+                get_interior_angle(right_point_2, ref_point, left_point_2)) / 2
 
     # ------------------------------------------------------------
     # 修改器方法
@@ -393,7 +397,7 @@ class Boundary:
                 vertex_angle = np.arctan2(vec_to_vertex[1], vec_to_vertex[0])
 
                 # 检查是否在当前切片内
-                if self._is_angle_in_slice(vertex_angle, slice_start_angle, slice_end_angle):
+                if is_angle_in_slice(vertex_angle, slice_start_angle, slice_end_angle):
                     candidates.append((j, vertex, distance))
 
             # b. 选择最近点
@@ -428,46 +432,10 @@ class Boundary:
             v1 = self._verts[i]
             v2 = self._verts[(i + 1) % len(self._verts)]
 
-            if self._point_on_line_segment(point_array, v1, v2):
+            if point_on_line_segment(point_array, v1, v2):
                 return True
 
         return False
-
-    def _point_on_line_segment(self, point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> bool:
-        """
-        检查点是否在线段上
-
-        Args:
-            point: 要检查的点
-            line_start: 线段起点
-            line_end: 线段终点
-
-        Returns:
-            bool: 如果点在线段上返回True，否则返回False
-        """
-        # 使用向量叉积判断点是否在线段上
-        # 如果点在线段上，则叉积应该为0，且点应该在线段的范围内
-
-        # 向量
-        v1 = point - line_start
-        v2 = line_end - line_start
-
-        # 叉积（在2D中是标量）
-        cross_product = v1[0] * v2[1] - v1[1] * v2[0]
-
-        # 如果叉积不为0（考虑浮点精度），点不在直线上
-        if abs(cross_product) > 1e-10:
-            return False
-
-        # 检查点是否在线段范围内
-        dot_product = np.dot(v1, v2)
-        squared_length = np.dot(v2, v2)
-
-        if squared_length == 0:  # 线段长度为0
-            return np.allclose(point, line_start)
-
-        param = dot_product / squared_length
-        return 0 <= param <= 1
 
     def _point_in_polygon(self, point: Tuple[float, float]) -> bool:
         """
@@ -482,6 +450,7 @@ class Boundary:
         x, y = point
         n = len(self._verts)
         inside = False
+        x_inters = 0
 
         p1x, p1y = self._verts[0]
         for i in range(1, n + 1):
@@ -490,8 +459,8 @@ class Boundary:
                 if y <= max(p1y, p2y):
                     if x <= max(p1x, p2x):
                         if p1y != p2y:
-                            xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                        if p1x == p2x or x <= xinters:
+                            x_inters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
+                        if p1x == p2x or x <= x_inters:
                             inside = not inside
             p1x, p1y = p2x, p2y
 
@@ -509,7 +478,7 @@ class Boundary:
           (Typical case: make a fan from boundary vertices.)
         ── Forbidden ────────────────────────────────────────────
         • Proper cross-intersection.
-        • Colinear overlap by a positive length (including
+        • Collinear overlap by a positive length (including
           being exactly the same as an existing boundary edge).
         """
         p1, p2 = edge
@@ -521,68 +490,23 @@ class Boundary:
             # Fast-path: the two segments share at least one endpoint
             shared = {p1, p2}.intersection({v1, v2})
             if shared:
-                # -- Colinear ?  If yes, still need to check real overlap
+                # -- Collinear ?  If yes, still need to check real overlap
                 if (
-                        self._orientation(p1, p2, v1) == 0
-                        and self._orientation(p1, p2, v2) == 0
+                        orientation(p1, p2, v1) == 0
+                        and orientation(p1, p2, v2) == 0
                 ):
-                    if self._segments_overlap_interior(p1, p2, v1, v2):
+                    if segments_overlap_interior(p1, p2, v1, v2):
                         return True  # positive-length overlap ⇒ intersection
-                # Not colinear → only touch at common vertex ⇒ allowed
+                # Not collinear → only touch at common vertex ⇒ allowed
                 continue
 
             # No shared endpoints – use the full intersection test
-            if self._line_segments_intersect(p1, p2, v1, v2):
+            if line_segments_intersect(p1, p2, v1, v2):
                 return True
 
         return False
 
-    def _segments_overlap_interior(
-            self,
-            a: Tuple[float, float],
-            b: Tuple[float, float],
-            c: Tuple[float, float],
-            d: Tuple[float, float],
-            eps: float = 1e-10,
-    ) -> bool:
-        """
-        Segments a-b and c-d are assumed colinear.
-        Return True iff they overlap by more than a single point.
-        """
-        # Project onto the dominant axis to measure one-dim overlap
-        if abs(a[0] - b[0]) >= abs(a[1] - b[1]):
-            s1 = sorted([a[0], b[0]])
-            s2 = sorted([c[0], d[0]])
-        else:
-            s1 = sorted([a[1], b[1]])
-            s2 = sorted([c[1], d[1]])
-
-        overlap_len = min(s1[1], s2[1]) - max(s1[0], s2[0])
-        return overlap_len > eps  # positive-length ⇒ real overlap
-
-    def _is_angle_in_slice(self, angle: float, start_angle: float, end_angle: float) -> bool:
-        """检查角度是否在切片内（处理角度环绕问题）"""
-
-        # 规范化角度到[0, 2π]
-        def normalize_angle(a):
-            while a < 0:
-                a += 2 * np.pi
-            while a >= 2 * np.pi:
-                a -= 2 * np.pi
-            return a
-
-        angle = normalize_angle(angle)
-        start_angle = normalize_angle(start_angle)
-        end_angle = normalize_angle(end_angle)
-
-        if start_angle <= end_angle:
-            # 正常情况
-            return start_angle <= angle <= end_angle
-        else:
-            # 跨越0点的情况
-            return angle >= start_angle or angle <= end_angle
-
-    def _find_bisector_boundary_intersection(self, origin: np.ndarray, bisector_angle: float, max_distance: float) -> \
+    def _find_bisector_boundary_intersection(self, origin, bisector_angle: float, max_distance: float) -> \
             Tuple[float, float]:
         """找到角平分线与边界的最近交点"""
         # 角平分线方向向量
@@ -597,11 +521,11 @@ class Boundary:
             edge_end = self._verts[(i + 1) % len(self._verts)]
 
             # 计算射线与线段的交点
-            intersection = self._ray_segment_intersection(origin, direction, edge_start, edge_end)
+            intersection = ray_segment_intersection(origin, direction, edge_start, edge_end)
 
             if intersection is not None:
                 distance = np.linalg.norm(intersection - origin)
-                if distance <= max_distance and distance < min_distance and distance > 1e-10:
+                if max_distance >= distance > 1e-10 and distance < min_distance:
                     min_distance = distance
                     closest_intersection = intersection
 
@@ -611,74 +535,3 @@ class Boundary:
             # 如果没有找到交点，返回射线上的最远点
             farthest_point = origin + direction * max_distance
             return tuple(farthest_point)
-
-    def _ray_segment_intersection(self, ray_origin: np.ndarray, ray_direction: np.ndarray,
-                                  segment_start: np.ndarray, segment_end: np.ndarray) -> np.ndarray:
-        """计算射线与线段的交点"""
-        # 线段方向向量
-        segment_vec = segment_end - segment_start
-
-        # 检查平行性
-        cross_product = ray_direction[0] * segment_vec[1] - ray_direction[1] * segment_vec[0]
-        if abs(cross_product) < 1e-10:
-            return None  # 平行或共线
-
-        # 计算参数
-        to_segment_start = segment_start - ray_origin
-        t = (to_segment_start[0] * segment_vec[1] - to_segment_start[1] * segment_vec[0]) / cross_product
-        s = (to_segment_start[0] * ray_direction[1] - to_segment_start[1] * ray_direction[0]) / cross_product
-
-        # 检查交点是否在射线和线段上
-        if t >= 0 and 0 <= s <= 1:
-            intersection = ray_origin + t * ray_direction
-            return intersection
-
-        return None
-
-    def _orientation(self, p: Tuple[float, float], q: Tuple[float, float], r: Tuple[float, float]) -> int:
-        """
-        Find orientation of ordered triplet (p, q, r).
-        Returns:
-        0 --> p, q and r are collinear
-        1 --> Clockwise
-        2 --> Counterclockwise
-        """
-        val = (q[1] - p[1]) * (r[0] - q[0]) - \
-              (q[0] - p[0]) * (r[1] - q[1])
-
-        if abs(val) < 1e-10: return 0  # Collinear
-        return 1 if val > 0 else 2  # Clockwise or Counterclockwise
-
-    def _line_segments_intersect(self, p1: Tuple[float, float], q1: Tuple[float, float],
-                                 p2: Tuple[float, float], q2: Tuple[float, float]) -> bool:
-        """
-        A robust function to check if line segment 'p1q1' and 'p2q2' intersect.
-        This handles all general, collinear, and touching cases.
-        """
-        o1 = self._orientation(p1, q1, p2)
-        o2 = self._orientation(p1, q1, q2)
-        o3 = self._orientation(p2, q2, p1)
-        o4 = self._orientation(p2, q2, q1)
-
-        # General case: segments cross each other
-        if o1 != o2 and o3 != o4:
-            return True
-
-        # Special Cases for collinear points
-        # p1, q1 and p2 are collinear and p2 lies on segment p1q1
-        if o1 == 0 and self._point_on_line_segment(np.array(p2), np.array(p1), np.array(q1)):
-            return True
-
-        # p1, q1 and q2 are collinear and q2 lies on segment p1q1
-        if o2 == 0 and self._point_on_line_segment(np.array(q2), np.array(p1), np.array(q1)):
-            return True
-
-        # p2, q2 and p1 are collinear and p1 lies on segment p2q2
-        if o3 == 0 and self._point_on_line_segment(np.array(p1), np.array(p2), np.array(q2)):
-            return True
-
-        # p2, q2 and q1 are collinear and q1 lies on segment p2q2
-        if o4 == 0 and self._point_on_line_segment(np.array(q1), np.array(p2), np.array(q2)):
-            return True
-
-        return False  # Doesn't fall in any of the above cases
