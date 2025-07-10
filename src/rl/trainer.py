@@ -11,6 +11,7 @@ from .agent.sac_agent import SACAgent
 from .environment import MeshEnv
 from .buffer_factory import create_replay_buffer, get_buffer_info
 from .config import load_config
+from .training_history_manager import TrainingHistoryManager  # 新增导入
 from src.geometry import Boundary
 from src.utils import MeshImporter
 
@@ -21,6 +22,7 @@ class MeshTrainer:
 
     该类封装了整个SAC训练循环，提供训练监控和结果回调功能。
     支持从文件、mesh名称或直接提供Boundary对象来初始化训练环境。
+    现在集成了训练历史管理功能，会自动保存每个episode的详细信息。
 
     Attributes:
         config: 配置字典
@@ -32,6 +34,7 @@ class MeshTrainer:
         training_stats: 训练统计信息
         episode_callbacks: episode完成时的回调函数列表
         importer: 网格数据导入器
+        history_manager: 训练历史管理器（新增）
     """
 
     def __init__(self,
@@ -72,6 +75,9 @@ class MeshTrainer:
 
         # 初始化网格导入器
         self.importer = MeshImporter(config=self.config)
+
+        # 初始化训练历史管理器（新增）
+        self.history_manager = TrainingHistoryManager(config=self.config)
 
         # 验证数据目录结构
         if not self.importer.validate_data_structure():
@@ -448,6 +454,7 @@ class MeshTrainer:
             max_episodes: int = None,
             max_steps: int = None,
             stop_event: Optional["threading.Event"] = None,
+            description: Optional[str] = None,  # 新增参数：训练描述
     ) -> Dict[str, List[float]]:
         """
         执行训练过程
@@ -456,6 +463,7 @@ class MeshTrainer:
             max_episodes: 最大episode数，如果为None则从配置中读取
             max_steps: 最大训练步数，如果为None则从配置中读取
             stop_event: 可选的threading.Event，用于在外部请求时提前停止训练
+            description: 训练描述（新增）
 
         Returns:
             包含训练统计信息的字典
@@ -476,6 +484,23 @@ class MeshTrainer:
         sac_config = self.config.get("sac_agent", {})
         start_training_steps = int(sac_config.get("start_training_steps", 1000))
         batch_size = int(sac_config.get("batch_size", 256))
+
+        # 开始新的训练会话（历史管理）
+        mesh_name = getattr(self, '_current_mesh_name', None)
+        config_overrides = {
+            'max_episodes': max_episodes,
+            'max_steps': max_steps,
+            'online_learning_mode': self.online_learning_mode,
+            'batch_size': batch_size,
+            'start_training_steps': start_training_steps
+        }
+
+        training_id = self.history_manager.start_training_session(
+            mesh_name=mesh_name,
+            config_overrides=config_overrides,
+            description=description
+        )
+        print(f"训练会话已开始，ID: {training_id}")
 
         # 在线学习模式下，立即开始训练，不需要等待缓冲区填满
         if self.online_learning_mode:
@@ -567,6 +592,9 @@ class MeshTrainer:
             episode_data = self._create_episode_data(episode, episode_reward, episode_length, info)
             self._trigger_episode_callbacks(episode_data)
 
+            # 保存episode历史数据（新增）
+            self.history_manager.save_episode_data(episode_data)
+
             # 日志输出
             if episode % log_frequency == 0:
                 self._log_training_progress(episode, episode_reward, episode_length)
@@ -584,6 +612,10 @@ class MeshTrainer:
 
         # 训练结束
         self.training_stats['training_time'] = time.time() - start_time
+
+        # 结束训练会话（历史管理）
+        self.history_manager.finish_training_session(final_stats=self.training_stats)
+
         if stop_event is not None and stop_event.is_set():
             print("训练被外部停止")
         else:
@@ -614,7 +646,11 @@ class MeshTrainer:
         else:
             buffer_info = f"缓冲区: {len(self.replay_buffer)}/{self.replay_buffer.get_capacity()}"
 
-        print(f"Episode {episode}: 奖励={episode_reward:.3f}, 平均奖励={avg_reward:.3f}, "
+        # 显示当前训练ID
+        training_id = self.history_manager.get_current_training_id()
+        training_info = f"[{training_id}]" if training_id else ""
+
+        print(f"Episode {episode} {training_info}: 奖励={episode_reward:.3f}, 平均奖励={avg_reward:.3f}, "
               f"步数={episode_length}, {buffer_info}")
         print(f"    Actor损失={recent_actor_loss:.6f}, Critic损失={recent_critic_loss:.6f}, "
               f"Alpha={current_alpha:.6f}, 总步数={self.training_stats['total_steps']}")
@@ -808,10 +844,55 @@ class MeshTrainer:
             "缓冲区使用情况": get_buffer_info(self.replay_buffer),
             "边界顶点数量": len(self.initial_boundary.get_vertices()),
             "状态维度": self.state_dim,
-            "动作维度": self.action_dim
+            "动作维度": self.action_dim,
+            "当前训练ID": self.history_manager.get_current_training_id()
         }
 
         if self.training_stats['evaluation_rewards']:
             summary["最佳评估奖励"] = np.max(self.training_stats['evaluation_rewards'])
 
         return summary
+
+    # 新增方法：历史管理相关
+    def get_training_history(self, training_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        获取训练历史信息
+
+        Args:
+            training_id: 训练ID，如果为None则返回当前训练信息
+
+        Returns:
+            Dict[str, Any]: 训练历史信息
+        """
+        return self.history_manager.get_training_history(training_id)
+
+    def list_all_training_history(self) -> List[Dict[str, Any]]:
+        """
+        列出所有历史训练记录
+
+        Returns:
+            List[Dict[str, Any]]: 所有训练记录的列表
+        """
+        return self.history_manager.list_all_trainings()
+
+    def export_training_summary(self, training_id: str, export_path: Optional[str] = None) -> Optional[str]:
+        """
+        导出指定训练的摘要报告
+
+        Args:
+            training_id: 训练ID
+            export_path: 导出路径
+
+        Returns:
+            Optional[str]: 导出的文件路径，失败时返回None
+        """
+        return self.history_manager.export_training_summary(training_id, export_path)
+
+    def set_current_mesh_name(self, mesh_name: str):
+        """
+        设置当前使用的mesh名称（用于历史记录）
+
+        Args:
+            mesh_name: mesh名称
+        """
+        self._current_mesh_name = mesh_name
