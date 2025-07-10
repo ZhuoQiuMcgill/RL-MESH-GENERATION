@@ -1,34 +1,9 @@
 import threading
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
-try:
-    from src.rl.trainer import MeshTrainer
-except ImportError:
-    # 如果trainer模块不存在，创建一个模拟的trainer
-    class MeshTrainer:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        @classmethod
-        def from_mesh_name(cls, *args, **kwargs):
-            return cls()
-
-        def train(self, *args, **kwargs):
-            return {"episode_rewards": [], "message": "训练模拟完成"}
-
-try:
-    from src.utils import MeshImporter
-except ImportError:
-    # 如果utils模块不存在，创建一个模拟的importer
-    class MeshImporter:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def list_available_meshes(self, *args, **kwargs):
-            return ["simple_square", "triangle", "pentagon"]
-
-        def get_mesh_info(self, *args, **kwargs):
-            return {"vertex_count": 4, "file_size": 100, "exists": True}
+# 直接导入，不使用try-except来掩盖错误
+from src.rl.trainer import MeshTrainer
+from src.utils import MeshImporter
 
 
 class TrainingManager:
@@ -69,16 +44,11 @@ class TrainingManager:
         if self.running:
             raise RuntimeError("Training already running")
 
-        # 创建训练器
-        try:
-            if mesh_name is None:
-                self._trainer = MeshTrainer()
-            else:
-                self._trainer = MeshTrainer.from_mesh_name(mesh_name, subfolder=subfolder)
-        except Exception as e:
-            # 如果创建训练器失败，使用模拟训练器
-            print(f"警告: 无法创建实际训练器，使用模拟训练器。错误: {e}")
+        # 创建训练器 - 如果失败就让程序报错，不掩盖问题
+        if mesh_name is None:
             self._trainer = MeshTrainer()
+        else:
+            self._trainer = MeshTrainer.from_mesh_name(mesh_name, subfolder=subfolder)
 
         # 添加回调函数来实时更新统计信息
         self._trainer.add_episode_callback(self._update_stats_callback)
@@ -121,6 +91,8 @@ class TrainingManager:
                 print(f"训练过程中发生错误: {e}")
                 self._status = "error"
                 self._stats = {"error": str(e)}
+                # 重新抛出异常，不掩盖错误
+                raise
 
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()
@@ -149,50 +121,53 @@ class TrainingManager:
                     # 确保邻居列表也是可序列化的
                     serializable_neighbors = []
                     for neighbor in neighbors:
-                        # 确保邻居坐标是Python原生浮点数列表
-                        clean_neighbor = [float(coord) for coord in neighbor]
-                        serializable_neighbors.append(clean_neighbor)
+                        if isinstance(neighbor, (tuple, list)) and len(neighbor) == 2:
+                            neighbor_key = json.dumps(list(neighbor), separators=(',', ':'))
+                            serializable_neighbors.append(neighbor_key)
+                        else:
+                            # 如果neighbor不是坐标格式，直接添加
+                            serializable_neighbors.append(str(neighbor))
 
                     serializable_mesh_data[vertex_key] = serializable_neighbors
-            except Exception as mesh_error:
-                print(f"处理mesh_data时发生错误: {mesh_error}")
+
+            except Exception as json_error:
+                print(f"处理mesh_data时发生错误: {json_error}")
+                # 如果转换失败，使用空字典
                 serializable_mesh_data = {}
 
-            # 处理boundary_vertices_data，确保是可序列化的
-            boundary_vertices = episode_data.get('boundary_vertices', [])
-            serializable_boundary_vertices = []
+            # 获取边界顶点数据并确保可序列化
+            boundary_vertices_data = episode_data.get('boundary_vertices', [])
+            serializable_boundary_data = []
             try:
-                for vertex in boundary_vertices:
-                    # 确保顶点坐标是Python原生浮点数列表
-                    clean_vertex = [float(coord) for coord in vertex]
-                    serializable_boundary_vertices.append(clean_vertex)
+                for vertex in boundary_vertices_data:
+                    if isinstance(vertex, (tuple, list)) and len(vertex) == 2:
+                        serializable_boundary_data.append([float(vertex[0]), float(vertex[1])])
+                    else:
+                        # 跳过不符合格式的顶点
+                        continue
             except Exception as boundary_error:
                 print(f"处理boundary_vertices时发生错误: {boundary_error}")
-                serializable_boundary_vertices = []
+                serializable_boundary_data = []
 
-            # 处理参考点信息
-            ref_info = episode_data.get('reference_point_info')
-            try:
-                serializable_ref_info = self._deep_clean_for_json(ref_info)
-            except Exception as ref_err:
-                print(f"处理reference_point_info时发生错误: {ref_err}")
-                serializable_ref_info = None
+            # 安全地更新统计信息
+            safe_episode_data = self._deep_clean_for_json(episode_data)
 
-            # 更新实时统计信息
+            # 更新核心统计信息 - 按照前端期望的字段名
             self._stats.update({
-                'episode': episode_data.get('episode', 0),
-                'total_steps': episode_data.get('total_steps', 0),
-                'episode_reward': float(episode_data.get('episode_reward', 0.0)),
-                'average_reward': float(episode_data.get('average_reward', 0.0)),
-                'episode_length': episode_data.get('episode_length', 0),
-                'boundary_vertices': episode_data.get('boundary_size', 0),
-                'buffer_size': episode_data.get('buffer_size', 0),
+                'episode': int(safe_episode_data.get('episode', 0)),
+                'total_steps': int(safe_episode_data.get('total_steps', 0)),
+                'episode_reward': float(safe_episode_data.get('episode_reward', 0.0)),
+                'average_reward': float(safe_episode_data.get('average_reward', 0.0)),
+                'episode_length': int(safe_episode_data.get('episode_length', 0)),
+                'boundary_vertices': len(serializable_boundary_data),
+                'buffer_size': int(safe_episode_data.get('buffer_size', 0)),
+                # 前端期望的确切字段名
                 'mesh_data': serializable_mesh_data,
-                'boundary_vertices_data': serializable_boundary_vertices,
-                'reference_point_info': serializable_ref_info
+                'boundary_vertices_data': serializable_boundary_data,
+                'reference_point_info': safe_episode_data.get('reference_point_info')
             })
 
-            # 添加最近的损失信息，确保是可序列化的浮点数
+            # 可选的额外统计信息
             if 'recent_actor_loss' in episode_data:
                 self._stats['recent_actor_loss'] = float(episode_data['recent_actor_loss'])
             if 'recent_critic_loss' in episode_data:
@@ -218,32 +193,24 @@ class TrainingManager:
 
     def stop_training(self) -> None:
         """停止训练过程"""
-        try:
-            if not self.running:
-                return
+        if not self.running:
+            return
 
-            self._stop_event.set()
-            self._status = "stopping"
+        self._stop_event.set()
+        self._status = "stopping"
 
-            # 移除回调函数
-            if self._trainer and hasattr(self._trainer, 'remove_episode_callback'):
-                try:
-                    self._trainer.remove_episode_callback(self._update_stats_callback)
-                except Exception as e:
-                    print(f"移除回调函数时发生错误: {e}")
+        # 移除回调函数
+        if self._trainer:
+            self._trainer.remove_episode_callback(self._update_stats_callback)
 
-            # 等待训练线程结束（最多等待5秒）
-            if self._thread:
-                self._thread.join(timeout=5.0)
-                if self._thread.is_alive():
-                    print("警告: 训练线程未能在5秒内正常结束")
+        # 等待训练线程结束（最多等待5秒）
+        if self._thread:
+            self._thread.join(timeout=5.0)
+            if self._thread.is_alive():
+                print("警告: 训练线程未能在5秒内正常结束")
 
-            # 确保状态被正确设置
-            self._status = "stopped"
-
-        except Exception as e:
-            print(f"停止训练时发生错误: {e}")
-            self._status = "error"
+        # 确保状态被正确设置
+        self._status = "stopped"
 
     def _deep_clean_for_json(self, data):
         """
@@ -267,29 +234,23 @@ class TrainingManager:
         elif isinstance(data, dict):
             cleaned_dict = {}
             for key, value in data.items():
-                try:
-                    # 确保键是字符串
-                    clean_key = str(key)
-                    cleaned_dict[clean_key] = self._deep_clean_for_json(value)
-                except Exception as e:
-                    print(f"清理字典项时出错: {e}, key: {key}, value: {value}")
-                    cleaned_dict[str(key)] = None
+                # 确保键是字符串
+                clean_key = str(key)
+                clean_value = self._deep_clean_for_json(value)
+                cleaned_dict[clean_key] = clean_value
             return cleaned_dict
         elif isinstance(data, (list, tuple)):
             cleaned_list = []
             for item in data:
-                try:
-                    cleaned_list.append(self._deep_clean_for_json(item))
-                except Exception as e:
-                    print(f"清理列表项时出错: {e}, item: {item}")
-                    cleaned_list.append(None)
+                clean_item = self._deep_clean_for_json(item)
+                cleaned_list.append(clean_item)
             return cleaned_list
         else:
             # 对于其他类型，尝试转换为字符串
             try:
                 return str(data)
             except:
-                return None
+                return "无法序列化的数据"
 
     def get_status(self) -> Dict[str, Any]:
         """
@@ -339,3 +300,36 @@ class TrainingManager:
                     'reference_point_info': None
                 }
             }
+
+    def get_training_status(self) -> str:
+        """获取训练状态"""
+        return self._status
+
+    def get_training_stats(self) -> Optional[Dict[str, Any]]:
+        """获取训练统计信息"""
+        return self._stats
+
+    def list_available_meshes(self, subfolder: str = "mesh") -> List[str]:
+        """
+        列出可用的网格文件
+
+        Args:
+            subfolder: 子文件夹名称
+
+        Returns:
+            List[str]: 可用的网格文件名列表
+        """
+        return self.importer.list_available_meshes(subfolder)
+
+    def get_mesh_info(self, mesh_name: str, subfolder: str = "mesh") -> dict:
+        """
+        获取网格文件信息
+
+        Args:
+            mesh_name: 网格文件名
+            subfolder: 子文件夹名称
+
+        Returns:
+            dict: 网格文件信息
+        """
+        return self.importer.get_mesh_info(mesh_name, subfolder)
