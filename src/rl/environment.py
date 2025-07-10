@@ -6,7 +6,7 @@ import copy
 
 # 导入几何模块和动作模块
 from src.geometry import Mesh, Boundary
-from src.rl.action.type0 import ActionType0
+from src.rl.action.type0_left import ActionType0Left
 from src.rl.action.type1 import ActionType1
 from src.rl.action import ActionType2
 from .config import load_config
@@ -46,7 +46,7 @@ class MeshEnv(gym.Env):
         self.M_angle = env_cfg.get("M_angle", 60.0)
 
         # 初始化动作类型
-        self.action_type_0 = ActionType0()
+        self.action_type_0 = ActionType0Left()
         self.action_type_1 = ActionType1()
         self.action_type_2 = ActionType2()
 

@@ -3,7 +3,7 @@ from src.utils import get_interior_angle
 import math
 
 
-class ActionType0(ActionType):
+class ActionType0Left(ActionType):
     """
     实现Type 0动作：不增加新顶点，直接连接边界上的四个点形成一个四边形。
     对应论文中的 Figure 5(a)。

@@ -25,20 +25,22 @@
 """
 
 from .action import ActionType
-from .type0 import ActionType0
+from .type0_left import ActionType0Left
+from .type0_right import ActionType0Right
 from .type1 import ActionType1
 from .type2 import ActionType2
 
 # 定义模块的公共API
 __all__ = [
     'ActionType',
-    'ActionType0',
+    'ActionType0Left',
+    'ActionType0Right',
     'ActionType1',
     'ActionType2'
 ]
 
 # 版本信息
-__version__ = '1.0.0'
+__version__ = '1.2.0'
 
 # 模块作者信息
 __author__ = 'ZhuoQiuMcgill'
