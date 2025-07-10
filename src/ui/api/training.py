@@ -10,13 +10,14 @@ training_bp = Blueprint("training", __name__, url_prefix="/training")
 @training_bp.route("/start", methods=["POST"])
 def start_training():
     """
-    启动训练过程
+    启动训练过程 - 基于timestep控制
 
     请求体参数:
         mesh_name: 网格名称（可选）
         subfolder: 子文件夹名称，默认为'mesh'
-        max_episodes: 最大训练轮数（可选）
+        max_timesteps: 最大训练步数（主要控制参数）
         max_steps: 每轮最大步数（可选）
+        description: 训练描述（可选）
 
     返回:
         JSON响应表示启动结果
@@ -24,15 +25,27 @@ def start_training():
     data = request.get_json(force=True, silent=True) or {}
     mesh_name = data.get("mesh_name")
     subfolder = data.get("subfolder", "mesh")
-    episodes = data.get("max_episodes")
-    steps = data.get("max_steps")
+
+    # 参数：timesteps控制
+    max_timesteps = data.get("max_timesteps")
+    max_steps = data.get("max_steps")
+    description = data.get("description")
+
+    # 向后兼容：如果提供了max_episodes但没有max_timesteps，则转换
+    max_episodes = data.get("max_episodes")
+    if max_episodes is not None and max_timesteps is None:
+        # 估算：假设每个episode平均1000步
+        estimated_steps_per_episode = 1000
+        max_timesteps = max_episodes * estimated_steps_per_episode
+        print(f"向后兼容：将max_episodes ({max_episodes}) 转换为估算的max_timesteps ({max_timesteps})")
 
     try:
         training_manager.start_training(
             mesh_name=mesh_name,
             subfolder=subfolder,
-            max_episodes=episodes,
-            max_steps=steps,
+            max_timesteps=max_timesteps,
+            max_steps=max_steps,
+            description=description,
         )
         return jsonify({
             "message": "training_started",
@@ -40,8 +53,55 @@ def start_training():
             "config": {
                 "mesh_name": mesh_name,
                 "subfolder": subfolder,
-                "max_episodes": episodes,
-                "max_steps": steps
+                "max_timesteps": max_timesteps,
+                "max_steps": max_steps,
+                "description": description
+            }
+        })
+    except RuntimeError as exc:
+        return jsonify({
+            "error": str(exc),
+            "success": False
+        }), 400
+    except Exception as exc:
+        return jsonify({
+            "error": f"启动训练时发生未知错误: {str(exc)}",
+            "success": False
+        }), 500
+        "mesh")
+
+        # 新参数：timesteps优先，episodes作为备用
+        max_timesteps = data.get("max_timesteps")
+        max_episodes = data.get("max_episodes")  # 保持向后兼容
+        max_steps = data.get("max_steps")
+        description = data.get("description")
+
+        # 向后兼容：如果提供了max_episodes但没有max_timesteps，则转换
+        if max_episodes is not None and max_timesteps is None:
+        # 估算：假设每个episode平均1000步
+            estimated_steps_per_episode = 1000
+        max_timesteps = max_episodes * estimated_steps_per_episode
+        print(f"向后兼容：将max_episodes ({max_episodes}) 转换为估算的max_timesteps ({max_timesteps})")
+
+    try:
+        training_manager.start_training(
+            mesh_name=mesh_name,
+            subfolder=subfolder,
+            max_timesteps=max_timesteps,
+            max_episodes=max_episodes,
+            max_steps=max_steps,
+            description=description,
+        )
+        return jsonify({
+            "message": "training_started",
+            "success": True,
+            "config": {
+                "mesh_name": mesh_name,
+                "subfolder": subfolder,
+                "max_timesteps": max_timesteps,
+                "max_episodes": max_episodes,
+                "max_steps": max_steps,
+                "description": description
             }
         })
     except RuntimeError as exc:

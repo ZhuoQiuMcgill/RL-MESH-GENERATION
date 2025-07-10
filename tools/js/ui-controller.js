@@ -22,10 +22,10 @@ export class UIController {
         const elementIds = [
             'status-indicator', 'status-text', 'mesh-select', 'mesh-info',
             'mesh-vertices', 'mesh-size', 'start-btn', 'stop-btn',
-            'refresh-btn', 'clear-log-btn', 'max-episodes', 'max-steps',
-            'update-interval', 'current-episode', 'total-steps', 'avg-reward',
+            'refresh-btn', 'clear-log-btn', 'max-timesteps', 'max-steps',
+            'update-interval', 'description', 'current-episode', 'total-steps', 'avg-reward',
             'buffer-size', 'episode-reward', 'episode-length', 'ref-point',
-            'click-coordinates', 'display-episode', 'boundary-vertices',
+            'click-coordinates', 'display-episode', 'display-total-steps', 'boundary-vertices',
             'log-container', 'loading-overlay'
         ];
 
@@ -75,6 +75,7 @@ export class UIController {
         this.updateElement('current-episode', stats.episode || 0);
         this.updateElement('display-episode', stats.episode || 0);
         this.updateElement('total-steps', stats.total_steps || 0);
+        this.updateElement('display-total-steps', stats.total_steps || 0);
         this.updateElement('avg-reward', formatNumber(stats.average_reward));
         this.updateElement('buffer-size', stats.buffer_size || 0);
         this.updateElement('episode-reward', formatNumber(stats.episode_reward));
@@ -95,6 +96,7 @@ export class UIController {
         if (statsContainer) {
             statsContainer.innerHTML = `
                 <span>Episode: ${stats.episode || 'N/A'}</span>
+                <span>总步数: ${stats.total_steps || 'N/A'}</span>
                 <span>Episode奖励: ${formatNumber(stats.episode_reward)}</span>
                 <span>平均奖励: ${formatNumber(stats.average_reward)}</span>
                 <span>Episode长度: ${stats.episode_length || 'N/A'}</span>
@@ -129,6 +131,7 @@ export class UIController {
 
         if (progress.total_steps !== undefined) {
             this.updateElement('total-steps', progress.total_steps);
+            this.updateElement('display-total-steps', progress.total_steps);
         }
 
         if (progress.average_reward !== undefined) {
@@ -155,9 +158,10 @@ export class UIController {
             'start-btn': !isTraining,
             'stop-btn': isTraining,
             'mesh-select': !isTraining,
-            'max-episodes': !isTraining,
+            'max-timesteps': !isTraining,
             'max-steps': !isTraining,
-            'update-interval': !isTraining
+            'update-interval': !isTraining,
+            'description': !isTraining
         };
 
         Object.entries(buttonStates).forEach(([elementId, enabled]) => {
@@ -286,22 +290,23 @@ export class UIController {
     }
 
     /**
-     * 获取训练配置 - 修复版本，正确处理数字输入
+     * 获取训练配置 - 简化版本，仅支持timestep控制
      * @returns {Object} 训练配置
      */
     getTrainingConfig() {
-        // 修复：正确处理数字输入，避免将有效数字转换为null
-        const maxEpisodesValue = this.getElementValue('max-episodes');
+        // 获取所有输入值
+        const maxTimestepsValue = this.getElementValue('max-timesteps');
         const maxStepsValue = this.getElementValue('max-steps');
+        const descriptionValue = this.getElementValue('description');
 
-        let maxEpisodes = null;
+        let maxTimesteps = null;
         let maxSteps = null;
 
-        // 安全地解析max_episodes
-        if (maxEpisodesValue && maxEpisodesValue.trim() !== '') {
-            const parsed = parseInt(maxEpisodesValue.trim());
+        // 安全地解析max_timesteps（主要控制参数）
+        if (maxTimestepsValue && maxTimestepsValue.trim() !== '') {
+            const parsed = parseInt(maxTimestepsValue.trim());
             if (!isNaN(parsed) && parsed > 0) {
-                maxEpisodes = parsed;
+                maxTimesteps = parsed;
             }
         }
 
@@ -315,8 +320,9 @@ export class UIController {
 
         return {
             mesh_name: this.getElementValue('mesh-select'),
-            max_episodes: maxEpisodes,
-            max_steps: maxSteps
+            max_timesteps: maxTimesteps,
+            max_steps: maxSteps,
+            description: descriptionValue && descriptionValue.trim() !== '' ? descriptionValue.trim() : null
         };
     }
 
@@ -330,7 +336,7 @@ export class UIController {
     }
 
     /**
-     * 验证训练配置
+     * 验证训练配置 - 简化版本，仅验证timestep
      * @returns {Object} 验证结果 {valid: boolean, message: string}
      */
     validateTrainingConfig() {
@@ -343,10 +349,18 @@ export class UIController {
             };
         }
 
-        if (config.max_episodes && config.max_episodes < 1) {
+        // 主要验证：max_timesteps
+        if (!config.max_timesteps) {
             return {
                 valid: false,
-                message: '最大Episodes数必须大于0'
+                message: '请指定最大训练步数'
+            };
+        }
+
+        if (config.max_timesteps && config.max_timesteps < 1000) {
+            return {
+                valid: false,
+                message: '最大训练步数应至少为1000'
             };
         }
 
@@ -447,4 +461,3 @@ export class UIController {
         this.updateClickCoordinates(null);
     }
 }
-

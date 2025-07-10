@@ -11,6 +11,7 @@ class TrainingManager:
 
     现在集成了训练历史管理功能，会自动为每次训练创建唯一ID并保存详细历史记录
     所有训练数据将保存到data/history目录，并在训练结束时生成图表
+    训练过程现在基于timestep控制而不是episode
     """
 
     def __init__(self) -> None:
@@ -30,17 +31,17 @@ class TrainingManager:
             self,
             mesh_name: Optional[str] = None,
             subfolder: str = "mesh",
-            max_episodes: Optional[int] = None,
+            max_timesteps: Optional[int] = None,  # 主要控制参数
             max_steps: Optional[int] = None,
             description: Optional[str] = None,
     ) -> None:
         """
-        启动训练过程
+        启动训练过程 - 基于timestep控制
 
         Args:
             mesh_name: 网格名称
             subfolder: 子文件夹名称
-            max_episodes: 最大训练轮数
+            max_timesteps: 最大训练步数（主要控制参数）
             max_steps: 每轮最大步数
             description: 训练描述
 
@@ -81,7 +82,7 @@ class TrainingManager:
         def _run() -> None:
             """训练线程函数"""
             final_stats = self._trainer.train(
-                max_episodes=max_episodes if max_episodes is not None else 100,
+                max_timesteps=max_timesteps if max_timesteps is not None else 1000000,  # 使用timesteps
                 max_steps=max_steps if max_steps is not None else 1000,
                 stop_event=self._stop_event,
                 description=description,

@@ -436,34 +436,38 @@ class MeshTrainer:
 
     def train(
             self,
-            max_episodes: int = None,
+            max_timesteps: int = None,
             max_steps: int = None,
             stop_event: Optional["threading.Event"] = None,
-            description: Optional[str] = None,  # 新增参数：训练描述
+            description: Optional[str] = None,
     ) -> Dict[str, List[float]]:
         """
-        执行训练过程
+        执行训练过程 - 基于timestep控制
 
         Args:
-            max_episodes: 最大episode数，如果为None则从配置中读取
-            max_steps: 最大训练步数，如果为None则从配置中读取
+            max_timesteps: 最大训练步数，如果为None则从配置中读取
+            max_steps: 每episode最大步数，如果为None则从配置中读取
             stop_event: 可选的threading.Event，用于在外部请求时提前停止训练
-            description: 训练描述（新增）
+            description: 训练描述
 
         Returns:
             包含训练统计信息的字典
         """
         # 获取训练参数，确保类型正确
         training_config = self.config.get("training", {})
-        if max_episodes is None:
-            max_episodes = int(training_config.get("max_episodes", 1000))
+
+        # 主要参数：max_timesteps
+        if max_timesteps is None:
+            max_timesteps = int(training_config.get("max_timesteps", 1000000))
+
+        # 环境参数
         if max_steps != self.env.max_steps:
             self._init_environments(max_steps=max_steps)
 
-        # 从配置中读取其他训练参数，确保类型正确
-        save_frequency = int(training_config.get("save_frequency", 100))
-        log_frequency = int(training_config.get("log_frequency", 10))
-        evaluation_frequency = int(training_config.get("evaluation_frequency", 50))
+        # 从配置中读取其他训练参数，确保类型正确（基于timestep）
+        save_frequency = int(training_config.get("save_frequency", 10000))
+        log_frequency = int(training_config.get("log_frequency", 1000))
+        evaluation_frequency = int(training_config.get("evaluation_frequency", 5000))
 
         # SAC训练参数，确保类型正确
         sac_config = self.config.get("sac_agent", {})
@@ -473,7 +477,7 @@ class MeshTrainer:
         # 开始新的训练会话（历史管理）
         mesh_name = getattr(self, '_current_mesh_name', None)
         config_overrides = {
-            'max_episodes': max_episodes,
+            'max_timesteps': max_timesteps,
             'max_steps': max_steps,
             'online_learning_mode': self.online_learning_mode,
             'batch_size': batch_size,
@@ -491,31 +495,39 @@ class MeshTrainer:
         # 在线学习模式下，立即开始训练，不需要等待缓冲区填满
         if self.online_learning_mode:
             start_training_steps = 0
-            print(f"开始在线学习训练: 最大episodes={max_episodes}, 每episode最大步数={max_steps}")
+            print(f"开始在线学习训练: 最大timesteps={max_timesteps}")
         else:
-            print(f"开始训练: 最大episodes={max_episodes}, 每episode最大步数={max_steps}")
+            print(f"开始训练: 最大timesteps={max_timesteps}")
 
         start_time = time.time()
         training_stopped_early = False
+        episode = 0
 
-        for episode in range(max_episodes):
+        # 初始化统计变量
+        last_save_timestep = 0
+        last_log_timestep = 0
+        last_eval_timestep = 0
+
+        # 主训练循环 - 基于timestep
+        while self.training_stats['total_steps'] < max_timesteps:
             if stop_event is not None and stop_event.is_set():
                 print("收到停止训练信号，提前结束训练")
                 training_stopped_early = True
                 break
+
             episode_reward = 0
             episode_length = 0
 
             # 重置环境
             state, info = self.env.reset()
 
-            # 存储前一步的状态和动作，用于在线学习
-            prev_state = None
-            prev_action = None
-
             for step in range(max_steps):
                 if stop_event is not None and stop_event.is_set():
                     training_stopped_early = True
+                    break
+
+                # 检查是否达到最大timesteps
+                if self.training_stats['total_steps'] >= max_timesteps:
                     break
 
                 # 选择动作
@@ -566,6 +578,26 @@ class MeshTrainer:
                 episode_length += 1
                 self.training_stats['total_steps'] += 1
 
+                # 基于timestep的日志输出
+                if (self.training_stats['total_steps'] - last_log_timestep) >= log_frequency:
+                    self._log_training_progress_timestep(episode, episode_reward, episode_length)
+                    last_log_timestep = self.training_stats['total_steps']
+
+                # 基于timestep的评估
+                if (self.training_stats['total_steps'] - last_eval_timestep) >= evaluation_frequency and \
+                        self.training_stats['total_steps'] > 0:
+                    eval_reward = self._evaluate_agent()
+                    self.training_stats['evaluation_rewards'].append(eval_reward)
+                    self.training_stats['evaluation_episodes'].append(episode)
+                    print(f"Timestep {self.training_stats['total_steps']}: 评估奖励 = {eval_reward:.3f}")
+                    last_eval_timestep = self.training_stats['total_steps']
+
+                # 基于timestep的模型保存
+                if (self.training_stats['total_steps'] - last_save_timestep) >= save_frequency and self.training_stats[
+                    'total_steps'] > 0:
+                    self._save_checkpoint_to_history_timestep(self.training_stats['total_steps'])
+                    last_save_timestep = self.training_stats['total_steps']
+
                 state = next_state
 
                 if done or (stop_event is not None and stop_event.is_set()):
@@ -583,27 +615,14 @@ class MeshTrainer:
             episode_data = self._create_episode_data(episode, episode_reward, episode_length, info)
             self._trigger_episode_callbacks(episode_data)
 
-            # 保存episode历史数据（新增）
+            # 保存episode历史数据
             self.history_manager.save_episode_data(episode_data)
-
-            # 日志输出
-            if episode % log_frequency == 0:
-                self._log_training_progress(episode, episode_reward, episode_length)
-
-            # 评估模型
-            if episode % evaluation_frequency == 0 and episode > 0:
-                eval_reward = self._evaluate_agent()
-                self.training_stats['evaluation_rewards'].append(eval_reward)
-                self.training_stats['evaluation_episodes'].append(episode)
-                print(f"Episode {episode}: 评估奖励 = {eval_reward:.3f}")
-
-            # 保存模型检查点到history目录
-            if episode % save_frequency == 0 and episode > 0:
-                self._save_checkpoint_to_history(episode)
 
             # 如果提前停止，跳出训练循环
             if training_stopped_early:
                 break
+
+            episode += 1
 
         # 训练结束
         self.training_stats['training_time'] = time.time() - start_time
@@ -621,14 +640,46 @@ class MeshTrainer:
             print("训练被外部停止")
         else:
             mode_str = "在线学习" if self.online_learning_mode else "经验回放"
-            print(f"训练完成! 模式: {mode_str}, 总计{max_episodes}个episodes")
+            print(
+                f"训练完成! 模式: {mode_str}, 总计{self.training_stats['total_steps']}个timesteps, {episode}个episodes")
 
         print(f"训练数据已保存到: {self.history_manager.get_training_plots_path()}")
 
         return self.training_stats
 
+    def _save_checkpoint_to_history_timestep(self, timestep: int):
+        """保存训练检查点到history目录（基于timestep）"""
+        if not hasattr(self.history_manager, 'current_training_dir') or not self.history_manager.current_training_dir:
+            return
+
+        checkpoint_dir = self.history_manager.get_training_checkpoints_path()
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+        checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_timestep_{timestep}")
+
+        # 保存智能体模型
+        self.agent.save(checkpoint_path)
+
+        # 保存训练统计信息
+        stats_path = os.path.join(checkpoint_dir, f"stats_timestep_{timestep}.json")
+        with open(stats_path, 'w', encoding='utf-8') as f:
+            # 转换numpy类型以便JSON序列化
+            serializable_stats = {}
+            for key, value in self.training_stats.items():
+                if isinstance(value, list) and len(value) > 0:
+                    if isinstance(value[0], (np.float32, np.float64)):
+                        serializable_stats[key] = [float(v) for v in value]
+                    else:
+                        serializable_stats[key] = value
+                else:
+                    serializable_stats[key] = value
+
+            json.dump(serializable_stats, f, indent=2, ensure_ascii=False)
+
+        print(f"检查点已保存到history (timestep {timestep}): {checkpoint_path}")
+
     def _save_checkpoint_to_history(self, episode: int):
-        """保存训练检查点到history目录"""
+        """保存训练检查点到history目录（兼容旧版本，基于episode）"""
         if not hasattr(self.history_manager, 'current_training_dir') or not self.history_manager.current_training_dir:
             return
 
@@ -640,8 +691,6 @@ class MeshTrainer:
         # 保存智能体模型
         self.agent.save(checkpoint_path)
 
-        # 保存训练统计信息
-        stats_path = os.path.join(checkpoint_dir, f"stats_episode_{episode}.json")
         with open(stats_path, 'w', encoding='utf-8') as f:
             # 转换numpy类型以便JSON序列化
             serializable_stats = {}
@@ -687,9 +736,41 @@ class MeshTrainer:
 
         print(f"最终模型已保存到history: {final_model_path}")
 
+    def _log_training_progress_timestep(self, episode, episode_reward, episode_length):
+        """
+        记录训练进度（基于timestep）
+
+        Args:
+            episode: 当前episode编号
+            episode_reward: episode总奖励
+            episode_length: episode长度
+        """
+        avg_reward = np.mean(list(self.recent_rewards)) if self.recent_rewards else 0
+
+        # 获取最近的损失信息
+        recent_actor_loss = self.training_stats['actor_losses'][-1] if self.training_stats['actor_losses'] else 0
+        recent_critic_loss = self.training_stats['critic_losses'][-1] if self.training_stats['critic_losses'] else 0
+        current_alpha = self.training_stats['alpha_values'][-1] if self.training_stats['alpha_values'] else 0
+
+        # 根据模式显示不同的信息
+        if self.online_learning_mode:
+            buffer_info = "在线学习模式"
+        else:
+            buffer_info = f"缓冲区: {len(self.replay_buffer)}/{self.replay_buffer.get_capacity()}"
+
+        # 显示当前训练ID
+        training_id = self.history_manager.get_current_training_id()
+        training_info = f"[{training_id}]" if training_id else ""
+
+        print(
+            f"Timestep {self.training_stats['total_steps']} Episode {episode} {training_info}: 奖励={episode_reward:.3f}, 平均奖励={avg_reward:.3f}, "
+            f"步数={episode_length}, {buffer_info}")
+        print(f"    Actor损失={recent_actor_loss:.6f}, Critic损失={recent_critic_loss:.6f}, "
+              f"Alpha={current_alpha:.6f}")
+
     def _log_training_progress(self, episode, episode_reward, episode_length):
         """
-        记录训练进度
+        记录训练进度（兼容旧版本，基于episode）
 
         Args:
             episode: 当前episode编号
