@@ -1,7 +1,17 @@
 import numpy as np
 from typing import List, Tuple
-from src.utils import *
 from math import inf
+
+# 只导入具体需要的函数，避免循环导入
+from src.utils.angle import get_interior_angle, is_angle_in_slice
+from src.utils.segment import (
+    ray_segment_intersection,
+    orientation,
+    point_on_line_segment,
+    line_segments_intersect,
+    segments_overlap_interior,
+    point_to_segment_distance
+)
 
 
 class Boundary:
