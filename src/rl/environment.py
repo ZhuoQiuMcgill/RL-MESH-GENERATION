@@ -85,7 +85,7 @@ class MeshEnv(gym.Env):
         self.total_initial_area = self.boundary.get_area()
         self.current_step = 0
         self.generated_elements = 0
-        self.first_invalid_action = True
+        # self.first_invalid_action = True
 
         observation = self._get_obs()
         info = {"step": self.current_step, "boundary_vertices": len(self.boundary.get_vertices())}
@@ -173,12 +173,14 @@ class MeshEnv(gym.Env):
             self.generated_elements += 1
             reward = element_quality_reward + boundary_quality_reward + self._calculate_density_reward(
                 generated_element)
+            # 判断结束条件
+            terminated = self._is_terminated()
+            truncated = self.current_step >= self.max_steps
+
         else:
             reward = get_invalid_penalty()
-
-        # 判断结束条件
-        terminated = self._is_terminated()
-        truncated = self.current_step >= self.max_steps
+            terminated = True
+            truncated = True
 
         # 获取新状态
         observation = self._get_obs()
