@@ -1,66 +1,79 @@
 from src.utils.angle import euclidean_distance, get_interior_angle
 import math
+from typing import List, Tuple
+
+Point = Tuple[float, float]
 
 
-def get_element_quality(element):
-    if element is None or len(element) != 4:
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
+def _validate(element: List[Point]) -> bool:
+    return element is not None and len(element) == 4
+
+
+def _sub(a: Point, b: Point) -> Point:
+    return a[0] - b[0], a[1] - b[1]
+
+
+def _norm(v: Point) -> float:
+    return math.hypot(v[0], v[1])
+
+
+def _cross(a: Point, b: Point) -> float:
+    return a[0] * b[1] - a[1] * b[0]
+
+
+def _edge_lengths(element: List[Point]) -> List[float]:
+    return [euclidean_distance(element[i], element[(i + 1) % 4]) for i in range(4)]
+
+
+def _angles(element: List[Point]) -> List[float]:
+    return [
+        get_interior_angle(element[(i - 1) % 4], element[i], element[(i + 1) % 4])
+        for i in range(4)
+    ]
+
+
+def quality_robust(element: List[Point]) -> float:
+    if not _validate(element):
         return 0.0
-
-    # 计算边长
-    edges = []
-    for i in range(4):
-        v1 = element[i]
-        v2 = element[(i + 1) % 4]
-        edge_length = euclidean_distance(v1, v2)
-        edges.append(edge_length)
-
-    # 计算对角线长度
+    edges = _edge_lengths(element)
     diag1 = euclidean_distance(element[0], element[2])
     diag2 = euclidean_distance(element[1], element[3])
-    max_diagonal = max(diag1, diag2)
-
-    # 计算边质量 q_edge
+    max_diag = max(diag1, diag2)
     min_edge = min(edges)
-    q_edge = (math.sqrt(2) * min_edge) / max_diagonal if max_diagonal > 0 else 0
-
-    # 计算内角
-    angles = []
-    for i in range(4):
-        v_prev = element[(i - 1) % 4]
-        v_curr = element[i]
-        v_next = element[(i + 1) % 4]
-        angle = get_interior_angle(v_prev, v_curr, v_next)
-        angles.append(angle)
-
-    # 计算角度质量 q_angle
-    min_angle = min(angles)
-    max_angle = max(angles)
-    q_angle = min_angle / max_angle if max_angle > 0 else 0
-
-    # 元素质量
-    eta_e = math.sqrt(q_edge * q_angle)
-    return min(1.0, max(0.0, eta_e))
+    q_edge = (math.sqrt(2) * min_edge) / max_diag if max_diag > 0 else 0.0
+    angs = _angles(element)
+    min_angle = min(angs)
+    max_angle = max(angs)
+    q_angle = min_angle / max_angle if max_angle > 0 else 0.0
+    return _clamp(math.sqrt(q_edge * q_angle))
 
 
-def get_boundary_quality(boundary, M_angle):
-    """
-    计算剩余边界质量 η_b，实现公式(8)
+def quality_default(element: List[Point]) -> float:
+    if not _validate(element):
+        return 0.0
+    edges = _edge_lengths(element)
+    aspect = max(edges) / min(edges) if min(edges) > 0 else float('inf')
+    angs = _angles(element)
+    max_error = max(abs(a - math.pi / 2) for a in angs)
+    denom = aspect + max_error
+    return _clamp(1.0 / denom) if denom > 0 else 0.0
 
-    Args:
 
-    Returns:
-        float: 边界质量值（-1到0之间）
-    """
-
-    # 计算新形成的角度（这里简化处理）
-    # 在实际实现中，需要分析新边界的角度变化
-    min_angle = 90.0  # 默认值，实际需要从边界几何计算
-
-    # 角度质量部分
-    angle_quality = min(min_angle, M_angle) / M_angle
-
-    # 距离质量部分（如果有新顶点添加）
-    q_dist = 1.0  # 简化假设
-
-    eta_b = math.sqrt(angle_quality) * q_dist - 1
-    return max(-1.0, min(0.0, eta_b))
+def quality_s_jacobian(element: List[Point]) -> float:
+    if not _validate(element):
+        return 0.0
+    v0, v1, v2, v3 = element
+    l0 = _sub(v1, v0)
+    l1 = _sub(v2, v1)
+    l2 = _sub(v3, v2)
+    l3 = _sub(v0, v3)
+    j0 = _cross(l3, l0) / (_norm(l3) * _norm(l0) or 1.0)
+    j1 = _cross(l0, l1) / (_norm(l0) * _norm(l1) or 1.0)
+    j2 = _cross(l1, l2) / (_norm(l1) * _norm(l2) or 1.0)
+    j3 = _cross(l2, l3) / (_norm(l2) * _norm(l3) or 1.0)
+    q = min(j0, j1, j2, j3)
+    return _clamp(q if q > 0 else 0.0)

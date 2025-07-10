@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 import math
 from src.utils import euclidean_distance, get_interior_angle
+from src.rl.quality import *
 
 
 class ActionType(ABC):
     """动作类型的抽象基类"""
-    QUALITY_THRESHOLD = 0.3
+    QUALITY_THRESHOLD = 0.2
 
     @abstractmethod
     def execute(self, mesh, boundary, **kwargs):
@@ -31,44 +32,22 @@ class ActionType(ABC):
         pass
 
     @staticmethod
-    def element_quality(element):
-        if element is None or len(element) != 4:
-            return 0.0
+    def element_quality(element, gamma: float = 1.0) -> float:
+        """
+        Hybrid quality = robust * (clamped Scaled-Jacobian)**gamma
+        :param element: iterable of 4 vertices
+        :param gamma: Jacobian penalty exponent (>=1 makes penalty steeper)
+        :return: quality in [0, 1]
+        """
+        sj = quality_s_jacobian(element)
+        if sj <= 0.0:
+            return 0.0  # flipped or collapsed
 
-        # 计算边长
-        edges = []
-        for i in range(4):
-            v1 = element[i]
-            v2 = element[(i + 1) % 4]
-            edge_length = euclidean_distance(v1, v2)
-            edges.append(edge_length)
+        sj = min(1.0, sj)  # clamp to [0,1]
+        robust = quality_robust(element)
 
-        # 计算对角线长度
-        diag1 = euclidean_distance(element[0], element[2])
-        diag2 = euclidean_distance(element[1], element[3])
-        max_diagonal = max(diag1, diag2)
-
-        # 计算边质量 q_edge
-        min_edge = min(edges)
-        q_edge = (math.sqrt(2) * min_edge) / max_diagonal if max_diagonal > 0 else 0
-
-        # 计算内角
-        angles = []
-        for i in range(4):
-            v_prev = element[(i - 1) % 4]
-            v_curr = element[i]
-            v_next = element[(i + 1) % 4]
-            angle = get_interior_angle(v_prev, v_curr, v_next)
-            angles.append(angle)
-
-        # 计算角度质量 q_angle
-        min_angle = min(angles)
-        max_angle = max(angles)
-        q_angle = min_angle / max_angle if max_angle > 0 else 0
-
-        # 元素质量
-        eta_e = math.sqrt(q_edge * q_angle)
-        return min(1.0, max(0.0, eta_e))
+        q = robust * (sj ** gamma)  # smooth hybrid metric
+        return max(0.0, min(1.0, q))
 
     @abstractmethod
     def get_element_quality(self, boundary, **kwargs):

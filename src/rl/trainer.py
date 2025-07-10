@@ -22,7 +22,7 @@ class MeshTrainer:
 
     该类封装了整个SAC训练循环，提供训练监控和结果回调功能。
     支持从文件、mesh名称或直接提供Boundary对象来初始化训练环境。
-    现在集成了训练历史管理功能，会自动保存每个episode的详细信息。
+    现在集成了训练历史管理功能，会自动保存每个episode的详细信息到data/history目录。
 
     Attributes:
         config: 配置字典
@@ -60,7 +60,7 @@ class MeshTrainer:
             FileNotFoundError: 当指定的文件不存在时
 
         Note:
-            所有路径配置都从config.yaml的paths部分读取
+            所有模型权重和检查点将保存到data/history/{training_id}/目录下
         """
         # 加载配置
         self.config = config if config is not None else load_config()
@@ -83,21 +83,6 @@ class MeshTrainer:
         if not self.importer.validate_data_structure():
             print("警告: 数据目录结构验证失败，某些功能可能无法正常工作")
 
-        # 从配置中获取保存目录
-        training_config = self.config.get("training", {})
-        paths_config = self.config.get("paths", {})
-
-        # 优先使用training配置中的save_dir，然后是paths配置中的results_dir，最后是默认值
-        save_dir_name = training_config.get("save_dir") or paths_config.get("results_dir", "results")
-
-        # 转换为绝对路径
-        if os.path.isabs(save_dir_name):
-            self.save_dir = save_dir_name
-        else:
-            self.save_dir = os.path.join(os.getcwd(), save_dir_name)
-
-        os.makedirs(self.save_dir, exist_ok=True)
-
         # 解析并创建边界对象
         self.initial_boundary = self._create_boundary_from_source(boundary_source)
 
@@ -116,7 +101,7 @@ class MeshTrainer:
         # 初始化episode回调系统
         self.episode_callbacks: List[Callable] = []
 
-        print("训练器初始化完成")
+        print("训练器初始化完成 - 所有训练数据将保存到data/history目录")
 
     def _create_boundary_from_source(self, boundary_source: Union[Boundary, str, Dict[str, str], None]) -> Boundary:
         """
@@ -501,6 +486,7 @@ class MeshTrainer:
             description=description
         )
         print(f"训练会话已开始，ID: {training_id}")
+        print(f"训练数据将保存到: {self.history_manager.current_training_dir}")
 
         # 在线学习模式下，立即开始训练，不需要等待缓冲区填满
         if self.online_learning_mode:
@@ -510,10 +496,12 @@ class MeshTrainer:
             print(f"开始训练: 最大episodes={max_episodes}, 每episode最大步数={max_steps}")
 
         start_time = time.time()
+        training_stopped_early = False
 
         for episode in range(max_episodes):
             if stop_event is not None and stop_event.is_set():
                 print("收到停止训练信号，提前结束训练")
+                training_stopped_early = True
                 break
             episode_reward = 0
             episode_length = 0
@@ -527,6 +515,7 @@ class MeshTrainer:
 
             for step in range(max_steps):
                 if stop_event is not None and stop_event.is_set():
+                    training_stopped_early = True
                     break
 
                 # 选择动作
@@ -580,6 +569,8 @@ class MeshTrainer:
                 state = next_state
 
                 if done or (stop_event is not None and stop_event.is_set()):
+                    if stop_event is not None and stop_event.is_set():
+                        training_stopped_early = True
                     break
 
             # 记录episode统计
@@ -606,23 +597,95 @@ class MeshTrainer:
                 self.training_stats['evaluation_episodes'].append(episode)
                 print(f"Episode {episode}: 评估奖励 = {eval_reward:.3f}")
 
-            # 保存模型
+            # 保存模型检查点到history目录
             if episode % save_frequency == 0 and episode > 0:
-                self._save_checkpoint(episode)
+                self._save_checkpoint_to_history(episode)
+
+            # 如果提前停止，跳出训练循环
+            if training_stopped_early:
+                break
 
         # 训练结束
         self.training_stats['training_time'] = time.time() - start_time
 
-        # 结束训练会话（历史管理）
-        self.history_manager.finish_training_session(final_stats=self.training_stats)
+        # 结束训练会话并生成图表（历史管理）
+        self.history_manager.finish_training_session(
+            final_stats=self.training_stats,
+            stopped_early=training_stopped_early
+        )
 
-        if stop_event is not None and stop_event.is_set():
+        # 保存最终模型到history目录
+        self._save_final_model_to_history()
+
+        if training_stopped_early:
             print("训练被外部停止")
         else:
             mode_str = "在线学习" if self.online_learning_mode else "经验回放"
             print(f"训练完成! 模式: {mode_str}, 总计{max_episodes}个episodes")
 
+        print(f"训练数据已保存到: {self.history_manager.get_training_plots_path()}")
+
         return self.training_stats
+
+    def _save_checkpoint_to_history(self, episode: int):
+        """保存训练检查点到history目录"""
+        if not hasattr(self.history_manager, 'current_training_dir') or not self.history_manager.current_training_dir:
+            return
+
+        checkpoint_dir = self.history_manager.get_training_checkpoints_path()
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
+        checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_episode_{episode}")
+
+        # 保存智能体模型
+        self.agent.save(checkpoint_path)
+
+        # 保存训练统计信息
+        stats_path = os.path.join(checkpoint_dir, f"stats_episode_{episode}.json")
+        with open(stats_path, 'w', encoding='utf-8') as f:
+            # 转换numpy类型以便JSON序列化
+            serializable_stats = {}
+            for key, value in self.training_stats.items():
+                if isinstance(value, list) and len(value) > 0:
+                    if isinstance(value[0], (np.float32, np.float64)):
+                        serializable_stats[key] = [float(v) for v in value]
+                    else:
+                        serializable_stats[key] = value
+                else:
+                    serializable_stats[key] = value
+
+            json.dump(serializable_stats, f, indent=2, ensure_ascii=False)
+
+        print(f"检查点已保存到history: {checkpoint_path}")
+
+    def _save_final_model_to_history(self):
+        """保存最终模型到history目录"""
+        if not hasattr(self.history_manager, 'current_training_dir') or not self.history_manager.current_training_dir:
+            return
+
+        models_dir = self.history_manager.get_training_models_path()
+        os.makedirs(models_dir, exist_ok=True)
+
+        # 保存最终模型
+        final_model_path = os.path.join(models_dir, "final_model")
+        self.agent.save(final_model_path)
+
+        # 保存完整统计信息
+        stats_path = os.path.join(models_dir, "final_training_stats.json")
+        with open(stats_path, 'w', encoding='utf-8') as f:
+            serializable_stats = {}
+            for key, value in self.training_stats.items():
+                if isinstance(value, list) and len(value) > 0:
+                    if isinstance(value[0], (np.float32, np.float64)):
+                        serializable_stats[key] = [float(v) for v in value]
+                    else:
+                        serializable_stats[key] = value
+                else:
+                    serializable_stats[key] = value
+
+            json.dump(serializable_stats, f, indent=2, ensure_ascii=False)
+
+        print(f"最终模型已保存到history: {final_model_path}")
 
     def _log_training_progress(self, episode, episode_reward, episode_length):
         """
@@ -682,57 +745,6 @@ class MeshTrainer:
             eval_rewards.append(episode_reward)
 
         return np.mean(eval_rewards)
-
-    def _save_checkpoint(self, episode: int):
-        """保存训练检查点"""
-        checkpoint_dir = os.path.join(self.save_dir, "checkpoints")
-        os.makedirs(checkpoint_dir, exist_ok=True)
-
-        checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_episode_{episode}")
-
-        # 保存智能体模型
-        self.agent.save(checkpoint_path)
-
-        # 保存训练统计信息
-        stats_path = os.path.join(checkpoint_dir, f"stats_episode_{episode}.json")
-        with open(stats_path, 'w', encoding='utf-8') as f:
-            # 转换numpy类型以便JSON序列化
-            serializable_stats = {}
-            for key, value in self.training_stats.items():
-                if isinstance(value, list) and len(value) > 0:
-                    if isinstance(value[0], (np.float32, np.float64)):
-                        serializable_stats[key] = [float(v) for v in value]
-                    else:
-                        serializable_stats[key] = value
-                else:
-                    serializable_stats[key] = value
-
-            json.dump(serializable_stats, f, indent=2, ensure_ascii=False)
-
-        print(f"检查点已保存: {checkpoint_path}")
-
-    def _save_final_results(self):
-        """保存最终训练结果"""
-        # 保存最终模型
-        final_model_path = os.path.join(self.save_dir, "final_model")
-        self.agent.save(final_model_path)
-
-        # 保存完整统计信息
-        stats_path = os.path.join(self.save_dir, "training_stats.json")
-        with open(stats_path, 'w', encoding='utf-8') as f:
-            serializable_stats = {}
-            for key, value in self.training_stats.items():
-                if isinstance(value, list) and len(value) > 0:
-                    if isinstance(value[0], (np.float32, np.float64)):
-                        serializable_stats[key] = [float(v) for v in value]
-                    else:
-                        serializable_stats[key] = value
-                else:
-                    serializable_stats[key] = value
-
-            json.dump(serializable_stats, f, indent=2, ensure_ascii=False)
-
-        print(f"最终结果已保存到: {self.save_dir}")
 
     def load_checkpoint(self, checkpoint_path: str):
         """
@@ -803,8 +815,13 @@ class MeshTrainer:
         print(f"平均奖励: {test_stats['mean_reward']:.3f} ± {test_stats['std_reward']:.3f}")
         print(f"平均长度: {test_stats['mean_length']:.1f} ± {test_stats['std_length']:.1f}")
 
-        # 保存测试结果
-        test_path = os.path.join(self.save_dir, "test_results.json")
+        # 保存测试结果到history目录（如果有活动训练会话）
+        if self.history_manager.current_training_dir:
+            test_path = os.path.join(self.history_manager.current_training_dir, "test_results.json")
+        else:
+            # 如果没有活动训练会话，保存到data/history根目录
+            test_path = os.path.join(self.history_manager.history_root, "test_results.json")
+
         with open(test_path, 'w', encoding='utf-8') as f:
             # 处理numpy类型以便JSON序列化
             serializable_stats = {}
@@ -845,7 +862,8 @@ class MeshTrainer:
             "边界顶点数量": len(self.initial_boundary.get_vertices()),
             "状态维度": self.state_dim,
             "动作维度": self.action_dim,
-            "当前训练ID": self.history_manager.get_current_training_id()
+            "当前训练ID": self.history_manager.get_current_training_id(),
+            "数据保存位置": self.history_manager.current_training_dir
         }
 
         if self.training_stats['evaluation_rewards']:

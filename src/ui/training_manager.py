@@ -10,6 +10,7 @@ class TrainingManager:
     管理异步训练会话
 
     现在集成了训练历史管理功能，会自动为每次训练创建唯一ID并保存详细历史记录
+    所有训练数据将保存到data/history目录，并在训练结束时生成图表
     """
 
     def __init__(self) -> None:
@@ -175,10 +176,13 @@ class TrainingManager:
             self._stats['current_alpha'] = float(episode_data['current_alpha'])
 
     def stop_training(self) -> None:
-        """停止训练过程"""
+        """
+        停止训练过程并确保生成训练图表
+        """
         if not self.running:
             return
 
+        print("正在停止训练并生成图表...")
         self._stop_event.set()
         self._status = "stopping"
 
@@ -186,14 +190,15 @@ class TrainingManager:
         if self._trainer and hasattr(self._trainer, 'remove_episode_callback'):
             self._trainer.remove_episode_callback(self._update_stats_callback)
 
-        # 等待训练线程结束（最多等待5秒）
+        # 等待训练线程结束（最多等待10秒以确保图表生成完成）
         if self._thread:
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=10.0)
             if self._thread.is_alive():
-                print("警告: 训练线程未能在5秒内正常结束")
+                print("警告: 训练线程未能在10秒内正常结束")
 
         # 确保状态被正确设置
         self._status = "stopped"
+        print("训练已停止，图表已生成并保存到data/history目录")
 
     def _deep_clean_for_json(self, data):
         """
@@ -314,5 +319,29 @@ class TrainingManager:
         """
         if self._trainer and hasattr(self._trainer, 'history_manager'):
             return self._trainer.history_manager.get_current_training_id()
+        else:
+            return None
+
+    def get_training_plots_path(self) -> Optional[str]:
+        """
+        获取当前训练的图表保存路径
+
+        Returns:
+            Optional[str]: 图表路径，如果没有活动训练则返回None
+        """
+        if self._trainer and hasattr(self._trainer, 'history_manager'):
+            return self._trainer.history_manager.get_training_plots_path()
+        else:
+            return None
+
+    def get_training_models_path(self) -> Optional[str]:
+        """
+        获取当前训练的模型保存路径
+
+        Returns:
+            Optional[str]: 模型路径，如果没有活动训练则返回None
+        """
+        if self._trainer and hasattr(self._trainer, 'history_manager'):
+            return self._trainer.history_manager.get_training_models_path()
         else:
             return None
