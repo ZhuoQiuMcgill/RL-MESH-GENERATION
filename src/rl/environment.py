@@ -7,6 +7,7 @@ import copy
 # 导入几何模块和动作模块
 from src.geometry import Mesh, Boundary
 from src.rl.action.type0_left import ActionType0Left
+from src.rl.action.type0_right import ActionType0Right
 from src.rl.action.type1 import ActionType1
 from src.rl.action import ActionType2
 from .config import load_config
@@ -45,8 +46,9 @@ class MeshEnv(gym.Env):
         self.kappa = env_cfg.get("kappa", 4.0)
         self.M_angle = env_cfg.get("M_angle", 60.0)
 
-        # 初始化动作类型
-        self.action_type_0 = ActionType0Left()
+        # 初始化动作类型（现在有4个动作类型）
+        self.action_type_0_left = ActionType0Left()
+        self.action_type_0_right = ActionType0Right()
         self.action_type_1 = ActionType1()
         self.action_type_2 = ActionType2()
 
@@ -121,16 +123,27 @@ class MeshEnv(gym.Env):
         boundary_quality_reward = -1
 
         try:
-            if action_type == 0:
-                if self.action_type_0.is_valid(self.boundary, reference_vertex_idx):
-                    element_quality_reward = self.action_type_0.get_element_quality(self.boundary, reference_vertex_idx)
-                    boundary_quality_reward = self.action_type_0.get_boundary_quality(self.boundary,
-                                                                                      reference_vertex_idx,
-                                                                                      self.M_angle)
-                    generated_element = self.action_type_0.execute(self.mesh, self.boundary, reference_vertex_idx)
+            if action_type == 0:  # ActionType0Left
+                if self.action_type_0_left.is_valid(self.boundary, reference_vertex_idx):
+                    element_quality_reward = self.action_type_0_left.get_element_quality(self.boundary,
+                                                                                         reference_vertex_idx)
+                    boundary_quality_reward = self.action_type_0_left.get_boundary_quality(self.boundary,
+                                                                                           reference_vertex_idx,
+                                                                                           self.M_angle)
+                    generated_element = self.action_type_0_left.execute(self.mesh, self.boundary, reference_vertex_idx)
                     action_valid = True
 
-            elif action_type == 1:
+            elif action_type == 1:  # ActionType0Right
+                if self.action_type_0_right.is_valid(self.boundary, reference_vertex_idx):
+                    element_quality_reward = self.action_type_0_right.get_element_quality(self.boundary,
+                                                                                          reference_vertex_idx)
+                    boundary_quality_reward = self.action_type_0_right.get_boundary_quality(self.boundary,
+                                                                                            reference_vertex_idx,
+                                                                                            self.M_angle)
+                    generated_element = self.action_type_0_right.execute(self.mesh, self.boundary, reference_vertex_idx)
+                    action_valid = True
+
+            elif action_type == 2:  # ActionType1
                 if self.action_type_1.is_valid(self.boundary, reference_vertex_idx, new_coords[0]):
                     element_quality_reward = self.action_type_1.get_element_quality(self.boundary, reference_vertex_idx,
                                                                                     new_coords[0])
@@ -141,7 +154,7 @@ class MeshEnv(gym.Env):
                                                                    new_coords[0])
                     action_valid = True
 
-            elif action_type == 2:
+            elif action_type == 3:  # ActionType2
                 if self.action_type_2.is_valid(self.boundary, reference_vertex_idx, new_coords[0], new_coords[1]):
                     element_quality_reward = self.action_type_2.get_element_quality(self.boundary, reference_vertex_idx,
                                                                                     new_coords[0], new_coords[1])
@@ -190,21 +203,23 @@ class MeshEnv(gym.Env):
         Returns:
             tuple: (action_type, new_coords, reference_vertex_idx)
         """
-        # 解码动作类型（使用tanh输出范围映射到{0,1,2}）
+        # 解码动作类型（使用tanh输出范围映射到{0,1,2,3}）
         type_logit = action[0]
-        if type_logit < -0.33:
-            action_type = 0
-        elif type_logit < 0.33:
-            action_type = 1
+        if type_logit < -0.5:
+            action_type = 0  # ActionType0Left
+        elif type_logit < 0:
+            action_type = 1  # ActionType0Right
+        elif type_logit < 0.5:
+            action_type = 2  # ActionType1
         else:
-            action_type = 2
+            action_type = 3  # ActionType2
 
         # 获取参考顶点（选择最小平均内角的顶点）
         reference_vertex_idx = self._get_reference_vertex()
 
         # 解码新顶点坐标（如果需要）
         new_coords = []
-        if action_type > 0:
+        if action_type > 1:  # 只有ActionType1和ActionType2需要新顶点
             # 计算动作空间半径
             base_length = self._calculate_base_length(reference_vertex_idx)
             radius = self.alpha * base_length
@@ -221,8 +236,8 @@ class MeshEnv(gym.Env):
             y = reference_vertex[1] + distance * math.sin(angle)
             new_coords.append((x, y))
 
-            # 第二个新顶点坐标（仅Type 2需要）
-            if action_type == 2:
+            # 第二个新顶点坐标（仅ActionType2需要）
+            if action_type == 3:
                 # 为简化，第二个顶点使用固定偏移
                 angle2 = angle + math.pi / 6  # 偏移30度
                 distance2 = distance * 0.8

@@ -32,12 +32,12 @@ paths:
 
 # Default configuration for RL mesh generation
 sac_agent:
-  actor_lr: 0.0003
-  critic_lr: 0.0003
+  actor_lr: 0.0005
+  critic_lr: 0.0005
   alpha_lr: 0.0003
   gamma: 0.99
   tau: 0.005
-  hidden_dim: 256
+  hidden_dim: 128
   buffer_size: 1000000
   batch_size: 128
   start_training_steps: 1000
@@ -53,7 +53,7 @@ replay_buffer:
 
   # 优先级经验回放(PER)参数 - 仅当type为"prioritized"时使用
   prioritized:
-    alpha: 0.5          # 优先级指数，控制优先级的强度 (0=uniform, 1=full prioritization)
+    alpha: 0.65          # 优先级指数，控制优先级的强度 (0=uniform, 1=full prioritization)
     beta_start: 0.4     # 重要性采样权重的初始值
     beta_frames: 100000 # beta从beta_start增长到1.0所需的帧数
     epsilon: 0.000001   # 小常数，防止优先级为0

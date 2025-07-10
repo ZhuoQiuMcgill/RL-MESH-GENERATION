@@ -9,6 +9,7 @@ class SACAgent:
     """
     实现了Soft Actor-Critic (SAC)算法的智能体。
     支持普通经验回放、优先级经验回放(PER)和在线学习模式。
+    现在支持4种动作类型：ActionType0Left, ActionType0Right, ActionType1, ActionType2
     """
 
     def __init__(self, state_dim, action_dim, max_action, device, config=None):
@@ -45,7 +46,10 @@ class SACAgent:
         self.max_action = max_action
 
     def select_action(self, state):
-        """在评估模式下，根据当前状态选择确定性动作"""
+        """
+        在评估模式下，根据当前状态选择确定性动作
+        输出的动作范围为[-1, 1]，环境会将其解码为4种动作类型之一
+        """
         state = torch.FloatTensor(state.reshape(1, -1)).to(self.device)
         # 在评估时不使用随机性，直接用均值
         _, _, action = self.actor(state)
