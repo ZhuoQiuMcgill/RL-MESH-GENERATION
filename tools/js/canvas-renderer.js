@@ -191,9 +191,64 @@ export class CanvasRenderer {
         this.ctx.font = '16px sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.fillText(
-            '等待训练开始...',
+            '选择Mesh文件预览边界形状...',
             displayWidth / 2,
             displayHeight / 2
+        );
+    }
+
+    /**
+     * 渲染边界预览（新增方法）
+     * @param {Array} boundaryVertices - 边界顶点数据
+     * @param {string} meshName - mesh名称
+     */
+    renderBoundaryPreview(boundaryVertices, meshName = '') {
+        const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
+        const displayHeight = this.canvas.height / (window.devicePixelRatio || 1);
+
+        this.ctx.clearRect(0, 0, displayWidth, displayHeight);
+        this.drawGrid();
+
+        if (!boundaryVertices || !Array.isArray(boundaryVertices) || boundaryVertices.length === 0) {
+            this.drawWaitingText();
+            return;
+        }
+
+        // 缓存预览数据
+        this.lastRenderData = {
+            meshData: null,
+            boundaryVertices: boundaryVertices,
+            refPointInfo: null,
+            isPreview: true,
+            meshName: meshName
+        };
+
+        // 计算变换参数
+        const transform = this.calculateTransform(boundaryVertices);
+        this.currentTransform = transform;
+
+        // 绘制边界
+        this.renderBoundaryWithTransform(boundaryVertices, transform);
+
+        // 绘制标题
+        this.drawPreviewTitle(meshName, boundaryVertices.length);
+    }
+
+    /**
+     * 绘制预览标题
+     * @param {string} meshName - mesh名称
+     * @param {number} vertexCount - 顶点数量
+     */
+    drawPreviewTitle(meshName, vertexCount) {
+        const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
+
+        this.ctx.fillStyle = '#374151';
+        this.ctx.font = 'bold 14px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(
+            `${meshName} (${vertexCount} 个顶点)`,
+            displayWidth / 2,
+            30
         );
     }
 
@@ -208,7 +263,8 @@ export class CanvasRenderer {
         this.lastRenderData = {
             meshData: meshData,
             boundaryVertices: boundaryVertices,
-            refPointInfo: refPointInfo
+            refPointInfo: refPointInfo,
+            isPreview: false
         };
 
         // 解析数据

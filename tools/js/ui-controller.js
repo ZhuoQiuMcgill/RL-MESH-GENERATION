@@ -290,7 +290,7 @@ export class UIController {
     }
 
     /**
-     * 获取训练配置 - 简化版本，仅支持timestep控制
+     * 获取训练配置 - 基于timestep控制
      * @returns {Object} 训练配置
      */
     getTrainingConfig() {
@@ -336,7 +336,7 @@ export class UIController {
     }
 
     /**
-     * 验证训练配置 - 简化版本，仅验证timestep
+     * 验证训练配置 - 基于timestep控制
      * @returns {Object} 验证结果 {valid: boolean, message: string}
      */
     validateTrainingConfig() {

@@ -118,6 +118,17 @@ export class ApiClient {
     }
 
     /**
+     * 获取指定Mesh的边界数据（新增）
+     * @param {string} meshName - Mesh名称
+     * @param {string} subfolder - 子文件夹名称，默认为'mesh'
+     * @returns {Promise<Object>} Mesh边界数据
+     */
+    async getMeshBoundary(meshName, subfolder = 'mesh') {
+        const params = new URLSearchParams({subfolder});
+        return await this.request(`/mesh/boundary/${meshName}?${params}`);
+    }
+
+    /**
      * 检查Mesh API健康状态
      * @returns {Promise<Object>} 健康状态
      */

@@ -90,7 +90,7 @@ export class TrainingManager {
             clearLogBtn.addEventListener('click', () => this.uiController.clearLogs());
         }
 
-        // Mesh选择变化
+        // Mesh选择变化 - 增强版本，支持预览
         const meshSelect = document.getElementById('mesh-select');
         if (meshSelect) {
             meshSelect.addEventListener('change', (e) => this.onMeshSelectionChange(e.target.value));
@@ -146,23 +146,60 @@ export class TrainingManager {
     }
 
     /**
-     * Mesh选择变化事件处理
+     * Mesh选择变化事件处理 - 增强版本，支持预览
      * @param {string} meshName - 选中的mesh名称
      */
     async onMeshSelectionChange(meshName) {
         if (!meshName) {
             this.uiController.hideMeshInfo();
+            // 清空canvas，显示默认提示
+            if (this.canvasRenderer) {
+                this.canvasRenderer.clearCanvas();
+            }
             return;
         }
 
         try {
-            const info = await this.apiClient.getMeshInfo(meshName);
+            this.uiController.showLoading(true);
+
+            // 同时获取mesh信息和边界数据
+            const [info, boundaryData] = await Promise.all([
+                this.apiClient.getMeshInfo(meshName),
+                this.apiClient.getMeshBoundary(meshName)
+            ]);
+
+            // 更新UI信息
             this.uiController.showMeshInfo(info);
             this.uiController.logMessage(`选择了Mesh: ${meshName}`, LOG_TYPES.INFO);
+
+            // 在canvas中渲染边界预览
+            if (this.canvasRenderer && boundaryData.success) {
+                this.canvasRenderer.renderBoundaryPreview(
+                    boundaryData.boundary_vertices,
+                    meshName
+                );
+                this.uiController.logMessage(
+                    `已加载边界预览: ${boundaryData.vertex_count} 个顶点`,
+                    LOG_TYPES.SUCCESS
+                );
+            } else if (!boundaryData.success) {
+                this.uiController.logMessage(
+                    `无法加载边界数据: ${boundaryData.error}`,
+                    LOG_TYPES.WARNING
+                );
+            }
+
         } catch (error) {
             console.error('获取Mesh信息失败:', error);
             this.uiController.showError('获取Mesh信息失败: ' + error.message);
             this.uiController.hideMeshInfo();
+
+            // 清空canvas
+            if (this.canvasRenderer) {
+                this.canvasRenderer.clearCanvas();
+            }
+        } finally {
+            this.uiController.showLoading(false);
         }
     }
 

@@ -42,6 +42,50 @@ def mesh_info(n: str):
     return jsonify(info)
 
 
+@mesh_bp.route("/boundary/<n>", methods=["GET"])
+def mesh_boundary(n: str):
+    """
+    获取指定mesh的边界顶点数据（新增接口）
+
+    路径参数:
+        n: mesh文件名
+
+    查询参数:
+        subfolder: 子文件夹名称，默认为'mesh'
+
+    返回:
+        JSON响应包含mesh的边界顶点坐标列表
+    """
+    subfolder = request.args.get("subfolder", "mesh")
+
+    try:
+        # 加载边界对象
+        boundary = importer.load_boundary_by_name(n, subfolder)
+
+        # 获取顶点坐标列表
+        vertices = boundary.get_vertices()
+
+        return jsonify({
+            "mesh_name": n,
+            "subfolder": subfolder,
+            "boundary_vertices": vertices,
+            "vertex_count": len(vertices),
+            "success": True
+        })
+
+    except FileNotFoundError:
+        return jsonify({
+            "error": f"Mesh文件不存在: {n}",
+            "success": False
+        }), 404
+
+    except Exception as e:
+        return jsonify({
+            "error": f"加载边界数据失败: {str(e)}",
+            "success": False
+        }), 500
+
+
 @mesh_bp.route("/health", methods=["GET"])
 def health_check():
     """

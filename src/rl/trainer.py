@@ -691,6 +691,8 @@ class MeshTrainer:
         # 保存智能体模型
         self.agent.save(checkpoint_path)
 
+        # 保存训练统计信息
+        stats_path = os.path.join(checkpoint_dir, f"stats_episode_{episode}.json")
         with open(stats_path, 'w', encoding='utf-8') as f:
             # 转换numpy类型以便JSON序列化
             serializable_stats = {}
