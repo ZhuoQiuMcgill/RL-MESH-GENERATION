@@ -22,7 +22,7 @@ class MeshTrainer:
 
     该类封装了整个SAC训练循环，提供训练监控和结果回调功能。
     支持从文件、mesh名称或直接提供Boundary对象来初始化训练环境。
-    现在集成了训练历史管理功能，会自动保存每个episode的详细信息到data/history目录。
+    现在集成了基于timestep间隔的训练历史管理功能，会定期保存episode数据到data/history目录。
 
     Attributes:
         config: 配置字典
@@ -34,7 +34,7 @@ class MeshTrainer:
         training_stats: 训练统计信息
         episode_callbacks: episode完成时的回调函数列表
         importer: 网格数据导入器
-        history_manager: 训练历史管理器（新增）
+        history_manager: 训练历史管理器（使用timestep间隔保存）
     """
 
     def __init__(self,
@@ -61,6 +61,7 @@ class MeshTrainer:
 
         Note:
             所有模型权重和检查点将保存到data/history/{training_id}/目录下
+            Episode历史数据按timestep间隔批量保存，减少I/O操作
         """
         # 加载配置
         self.config = config if config is not None else load_config()
@@ -76,7 +77,7 @@ class MeshTrainer:
         # 初始化网格导入器
         self.importer = MeshImporter(config=self.config)
 
-        # 初始化训练历史管理器（新增）
+        # 初始化训练历史管理器（使用timestep间隔保存）
         self.history_manager = TrainingHistoryManager(config=self.config)
 
         # 验证数据目录结构
@@ -101,7 +102,12 @@ class MeshTrainer:
         # 初始化episode回调系统
         self.episode_callbacks: List[Callable] = []
 
-        print("训练器初始化完成 - 所有训练数据将保存到data/history目录")
+        # 获取history保存频率
+        training_config = self.config.get("training", {})
+        self.history_save_frequency = training_config.get("history_save_frequency", 10000)
+
+        print("训练器初始化完成 - Episode历史数据将基于timestep间隔保存到data/history目录")
+        print(f"History保存频率: 每{self.history_save_frequency}个timesteps")
 
     def _create_boundary_from_source(self, boundary_source: Union[Boundary, str, Dict[str, str], None]) -> Boundary:
         """
@@ -442,7 +448,7 @@ class MeshTrainer:
             description: Optional[str] = None,
     ) -> Dict[str, List[float]]:
         """
-        执行训练过程 - 基于timestep控制
+        执行训练过程 - 基于timestep控制，使用timestep间隔保存历史
 
         Args:
             max_timesteps: 最大训练步数，如果为None则从配置中读取
@@ -481,7 +487,8 @@ class MeshTrainer:
             'max_steps': max_steps,
             'online_learning_mode': self.online_learning_mode,
             'batch_size': batch_size,
-            'start_training_steps': start_training_steps
+            'start_training_steps': start_training_steps,
+            'history_save_frequency': self.history_save_frequency
         }
 
         training_id = self.history_manager.start_training_session(
@@ -491,6 +498,7 @@ class MeshTrainer:
         )
         print(f"训练会话已开始，ID: {training_id}")
         print(f"训练数据将保存到: {self.history_manager.current_training_dir}")
+        print(f"Episode历史将每{self.history_save_frequency}个timesteps批量保存一次")
 
         # 在线学习模式下，立即开始训练，不需要等待缓冲区填满
         if self.online_learning_mode:
@@ -615,8 +623,8 @@ class MeshTrainer:
             episode_data = self._create_episode_data(episode, episode_reward, episode_length, info)
             self._trigger_episode_callbacks(episode_data)
 
-            # 保存episode历史数据
-            self.history_manager.save_episode_data(episode_data)
+            # 缓存episode历史数据（使用timestep间隔保存机制）
+            self.history_manager.cache_episode_data(episode_data)
 
             # 如果提前停止，跳出训练循环
             if training_stopped_early:
@@ -626,6 +634,9 @@ class MeshTrainer:
 
         # 训练结束
         self.training_stats['training_time'] = time.time() - start_time
+
+        # 强制保存剩余的缓存数据
+        self.history_manager.force_save_cache()
 
         # 结束训练会话并生成图表（历史管理）
         self.history_manager.finish_training_session(
@@ -644,6 +655,11 @@ class MeshTrainer:
                 f"训练完成! 模式: {mode_str}, 总计{self.training_stats['total_steps']}个timesteps, {episode}个episodes")
 
         print(f"训练数据已保存到: {self.history_manager.get_training_plots_path()}")
+
+        # 显示缓存统计信息
+        cache_status = self.history_manager.get_cache_status()
+        print(f"History保存统计: 最后保存在timestep {cache_status['last_save_timestep']}, "
+              f"共保存了{episode}个episodes的历史数据")
 
         return self.training_stats
 
@@ -760,13 +776,17 @@ class MeshTrainer:
         else:
             buffer_info = f"缓冲区: {len(self.replay_buffer)}/{self.replay_buffer.get_capacity()}"
 
-        # 显示当前训练ID
+        # 显示当前训练ID和缓存状态
         training_id = self.history_manager.get_current_training_id()
         training_info = f"[{training_id}]" if training_id else ""
 
+        # 获取缓存状态
+        cache_status = self.history_manager.get_cache_status()
+        cache_info = f"缓存: {cache_status['cached_episodes']}个episodes"
+
         print(
             f"Timestep {self.training_stats['total_steps']} Episode {episode} {training_info}: 奖励={episode_reward:.3f}, 平均奖励={avg_reward:.3f}, "
-            f"步数={episode_length}, {buffer_info}")
+            f"步数={episode_length}, {buffer_info}, {cache_info}")
         print(f"    Actor损失={recent_actor_loss:.6f}, Critic损失={recent_critic_loss:.6f}, "
               f"Alpha={current_alpha:.6f}")
 
@@ -934,6 +954,9 @@ class MeshTrainer:
         if not self.training_stats['episode_rewards']:
             return {"status": "未开始训练"}
 
+        # 获取缓存状态
+        cache_status = self.history_manager.get_cache_status()
+
         summary = {
             "总训练时间": f"{self.training_stats['training_time']:.2f}秒",
             "完成的episodes": self.training_stats['episodes_completed'],
@@ -946,7 +969,9 @@ class MeshTrainer:
             "状态维度": self.state_dim,
             "动作维度": self.action_dim,
             "当前训练ID": self.history_manager.get_current_training_id(),
-            "数据保存位置": self.history_manager.current_training_dir
+            "数据保存位置": self.history_manager.current_training_dir,
+            "History保存频率": f"每{self.history_save_frequency}个timesteps",
+            "缓存状态": cache_status
         }
 
         if self.training_stats['evaluation_rewards']:
@@ -997,3 +1022,31 @@ class MeshTrainer:
             mesh_name: mesh名称
         """
         self._current_mesh_name = mesh_name
+
+    def set_history_save_frequency(self, frequency: int):
+        """
+        设置history保存频率
+
+        Args:
+            frequency: 新的保存频率（timesteps）
+        """
+        self.history_save_frequency = frequency
+        self.history_manager.set_save_frequency(frequency)
+
+    def get_history_save_frequency(self) -> int:
+        """
+        获取当前的history保存频率
+
+        Returns:
+            int: 保存频率（timesteps）
+        """
+        return self.history_save_frequency
+
+    def force_save_history_cache(self) -> bool:
+        """
+        强制保存当前缓存的历史数据
+
+        Returns:
+            bool: 保存是否成功
+        """
+        return self.history_manager.force_save_cache()

@@ -18,7 +18,7 @@ class TrainingHistoryManager:
 
     负责管理训练过程中的历史数据存储，包括：
     - 为每次训练生成唯一ID
-    - 存储每个episode的详细信息
+    - 基于timestep间隔存储episode的详细信息
     - 提供历史数据的查询和管理功能
     - 支持训练会话的恢复和分析
     - 生成训练结果图表
@@ -54,6 +54,12 @@ class TrainingHistoryManager:
         self.episode_rewards = []
         self.episodes = []
 
+        # 基于timestep的保存机制
+        self.save_frequency_timesteps = self.config.get("training", {}).get("history_save_frequency", 10000)
+        self.last_save_timestep = 0
+        self.episode_data_cache = []  # 缓存episode数据
+        self.total_timesteps = 0
+
         # 设置日志
         self.logger = logging.getLogger(__name__)
 
@@ -70,6 +76,20 @@ class TrainingHistoryManager:
         if os.path.isabs(relative_path):
             return relative_path
         return os.path.join(os.getcwd(), relative_path)
+
+    def _create_training_subdirectories(self):
+        """创建训练会话的子目录结构"""
+        subdirs = [
+            "episodes",  # 存储episode的详细信息（按timestep间隔保存）
+            "checkpoints",  # 存储模型检查点
+            "models",  # 存储最终模型权重
+            "plots",  # 存储训练曲线图片
+            "logs",  # 存储详细日志
+            "config"  # 存储配置文件
+        ]
+
+        for subdir in subdirs:
+            os.makedirs(os.path.join(self.current_training_dir, subdir), exist_ok=True)
 
     def start_training_session(self,
                                mesh_name: Optional[str] = None,
@@ -125,67 +145,50 @@ class TrainingHistoryManager:
         self.episode_rewards = []
         self.episodes = []
 
+        # 重置基于timestep的保存机制
+        self.last_save_timestep = 0
+        self.episode_data_cache = []
+        self.total_timesteps = 0
+
         # 保存初始元数据
         self._save_metadata()
 
         self.logger.info(f"开始新的训练会话: {self.current_training_id}")
+        self.logger.info(f"History保存频率: 每{self.save_frequency_timesteps}个timesteps")
         return self.current_training_id
 
-    def _create_training_subdirectories(self):
-        """创建训练会话的子目录结构"""
-        subdirs = [
-            "episodes",  # 存储每个episode的详细信息
-            "checkpoints",  # 存储模型检查点
-            "models",  # 存储最终模型权重
-            "plots",  # 存储训练曲线图片
-            "logs",  # 存储详细日志
-            "config"  # 存储配置文件
-        ]
-
-        for subdir in subdirs:
-            os.makedirs(os.path.join(self.current_training_dir, subdir), exist_ok=True)
-
-    def save_episode_data(self, episode_data: Dict[str, Any]) -> bool:
+    def cache_episode_data(self, episode_data: Dict[str, Any]) -> bool:
         """
-        保存单个episode的数据并收集统计信息
+        缓存episode数据，而不是立即保存
 
         Args:
             episode_data: episode数据字典
 
         Returns:
-            bool: 保存是否成功
+            bool: 缓存是否成功
         """
         if not self.current_training_id:
-            self.logger.warning("没有活动的训练会话，无法保存episode数据")
+            self.logger.warning("没有活动的训练会话，无法缓存episode数据")
             return False
 
         try:
             self.episode_count += 1
             episode_num = episode_data.get('episode', self.episode_count)
 
-            # 准备episode文件路径
-            episode_filename = f"episode_{episode_num:06d}.json"
-            episode_filepath = os.path.join(
-                self.current_training_dir,
-                "episodes",
-                episode_filename
-            )
-
             # 添加额外的元数据
             enhanced_data = episode_data.copy()
             enhanced_data.update({
                 "training_id": self.current_training_id,
-                "save_timestamp": time.time(),
-                "save_datetime": datetime.now().isoformat(),
+                "cache_timestamp": time.time(),
+                "cache_datetime": datetime.now().isoformat(),
                 "episode_index": self.episode_count
             })
 
             # 深度清理数据以确保JSON兼容性
             clean_data = self._deep_clean_for_json(enhanced_data)
 
-            # 保存episode数据
-            with open(episode_filepath, 'w', encoding='utf-8') as f:
-                json.dump(clean_data, f, indent=2, ensure_ascii=False)
+            # 缓存数据
+            self.episode_data_cache.append(clean_data)
 
             # 收集训练统计数据用于图表生成
             self._collect_training_stats(clean_data)
@@ -193,16 +196,100 @@ class TrainingHistoryManager:
             # 更新训练元数据
             self._update_training_metadata(clean_data)
 
-            # 定期保存元数据（每10个episode或重要里程碑）
-            if self.episode_count % 10 == 0 or clean_data.get('episode_reward', 0) > self.training_metadata.get(
-                    'best_reward', float('-inf')):
-                self._save_metadata()
+            # 更新总timesteps
+            self.total_timesteps = clean_data.get('total_steps', self.total_timesteps)
+
+            # 检查是否需要保存
+            if self._should_save_history():
+                self._flush_episode_cache()
 
             return True
 
         except Exception as e:
-            self.logger.error(f"保存episode数据失败: {e}")
+            self.logger.error(f"缓存episode数据失败: {e}")
             return False
+
+    def _should_save_history(self) -> bool:
+        """
+        判断是否应该保存历史数据（基于timestep间隔）
+
+        Returns:
+            bool: 是否应该保存
+        """
+        timesteps_since_last_save = self.total_timesteps - self.last_save_timestep
+        return timesteps_since_last_save >= self.save_frequency_timesteps
+
+    def _flush_episode_cache(self) -> bool:
+        """
+        将缓存的episode数据批量写入磁盘
+
+        Returns:
+            bool: 保存是否成功
+        """
+        if not self.episode_data_cache:
+            return True
+
+        try:
+            # 创建批次文件名，基于timestep范围
+            batch_filename = f"episodes_batch_{self.last_save_timestep}_{self.total_timesteps}.json"
+            batch_filepath = os.path.join(
+                self.current_training_dir,
+                "episodes",
+                batch_filename
+            )
+
+            # 准备批次数据
+            batch_data = {
+                "training_id": self.current_training_id,
+                "timestep_range": [self.last_save_timestep, self.total_timesteps],
+                "episode_count": len(self.episode_data_cache),
+                "save_timestamp": time.time(),
+                "save_datetime": datetime.now().isoformat(),
+                "episodes": self.episode_data_cache
+            }
+
+            # 保存批次数据
+            with open(batch_filepath, 'w', encoding='utf-8') as f:
+                json.dump(batch_data, f, indent=2, ensure_ascii=False)
+
+            self.logger.info(f"批量保存了{len(self.episode_data_cache)}个episodes "
+                             f"(timesteps {self.last_save_timestep}-{self.total_timesteps})")
+
+            # 清空缓存并更新保存时间戳
+            self.episode_data_cache = []
+            self.last_save_timestep = self.total_timesteps
+
+            # 保存元数据
+            self._save_metadata()
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"批量保存episode数据失败: {e}")
+            return False
+
+    def save_episode_data(self, episode_data: Dict[str, Any]) -> bool:
+        """
+        保存单个episode的数据（为了兼容性保留，内部调用cache_episode_data）
+
+        Args:
+            episode_data: episode数据字典
+
+        Returns:
+            bool: 保存是否成功
+        """
+        return self.cache_episode_data(episode_data)
+
+    def force_save_cache(self) -> bool:
+        """
+        强制保存当前缓存的数据（用于训练结束或紧急情况）
+
+        Returns:
+            bool: 保存是否成功
+        """
+        if self.episode_data_cache:
+            return self._flush_episode_cache()
+        return True
 
     def _collect_training_stats(self, episode_data: Dict[str, Any]):
         """
@@ -263,6 +350,9 @@ class TrainingHistoryManager:
             self.logger.warning("没有活动的训练会话可以结束")
             return
 
+        # 强制保存剩余的缓存数据
+        self.force_save_cache()
+
         # 更新元数据
         end_time = time.time()
         status = "stopped" if stopped_early else "completed"
@@ -290,6 +380,7 @@ class TrainingHistoryManager:
         self._save_final_models()
 
         self.logger.info(f"训练会话结束: {self.current_training_id}, 状态: {status}")
+        self.logger.info(f"总共保存了{self.episode_count}个episodes的历史数据")
 
         # 清理当前会话信息
         self.current_training_id = None
@@ -301,6 +392,9 @@ class TrainingHistoryManager:
         self.alpha_values = []
         self.episode_rewards = []
         self.episodes = []
+        self.episode_data_cache = []
+        self.last_save_timestep = 0
+        self.total_timesteps = 0
 
     def _generate_training_plots(self):
         """
@@ -434,6 +528,11 @@ class TrainingHistoryManager:
                     "best_reward": max(self.episode_rewards) if self.episode_rewards else 0,
                     "final_reward": self.episode_rewards[-1] if self.episode_rewards else 0,
                 },
+                "save_mechanism": {
+                    "type": "timestep_based",
+                    "save_frequency_timesteps": self.save_frequency_timesteps,
+                    "total_timesteps": self.total_timesteps
+                },
                 "generated_at": datetime.now().isoformat()
             }
 
@@ -546,6 +645,13 @@ class TrainingHistoryManager:
         report = {
             "training_summary": self.training_metadata,
             "final_statistics": final_stats,
+            "save_mechanism": {
+                "type": "timestep_based",
+                "save_frequency_timesteps": self.save_frequency_timesteps,
+                "total_batches_saved": len([f for f in os.listdir(os.path.join(self.current_training_dir, "episodes"))
+                                            if f.endswith('.json')]) if os.path.exists(
+                    os.path.join(self.current_training_dir, "episodes")) else 0
+            },
             "generated_at": datetime.now().isoformat()
         }
 
@@ -629,17 +735,28 @@ class TrainingHistoryManager:
         except Exception as e:
             return {"error": f"读取训练元数据失败: {e}"}
 
-        # 统计episode数量
+        # 统计episode批次文件数量
         episodes_dir = os.path.join(training_dir, "episodes")
-        episode_files = []
+        batch_files = []
+        total_episodes = 0
         if os.path.exists(episodes_dir):
-            episode_files = [f for f in os.listdir(episodes_dir) if f.endswith('.json')]
+            batch_files = [f for f in os.listdir(episodes_dir) if f.endswith('.json')]
+            # 计算总episode数量（从批次文件中）
+            for batch_file in batch_files:
+                try:
+                    batch_path = os.path.join(episodes_dir, batch_file)
+                    with open(batch_path, 'r', encoding='utf-8') as f:
+                        batch_data = json.load(f)
+                        total_episodes += batch_data.get("episode_count", 0)
+                except Exception as e:
+                    self.logger.warning(f"读取批次文件失败: {batch_file}, {e}")
 
         return {
             "metadata": metadata,
-            "episode_count": len(episode_files),
-            "episode_files": sorted(episode_files),
-            "training_directory": training_dir
+            "episode_count": total_episodes,
+            "batch_files": sorted(batch_files),
+            "training_directory": training_dir,
+            "save_mechanism": "timestep_based"
         }
 
     def list_all_trainings(self) -> List[Dict[str, Any]]:
@@ -670,7 +787,7 @@ class TrainingHistoryManager:
 
     def get_episode_data(self, training_id: str, episode_num: int) -> Optional[Dict[str, Any]]:
         """
-        获取特定episode的数据
+        获取特定episode的数据（从批次文件中搜索）
 
         Args:
             training_id: 训练ID
@@ -679,23 +796,30 @@ class TrainingHistoryManager:
         Returns:
             Optional[Dict[str, Any]]: episode数据，如果不存在则返回None
         """
-        episode_filename = f"episode_{episode_num:06d}.json"
-        episode_filepath = os.path.join(
-            self.history_root,
-            training_id,
-            "episodes",
-            episode_filename
-        )
-
-        if not os.path.exists(episode_filepath):
+        episodes_dir = os.path.join(self.history_root, training_id, "episodes")
+        if not os.path.exists(episodes_dir):
             return None
 
-        try:
-            with open(episode_filepath, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            self.logger.error(f"读取episode数据失败: {e}")
-            return None
+        # 搜索所有批次文件
+        batch_files = [f for f in os.listdir(episodes_dir) if f.endswith('.json')]
+
+        for batch_file in batch_files:
+            try:
+                batch_path = os.path.join(episodes_dir, batch_file)
+                with open(batch_path, 'r', encoding='utf-8') as f:
+                    batch_data = json.load(f)
+
+                # 在批次中搜索指定的episode
+                episodes = batch_data.get("episodes", [])
+                for episode_data in episodes:
+                    if episode_data.get("episode") == episode_num:
+                        return episode_data
+
+            except Exception as e:
+                self.logger.error(f"读取批次文件失败: {batch_file}, {e}")
+                continue
+
+        return None
 
     def delete_training_history(self, training_id: str) -> bool:
         """
@@ -747,6 +871,8 @@ class TrainingHistoryManager:
                 "export_datetime": datetime.now().isoformat(),
                 "training_metadata": training_info["metadata"],
                 "episode_count": training_info["episode_count"],
+                "batch_files_count": len(training_info.get("batch_files", [])),
+                "save_mechanism": training_info.get("save_mechanism", "timestep_based"),
                 "export_path": export_path
             }
 
@@ -777,3 +903,41 @@ class TrainingHistoryManager:
             bool: 是否有活动的训练会话
         """
         return self.current_training_id is not None
+
+    def get_save_frequency(self) -> int:
+        """
+        获取当前的保存频率（timesteps）
+
+        Returns:
+            int: 保存频率
+        """
+        return self.save_frequency_timesteps
+
+    def set_save_frequency(self, frequency: int):
+        """
+        设置保存频率（timesteps）
+
+        Args:
+            frequency: 新的保存频率
+        """
+        if frequency > 0:
+            self.save_frequency_timesteps = frequency
+            self.logger.info(f"History保存频率已更新为: 每{frequency}个timesteps")
+        else:
+            self.logger.warning("保存频率必须大于0")
+
+    def get_cache_status(self) -> Dict[str, Any]:
+        """
+        获取当前缓存状态
+
+        Returns:
+            Dict[str, Any]: 缓存状态信息
+        """
+        return {
+            "cached_episodes": len(self.episode_data_cache),
+            "last_save_timestep": self.last_save_timestep,
+            "current_timestep": self.total_timesteps,
+            "timesteps_since_last_save": self.total_timesteps - self.last_save_timestep,
+            "save_frequency": self.save_frequency_timesteps,
+            "will_save_next": self._should_save_history()
+        }

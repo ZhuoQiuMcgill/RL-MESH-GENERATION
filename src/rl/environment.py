@@ -114,7 +114,7 @@ class MeshEnv(gym.Env):
 
         def get_invalid_penalty():
             # 无效动作的惩罚，首次为-1，之后为-1/生成元素数量
-            punish = (self.current_step - self.max_steps) * 0.1
+            punish = (self.current_step - 50)
             if self.first_invalid_action or self.generated_elements == 0:
                 self.first_invalid_action = False
                 return punish

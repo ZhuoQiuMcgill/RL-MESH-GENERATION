@@ -78,6 +78,9 @@ training:
   log_frequency: 1000             # 每多少个timestep输出一次日志
   evaluation_frequency: 5000      # 每多少个timestep进行一次评估
 
+  # 训练历史保存频率 - 新增配置
+  history_save_frequency: 10000   # 每多少个timestep保存一次episode历史数据
+
   # 早停和收敛参数
   early_stopping_patience: 200    # 早停的patience（暂未实现）
   convergence_threshold: 0.01     # 收敛阈值（暂未实现）
