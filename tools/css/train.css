@@ -1,4 +1,4 @@
-/* 自定义样式 */
+/* 自定义样式 - 修复响应式布局问题 */
 
 /* 状态指示器动画 */
 @keyframes pulse-success {
@@ -37,13 +37,89 @@
     animation: pulse-warning 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Canvas样式 */
+/* Canvas样式 - 修复响应式和居中问题 */
 #mesh-canvas {
     cursor: crosshair;
     background: linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc),
     linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc);
     background-size: 20px 20px;
     background-position: 0 0, 10px 10px;
+    /* 修复Canvas居中问题 */
+    display: block;
+    margin: 0 auto;
+    border-radius: inherit;
+}
+
+/* 修复Canvas容器的响应式和居中问题 */
+.canvas-container {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px; /* 给边框留出空间 */
+    box-sizing: border-box;
+}
+
+/* 主容器响应式修复 */
+.main-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* 左侧面板响应式修复 */
+.left-panel {
+    width: 320px;
+    min-width: 280px;
+    max-width: 400px;
+    flex-shrink: 0;
+    background: white;
+    border-right: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 右侧内容区域响应式修复 */
+.right-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0; /* 防止flex项目溢出 */
+    overflow: hidden;
+}
+
+/* 顶部信息栏响应式修复 */
+.top-info-bar {
+    flex-shrink: 0;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 1rem;
+}
+
+/* 可视化区域响应式修复 */
+.visualization-area {
+    flex: 1;
+    padding: 1.5rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 底部日志区域响应式修复 */
+.bottom-log-area {
+    flex-shrink: 0;
+    background: white;
+    border-top: 1px solid #e5e7eb;
+    padding: 1rem;
+    height: 8rem;
+    min-height: 6rem;
+    max-height: 12rem;
 }
 
 /* 日志容器滚动条样式 */
@@ -125,35 +201,102 @@ input:focus, select:focus {
     stroke-width: 1;
 }
 
-/* 响应式设计 */
+/* 响应式设计 - 修复布局问题 */
+@media (max-width: 1280px) {
+    .left-panel {
+        width: 280px;
+        min-width: 260px;
+    }
+
+    .top-info-bar {
+        padding: 0.75rem;
+    }
+
+    .visualization-area {
+        padding: 1rem;
+    }
+}
+
 @media (max-width: 1024px) {
-    .flex.h-screen {
+    .main-container {
         flex-direction: column;
+        height: 100vh;
     }
 
-    .w-80 {
+    .left-panel {
         width: 100%;
+        max-width: none;
         height: auto;
-        max-height: 400px;
+        max-height: 50vh;
+        min-height: 300px;
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+        overflow-y: auto;
     }
 
-    .flex-1.flex.flex-col {
-        height: calc(100vh - 400px);
-        min-height: 500px;
+    .right-content {
+        flex: 1;
+        height: 50vh;
+        min-height: 400px;
+    }
+
+    .visualization-area {
+        padding: 0.75rem;
+    }
+
+    .bottom-log-area {
+        padding: 0.75rem;
+        height: 6rem;
     }
 }
 
 @media (max-width: 768px) {
-    .w-80 {
-        max-height: 350px;
+    .left-panel {
+        max-height: 60vh;
+        min-height: 250px;
     }
 
-    .p-6 {
-        padding: 1rem;
+    .right-content {
+        height: 40vh;
+        min-height: 300px;
     }
 
+    .top-info-bar {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .visualization-area {
+        padding: 0.5rem;
+    }
+
+    .bottom-log-area {
+        padding: 0.5rem;
+        height: 5rem;
+    }
+
+    /* 调整字体大小 */
     .space-y-3 > * + * {
         margin-top: 0.5rem;
+    }
+
+    /* 按钮和输入框在小屏幕上的调整 */
+    button, input, select {
+        font-size: 0.875rem;
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* 修复缩放时的字体和元素大小问题 */
+@media (min-resolution: 120dpi) {
+    body {
+        font-size: 14px;
+    }
+}
+
+@media (min-resolution: 144dpi) {
+    body {
+        font-size: 13px;
     }
 }
 
@@ -261,4 +404,16 @@ input:focus, select:focus {
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 14px;
+}
+
+/* 确保在所有缩放级别下文本可读性 */
+* {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* 防止布局在缩放时破裂 */
+.flex {
+    min-width: 0;
+    min-height: 0;
 }

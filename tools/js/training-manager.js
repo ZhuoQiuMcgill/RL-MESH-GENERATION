@@ -1,5 +1,5 @@
 /**
- * 强化学习网格生成训练管理系统
+ * 强化学习网格生成训练管理系统 - 修复版本
  * 主要的TrainingManager类，整合所有功能模块
  */
 
@@ -18,6 +18,7 @@ export class TrainingManager {
         // 状态管理
         this.isTraining = false;
         this.updateInterval = null;
+        this.immediateUpdateTimer = null; // 新增：立即更新定时器
 
         // 创建带错误处理的API方法
         this.safeApiCall = withErrorHandling.bind(this);
@@ -195,7 +196,7 @@ export class TrainingManager {
     }
 
     /**
-     * 开始训练
+     * 开始训练 - 修复版本，立即获取状态
      */
     async startTraining() {
         // 验证配置
@@ -216,7 +217,12 @@ export class TrainingManager {
             this.isTraining = true;
             this.uiController.updateButtonStates(true);
             this.uiController.updateStatusIndicator(STATUS.RUNNING);
+
+            // 修复：立即开始状态更新
             this.startPeriodicUpdate();
+
+            // 新增：立即获取第一次状态更新，减少延迟
+            this.scheduleImmediateUpdate();
 
         } catch (error) {
             console.error('启动训练失败:', error);
@@ -224,6 +230,28 @@ export class TrainingManager {
         } finally {
             this.uiController.showLoading(false);
         }
+    }
+
+    /**
+     * 新增：安排立即状态更新
+     */
+    scheduleImmediateUpdate() {
+        // 清除之前的立即更新定时器
+        if (this.immediateUpdateTimer) {
+            clearTimeout(this.immediateUpdateTimer);
+        }
+
+        // 500ms后立即获取一次状态，然后在1秒、2秒后再获取
+        const immediateUpdates = [500, 1000, 2000];
+
+        immediateUpdates.forEach((delay, index) => {
+            setTimeout(async () => {
+                if (this.isTraining) {
+                    await this.updateTrainingStatus();
+                    this.uiController.logMessage(`获取训练状态更新 #${index + 1}`, LOG_TYPES.INFO);
+                }
+            }, delay);
+        });
     }
 
     /**
@@ -235,6 +263,11 @@ export class TrainingManager {
         this.isTraining = false;
         this.uiController.updateButtonStates(false);
         this.uiController.updateStatusIndicator(STATUS.STOPPING);
+
+        // 清除立即更新定时器
+        if (this.immediateUpdateTimer) {
+            clearTimeout(this.immediateUpdateTimer);
+        }
 
         try {
             this.uiController.showLoading(true);
@@ -282,6 +315,11 @@ export class TrainingManager {
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
             this.updateInterval = null;
+        }
+
+        if (this.immediateUpdateTimer) {
+            clearTimeout(this.immediateUpdateTimer);
+            this.immediateUpdateTimer = null;
         }
     }
 
@@ -356,6 +394,16 @@ export class TrainingManager {
     }, 100);
 
     /**
+     * 处理窗口大小变化 - 新增方法
+     */
+    handleResize() {
+        if (this.canvasRenderer) {
+            this.canvasRenderer.onResize();
+        }
+        this.uiController.logMessage('窗口大小已调整', LOG_TYPES.INFO);
+    }
+
+    /**
      * 获取应用程序状态
      * @returns {Object} 应用程序状态
      */
@@ -373,6 +421,11 @@ export class TrainingManager {
      */
     destroy() {
         this.stopPeriodicUpdate();
+
+        if (this.canvasRenderer) {
+            this.canvasRenderer.destroy();
+        }
+
         this.uiController.reset();
 
         // 清理事件监听器
@@ -381,4 +434,3 @@ export class TrainingManager {
         console.log('TrainingManager已销毁');
     }
 }
-

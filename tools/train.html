@@ -23,10 +23,10 @@
     </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
-<!-- 主容器 -->
-<div class="flex h-screen">
-    <!-- 左侧控制面板 -->
-    <div class="w-80 bg-white shadow-lg border-r border-gray-200 flex flex-col">
+<!-- 主容器 - 添加响应式类 -->
+<div class="main-container">
+    <!-- 左侧控制面板 - 添加响应式类 -->
+    <div class="left-panel shadow-lg">
         <!-- 头部 -->
         <div class="p-6 border-b border-gray-200">
             <h1 class="text-2xl font-bold text-gray-800">训练管理</h1>
@@ -34,7 +34,7 @@
         </div>
 
         <!-- 控制区域 -->
-        <div class="flex-1 p-6 overflow-y-auto">
+        <div class="flex-1 p-6 overflow-y-auto custom-scrollbar">
             <!-- 状态指示器 -->
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-2">
@@ -124,17 +124,17 @@
         </div>
     </div>
 
-    <!-- 右侧主要内容区域 -->
-    <div class="flex-1 flex flex-col">
-        <!-- 顶部信息栏 -->
-        <div class="bg-white shadow-sm border-b border-gray-200 p-4">
-            <div class="flex items-center justify-between">
+    <!-- 右侧主要内容区域 - 添加响应式类 -->
+    <div class="right-content">
+        <!-- 顶部信息栏 - 添加响应式类 -->
+        <div class="top-info-bar shadow-sm">
+            <div class="flex items-center justify-between flex-wrap gap-4">
                 <div>
                     <h2 class="text-lg font-semibold text-gray-800">网格可视化</h2>
                     <p class="text-sm text-gray-600">Episode <span id="display-episode">0</span> -
                         边界顶点: <span id="boundary-vertices">0</span></p>
                 </div>
-                <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-4 flex-wrap">
                     <div class="text-sm">
                         <span class="text-gray-600">Episode奖励:</span>
                         <span id="episode-reward" class="font-semibold text-gray-800">0.000</span>
@@ -155,20 +155,23 @@
             </div>
         </div>
 
-        <!-- 网格可视化区域 -->
-        <div class="flex-1 p-6">
-            <div class="h-full bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <canvas id="mesh-canvas" class="w-full h-full border border-gray-300 rounded"></canvas>
+        <!-- 网格可视化区域 - 添加响应式类 -->
+        <div class="visualization-area">
+            <div class="h-full bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+                <div class="canvas-container">
+                    <canvas id="mesh-canvas" class="border border-gray-300 rounded"></canvas>
+                </div>
             </div>
         </div>
 
-        <!-- 底部日志区域 -->
-        <div class="bg-white border-t border-gray-200 p-4 h-32">
+        <!-- 底部日志区域 - 添加响应式类 -->
+        <div class="bottom-log-area">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-700">训练日志</h3>
                 <button id="clear-log-btn" class="text-xs text-gray-500 hover:text-gray-700">清除</button>
             </div>
-            <div id="log-container" class="h-20 overflow-y-auto bg-gray-50 rounded px-3 py-2 text-xs font-mono">
+            <div id="log-container"
+                 class="h-20 overflow-y-auto bg-gray-50 rounded px-3 py-2 text-xs font-mono custom-scrollbar">
                 <div class="text-gray-500">等待训练开始...</div>
             </div>
         </div>
@@ -191,6 +194,18 @@
     // 当页面加载完成后初始化应用
     document.addEventListener('DOMContentLoaded', () => {
         window.trainingManager = new TrainingManager();
+
+        // 添加窗口大小变化的监听器
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                // 通知训练管理器窗口大小已改变
+                if (window.trainingManager && window.trainingManager.handleResize) {
+                    window.trainingManager.handleResize();
+                }
+            }, 150);
+        });
     });
 </script>
 </body>

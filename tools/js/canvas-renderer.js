@@ -1,5 +1,5 @@
 /**
- * Canvas渲染模块
+ * Canvas渲染模块 - 修复响应式和缩放问题
  * 负责所有Canvas相关的绘制功能
  */
 
@@ -10,6 +10,11 @@ export class CanvasRenderer {
         this.canvas = canvasElement;
         this.ctx = canvasElement.getContext('2d');
         this.currentTransform = null;
+        this.isResizing = false;
+
+        // 添加防抖机制
+        this.resizeDebounceTimer = null;
+        this.lastRenderData = null; // 缓存最后的渲染数据
 
         this.setupCanvas();
         this.bindResizeEvent();
@@ -24,96 +29,196 @@ export class CanvasRenderer {
     }
 
     /**
-     * 绑定窗口大小改变事件
+     * 绑定窗口大小改变事件 - 修复版本
      */
     bindResizeEvent() {
-        window.addEventListener('resize', () => this.resizeCanvas());
+        // 使用防抖机制优化性能
+        const debouncedResize = () => {
+            clearTimeout(this.resizeDebounceTimer);
+            this.resizeDebounceTimer = setTimeout(() => {
+                this.handleResize();
+            }, 150);
+        };
+
+        window.addEventListener('resize', debouncedResize);
+
+        // 监听浏览器缩放变化
+        let lastDevicePixelRatio = window.devicePixelRatio;
+        const checkPixelRatio = () => {
+            if (window.devicePixelRatio !== lastDevicePixelRatio) {
+                lastDevicePixelRatio = window.devicePixelRatio;
+                this.handleResize();
+            }
+            requestAnimationFrame(checkPixelRatio);
+        };
+        checkPixelRatio();
     }
 
     /**
-     * 调整Canvas大小
+     * 处理窗口大小变化 - 新增方法
+     */
+    handleResize() {
+        if (this.isResizing) return;
+
+        this.isResizing = true;
+
+        try {
+            this.resizeCanvas();
+
+            // 如果有缓存的渲染数据，重新渲染
+            if (this.lastRenderData) {
+                this.renderScene(
+                    this.lastRenderData.meshData,
+                    this.lastRenderData.boundaryVertices,
+                    this.lastRenderData.refPointInfo
+                );
+            } else {
+                this.clearCanvas();
+            }
+        } catch (error) {
+            console.error('Canvas resize error:', error);
+        } finally {
+            this.isResizing = false;
+        }
+    }
+
+    /**
+     * 调整Canvas大小 - 修复版本，确保居中
      */
     resizeCanvas() {
         const container = this.canvas.parentElement;
+        if (!container) return;
+
         const rect = container.getBoundingClientRect();
 
-        // 考虑padding
-        const displayWidth = rect.width - CONSTANTS.CANVAS_PADDING;
-        const displayHeight = rect.height - CONSTANTS.CANVAS_PADDING;
+        // 确保容器有有效的尺寸
+        if (rect.width === 0 || rect.height === 0) {
+            // 延迟重试
+            setTimeout(() => this.resizeCanvas(), 100);
+            return;
+        }
+
+        // 考虑容器的padding和边框
+        const computedStyle = window.getComputedStyle(container);
+        const paddingX = parseFloat(computedStyle.paddingLeft) + parseFloat(computedStyle.paddingRight);
+        const paddingY = parseFloat(computedStyle.paddingTop) + parseFloat(computedStyle.paddingBottom);
+        const borderX = parseFloat(computedStyle.borderLeftWidth) + parseFloat(computedStyle.borderRightWidth);
+        const borderY = parseFloat(computedStyle.borderTopWidth) + parseFloat(computedStyle.borderBottomWidth);
+
+        // 计算可用空间
+        const availableWidth = rect.width - paddingX - borderX;
+        const availableHeight = rect.height - paddingY - borderY;
+
+        // 设置Canvas的显示大小，保持一定的边距
+        const margin = 8; // 8px的边距
+        const displayWidth = Math.max(100, availableWidth - margin * 2);
+        const displayHeight = Math.max(100, availableHeight - margin * 2);
+
+        // 获取当前设备像素比，处理高DPI显示器
+        const devicePixelRatio = window.devicePixelRatio || 1;
 
         // 设置Canvas的实际像素大小
-        this.canvas.width = displayWidth * CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO;
-        this.canvas.height = displayHeight * CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO;
+        this.canvas.width = displayWidth * devicePixelRatio;
+        this.canvas.height = displayHeight * devicePixelRatio;
 
         // 设置Canvas的显示大小
         this.canvas.style.width = displayWidth + 'px';
         this.canvas.style.height = displayHeight + 'px';
 
+        // 清除之前的变换并重新设置
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
         // 缩放Canvas上下文以匹配设备像素比
-        this.ctx.scale(CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO, CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO);
+        this.ctx.scale(devicePixelRatio, devicePixelRatio);
+
+        // 重新设置默认样式
+        this.ctx.imageSmoothingEnabled = true;
+        this.ctx.imageSmoothingQuality = 'high';
+
+        // 确保Canvas在容器中居中（通过CSS flexbox已经处理，这里不需要额外设置）
     }
 
     /**
      * 清空Canvas
      */
     clearCanvas() {
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
+        const displayHeight = this.canvas.height / (window.devicePixelRatio || 1);
+
+        this.ctx.clearRect(0, 0, displayWidth, displayHeight);
         this.drawGrid();
         this.drawWaitingText();
         this.currentTransform = null;
+        this.lastRenderData = null;
     }
 
     /**
-     * 绘制网格背景
+     * 绘制网格背景 - 修复版本
      */
     drawGrid() {
+        const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
+        const displayHeight = this.canvas.height / (window.devicePixelRatio || 1);
+
         const gridSize = CONSTANTS.GRID_SIZE;
         this.ctx.strokeStyle = '#F3F4F6';
         this.ctx.lineWidth = 0.5;
 
         // 垂直线
-        for (let x = 0; x <= this.canvas.width; x += gridSize) {
+        for (let x = 0; x <= displayWidth; x += gridSize) {
             this.ctx.beginPath();
             this.ctx.moveTo(x, 0);
-            this.ctx.lineTo(x, this.canvas.height);
+            this.ctx.lineTo(x, displayHeight);
             this.ctx.stroke();
         }
 
         // 水平线
-        for (let y = 0; y <= this.canvas.height; y += gridSize) {
+        for (let y = 0; y <= displayHeight; y += gridSize) {
             this.ctx.beginPath();
             this.ctx.moveTo(0, y);
-            this.ctx.lineTo(this.canvas.width, y);
+            this.ctx.lineTo(displayWidth, y);
             this.ctx.stroke();
         }
     }
 
     /**
-     * 绘制等待文本
+     * 绘制等待文本 - 修复版本
      */
     drawWaitingText() {
+        const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
+        const displayHeight = this.canvas.height / (window.devicePixelRatio || 1);
+
         this.ctx.fillStyle = '#9CA3AF';
         this.ctx.font = '16px sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.fillText(
             '等待训练开始...',
-            this.canvas.width / (2 * CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO),
-            this.canvas.height / (2 * CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO)
+            displayWidth / 2,
+            displayHeight / 2
         );
     }
 
     /**
-     * 统一渲染Mesh和Boundary
+     * 统一渲染Mesh和Boundary - 修复版本
      * @param {Object} meshData - 网格数据
      * @param {Array} boundaryVertices - 边界顶点数据
      * @param {Object} refPointInfo - 参考点信息
      */
     renderScene(meshData, boundaryVertices, refPointInfo = null) {
+        // 缓存渲染数据
+        this.lastRenderData = {
+            meshData: meshData,
+            boundaryVertices: boundaryVertices,
+            refPointInfo: refPointInfo
+        };
+
         // 解析数据
         meshData = parseBackendData(meshData);
         boundaryVertices = parseBackendData(boundaryVertices);
 
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
+        const displayHeight = this.canvas.height / (window.devicePixelRatio || 1);
+
+        this.ctx.clearRect(0, 0, displayWidth, displayHeight);
         this.drawGrid();
 
         // 收集所有顶点用于计算变换
@@ -176,7 +281,7 @@ export class CanvasRenderer {
     }
 
     /**
-     * 计算坐标变换参数
+     * 计算坐标变换参数 - 修复版本
      * @param {Array} vertices - 顶点数组
      * @returns {Object} 变换参数
      */
@@ -192,8 +297,8 @@ export class CanvasRenderer {
         const dataHeight = maxY - minY;
 
         // 使用逻辑像素计算
-        const logicalWidth = this.canvas.width / CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO;
-        const logicalHeight = this.canvas.height / CONSTANTS.CANVAS_DEVICE_PIXEL_RATIO;
+        const logicalWidth = this.canvas.width / (window.devicePixelRatio || 1);
+        const logicalHeight = this.canvas.height / (window.devicePixelRatio || 1);
 
         const padding = CONSTANTS.DEFAULT_PADDING;
         const scaleX = (logicalWidth - 2 * padding) / (dataWidth || 1);
@@ -400,7 +505,7 @@ export class CanvasRenderer {
     }
 
     /**
-     * 屏幕坐标转世界坐标
+     * 屏幕坐标转世界坐标 - 修复版本
      * @param {number} screenX - 屏幕X坐标
      * @param {number} screenY - 屏幕Y坐标
      * @param {Object} transform - 变换参数
@@ -422,5 +527,23 @@ export class CanvasRenderer {
      */
     getCurrentTransform() {
         return this.currentTransform;
+    }
+
+    /**
+     * 公共方法：处理窗口大小变化
+     */
+    onResize() {
+        this.handleResize();
+    }
+
+    /**
+     * 销毁Canvas渲染器
+     */
+    destroy() {
+        if (this.resizeDebounceTimer) {
+            clearTimeout(this.resizeDebounceTimer);
+        }
+        this.lastRenderData = null;
+        this.currentTransform = null;
     }
 }
