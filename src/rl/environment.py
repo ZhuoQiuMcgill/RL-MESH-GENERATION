@@ -118,7 +118,7 @@ class MeshEnv(gym.Env):
             if self.first_invalid_action or self.generated_elements == 0:
                 self.first_invalid_action = False
                 return punish
-            return punish / self.generated_elements
+            return punish
 
         element_quality_reward = 0
         boundary_quality_reward = -1
