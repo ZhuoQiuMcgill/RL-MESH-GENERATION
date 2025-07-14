@@ -217,9 +217,6 @@ class MeshEnv(gym.Env):
             truncated = True
 
         # 更新episode统计
-        # 更新episode统计
-        print(
-            f"环境Step: 动作类型={action_type}, 动作有效={action_valid}, 奖励={reward:.3f}, terminated={terminated}, truncated={truncated}")
         self._update_episode_stats(reward)
 
         # 获取新状态
@@ -232,15 +229,6 @@ class MeshEnv(gym.Env):
             "boundary_vertices": len(self.boundary.get_vertices()),
             "element_generated": generated_element is not None
         }
-
-        # 在episode结束时保存参考信息给回调使用
-        if terminated or truncated:
-            # 确保last_reference_info被正确设置，方便回调获取
-            if not hasattr(self, 'last_reference_info') or self.last_reference_info is None:
-                self.last_reference_info = {
-                    "ref_vertex": (0.0, 0.0),
-                    "local_env_vertices": []
-                }
 
         return observation, reward, terminated, truncated, info
 
@@ -553,17 +541,5 @@ class MeshEnv(gym.Env):
         pass
 
     def get_last_reference_info(self):
-        """
-        获取最后一次的参考信息
-
-        Returns:
-            dict: 包含参考顶点和局部环境信息的字典
-        """
-        if hasattr(self, 'last_reference_info') and self.last_reference_info:
-            return self.last_reference_info
-        else:
-            # 返回默认值
-            return {
-                "ref_vertex": (0.0, 0.0),
-                "local_env_vertices": []
-            }
+        """返回上一步的参考点及其局部环境信息"""
+        return self.last_reference_info

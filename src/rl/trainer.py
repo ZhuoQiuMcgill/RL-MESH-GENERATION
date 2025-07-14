@@ -391,29 +391,19 @@ class MeshTrainer:
         Returns:
             包含episode数据的字典
         """
-        # 获取当前网格数据，确保数据是最新的
-        mesh_data = {}
-        boundary_vertices = []
-        try:
-            if hasattr(self.env, 'mesh') and self.env.mesh:
-                mesh_data = self.env.mesh.get_mesh()
-                print(f"SB3 Episode {episode}: 获取到mesh数据，顶点数={len(mesh_data)}")
-            if hasattr(self.env, 'boundary') and self.env.boundary:
-                boundary_vertices = self.env.boundary.get_vertices()
-                print(f"SB3 Episode {episode}: 获取到boundary数据，边界顶点数={len(boundary_vertices)}")
-        except Exception as e:
-            print(f"获取mesh/boundary数据时出错: {e}")
+        # 获取当前网格数据
+        mesh_data = self.env.mesh.get_mesh() if hasattr(self.env, 'mesh') else {}
+        boundary_vertices = self.env.boundary.get_vertices() if hasattr(self.env, 'boundary') else []
 
         # 计算统计信息
         avg_reward = np.mean(list(self.recent_rewards)) if self.recent_rewards else 0
-        print(f"SB3 Episode {episode}: 平均奖励={avg_reward:.3f}, recent_rewards长度={len(self.recent_rewards)}")
 
         episode_data = {
             'episode': episode,
             'episode_reward': float(episode_reward),
             'episode_length': episode_length,
             'average_reward': float(avg_reward),
-            'total_steps': getattr(self.agent.model, 'num_timesteps', 0),
+            'total_steps': self.agent.training_stats.get('total_timesteps', 0),
             'mesh_data': mesh_data,
             'boundary_vertices': boundary_vertices,
             'boundary_size': len(boundary_vertices),

@@ -18,104 +18,60 @@ from ..config import load_config
 class HistoryCallback(BaseCallback):
     """
     自定义回调函数，用于收集训练过程中的数据并触发episode回调
-    修复版本：正确处理episode统计和定期输出训练日志
+    现在使用环境的episode统计功能
     """
 
     def __init__(self, trainer_instance, verbose=0):
         super(HistoryCallback, self).__init__(verbose)
         self.trainer = trainer_instance
         self.episode_count = 0
-        self.last_log_timestep = 0
-        self.log_frequency = 1000  # 每1000步输出一次日志
-
-    def _on_training_start(self) -> None:
-        """训练开始时的初始化"""
-        super()._on_training_start()
-        print(f"SB3训练回调已启动，目标timesteps: {self.model.num_timesteps + self.model._total_timesteps}")
 
     def _on_step(self) -> bool:
         """在每个训练步骤后调用"""
         # 检查是否完成了一个episode
         dones = self.locals.get('dones', [False])
-
-        # 处理episode结束
         if any(dones):
             self._on_episode_end()
 
-        # 定期输出训练日志
-        current_timestep = self.model.num_timesteps
-        if current_timestep - self.last_log_timestep >= self.log_frequency:
-            self._log_training_progress(current_timestep)
-            self.last_log_timestep = current_timestep
-
         return True
-
-    def _log_training_progress(self, current_timestep):
-        """输出训练进度日志"""
-        try:
-            # 获取最近的episode统计
-            if hasattr(self.trainer, 'recent_rewards') and self.trainer.recent_rewards:
-                avg_reward = np.mean(list(self.trainer.recent_rewards))
-                latest_reward = list(self.trainer.recent_rewards)[-1]
-            else:
-                avg_reward = 0.0
-                latest_reward = 0.0
-
-            # 获取训练ID
-            training_id = ""
-            if hasattr(self.trainer, 'history_manager'):
-                training_id = f"[{self.trainer.history_manager.get_current_training_id()}]"
-
-            print(f"SB3 Timestep {current_timestep} Episode {self.episode_count} {training_id}: "
-                  f"最新奖励={latest_reward:.3f}, 平均奖励={avg_reward:.3f}")
-
-        except Exception as e:
-            print(f"SB3训练日志输出错误: {e}")
 
     def _on_episode_end(self):
         """episode结束时的处理"""
         self.episode_count += 1
 
-        # 获取episode统计信息 - 直接访问环境
-        episode_reward = 0.0
-        episode_length = 0
-
+        # 获取episode统计信息
         try:
-            # 直接访问环境对象（SB3的环境通常是单环境）
-            env = self.training_env
+            if hasattr(self.training_env, 'get_attr'):
+                # 处理VecEnv
+                episode_rewards = self.training_env.get_attr('episode_reward')
+                episode_lengths = self.training_env.get_attr('episode_length')
 
-            # 尝试多种方式获取episode统计
-            if hasattr(env, 'episode_reward'):
-                episode_reward = float(env.episode_reward)
-            elif hasattr(env, 'get_wrapper_attr'):
-                episode_reward = float(env.get_wrapper_attr('episode_reward'))
-
-            if hasattr(env, 'episode_length'):
-                episode_length = int(env.episode_length)
-            elif hasattr(env, 'get_wrapper_attr'):
-                episode_length = int(env.get_wrapper_attr('episode_length'))
-
-            print(f"SB3回调: Episode {self.episode_count} 结束，奖励={episode_reward:.3f}, 长度={episode_length}")
-
+                episode_reward = episode_rewards[0] if episode_rewards else 0.0
+                episode_length = episode_lengths[0] if episode_lengths else 0
+            else:
+                # 处理单个环境
+                episode_reward = self.training_env.get_wrapper_attr('episode_reward')
+                episode_length = self.training_env.get_wrapper_attr('episode_length')
         except Exception as e:
-            print(f"SB3回调获取episode统计失败: {e}")
-            # 使用默认值
+            # 如果获取失败，使用默认值
+            print(f"警告: 获取episode统计信息失败: {e}")
             episode_reward = 0.0
             episode_length = 0
 
         # 获取当前环境的参考信息
         ref_info = None
         try:
-            env = self.training_env
-            if hasattr(env, 'get_last_reference_info'):
-                ref_info = env.get_last_reference_info()
-        except Exception as e:
-            print(f"SB3回调获取参考信息失败: {e}")
+            if hasattr(self.training_env, 'get_attr'):
+                # 处理VecEnv
+                infos = self.training_env.get_attr('get_last_reference_info')
+                ref_info = infos[0]() if infos and callable(infos[0]) else None
+            else:
+                # 处理单个环境
+                if hasattr(self.training_env, 'get_last_reference_info'):
+                    ref_info = self.training_env.get_last_reference_info()
+        except Exception:
+            # 如果获取参考信息失败，设为None
             ref_info = None
-
-        # 强制更新trainer的recent_rewards用于平均奖励计算
-        if hasattr(self.trainer, 'recent_rewards'):
-            self.trainer.recent_rewards.append(episode_reward)
 
         # 创建episode数据
         episode_data = self.trainer._create_sb3_episode_data(
@@ -233,7 +189,7 @@ class SB3SACAgent:
         )
 
         # 更新统计信息
-        self.training_stats['total_timesteps'] = self.model.num_timesteps
+        self.training_stats['total_timesteps'] += total_timesteps
 
         return {
             'total_timesteps': self.training_stats['total_timesteps'],

@@ -113,10 +113,6 @@ class TrainingManager:
         Args:
             episode_data: episode完成时的数据
         """
-        print(f"前端回调收到数据: Episode {episode_data.get('episode', 0)}, "
-              f"奖励={episode_data.get('episode_reward', 0):.3f}, "
-              f"平均奖励={episode_data.get('average_reward', 0):.3f}")
-
         if self._stats is None:
             self._stats = {}
 
