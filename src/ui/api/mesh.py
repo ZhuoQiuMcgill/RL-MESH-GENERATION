@@ -1,4 +1,5 @@
-from flask import Blueprint, jsonify, request
+import traceback
+from flask import Blueprint, jsonify, request, current_app
 from src.utils import MeshImporter
 
 mesh_bp = Blueprint("mesh", __name__, url_prefix="/mesh")
@@ -18,9 +19,22 @@ def list_meshes():
     返回:
         JSON响应包含mesh文件名列表
     """
-    subfolder = request.args.get("subfolder", "mesh")
-    meshes = importer.list_available_meshes(subfolder)
-    return jsonify({"meshes": meshes, "count": len(meshes)})
+    try:
+        subfolder = request.args.get("subfolder", "mesh")
+        meshes = importer.list_available_meshes(subfolder)
+        return jsonify({"meshes": meshes, "count": len(meshes)})
+    except Exception as exc:
+        current_app.logger.error(f"Exception in list_meshes: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in list_meshes ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
+        return jsonify({
+            "error": f"获取mesh列表失败: {str(exc)}",
+            "meshes": [],
+            "count": 0
+        }), 500
 
 
 @mesh_bp.route("/info/<n>", methods=["GET"])
@@ -37,9 +51,22 @@ def mesh_info(n: str):
     返回:
         JSON响应包含mesh的详细信息
     """
-    subfolder = request.args.get("subfolder", "mesh")
-    info = importer.get_mesh_info(n, subfolder)
-    return jsonify(info)
+    try:
+        subfolder = request.args.get("subfolder", "mesh")
+        info = importer.get_mesh_info(n, subfolder)
+        return jsonify(info)
+    except Exception as exc:
+        current_app.logger.error(f"Exception in mesh_info: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in mesh_info ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
+        return jsonify({
+            "error": f"获取mesh信息失败: {str(exc)}",
+            "name": n,
+            "exists": False
+        }), 500
 
 
 @mesh_bp.route("/boundary/<n>", methods=["GET"])
@@ -56,9 +83,9 @@ def mesh_boundary(n: str):
     返回:
         JSON响应包含mesh的边界顶点坐标列表
     """
-    subfolder = request.args.get("subfolder", "mesh")
-
     try:
+        subfolder = request.args.get("subfolder", "mesh")
+
         # 加载边界对象
         boundary = importer.load_boundary_by_name(n, subfolder)
 
@@ -73,15 +100,27 @@ def mesh_boundary(n: str):
             "success": True
         })
 
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
+        current_app.logger.error(f"FileNotFoundError in mesh_boundary: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== FileNotFoundError in mesh_boundary ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
         return jsonify({
             "error": f"Mesh文件不存在: {n}",
             "success": False
         }), 404
 
-    except Exception as e:
+    except Exception as exc:
+        current_app.logger.error(f"Exception in mesh_boundary: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in mesh_boundary ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
         return jsonify({
-            "error": f"加载边界数据失败: {str(e)}",
+            "error": f"加载边界数据失败: {str(exc)}",
             "success": False
         }), 500
 
@@ -94,8 +133,22 @@ def health_check():
     返回:
         JSON响应表示服务状态
     """
-    return jsonify({
-        "status": "healthy",
-        "service": "mesh-api",
-        "timestamp": __import__("time").time()
-    })
+    try:
+        return jsonify({
+            "status": "healthy",
+            "service": "mesh-api",
+            "timestamp": __import__("time").time()
+        })
+    except Exception as exc:
+        current_app.logger.error(f"Exception in health_check: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in health_check ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
+        return jsonify({
+            "status": "unhealthy",
+            "service": "mesh-api",
+            "error": str(exc),
+            "timestamp": __import__("time").time()
+        }), 500

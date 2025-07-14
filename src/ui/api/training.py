@@ -1,4 +1,5 @@
-from flask import Blueprint, request, jsonify
+import traceback
+from flask import Blueprint, request, jsonify, current_app
 
 from src.ui.training_manager import TrainingManager
 
@@ -22,16 +23,16 @@ def start_training():
     返回:
         JSON响应表示启动结果
     """
-    data = request.get_json(force=True, silent=True) or {}
-    mesh_name = data.get("mesh_name")
-    subfolder = data.get("subfolder", "mesh")
-
-    # 参数：timesteps控制
-    max_timesteps = data.get("max_timesteps")
-    max_steps = data.get("max_steps")
-    description = data.get("description")
-
     try:
+        data = request.get_json(force=True, silent=True) or {}
+        mesh_name = data.get("mesh_name")
+        subfolder = data.get("subfolder", "mesh")
+
+        # 参数：timesteps控制
+        max_timesteps = data.get("max_timesteps")
+        max_steps = data.get("max_steps")
+        description = data.get("description")
+
         training_manager.start_training(
             mesh_name=mesh_name,
             subfolder=subfolder,
@@ -51,11 +52,23 @@ def start_training():
             }
         })
     except RuntimeError as exc:
+        current_app.logger.error(f"RuntimeError in start_training: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== RuntimeError in start_training ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
         return jsonify({
             "error": str(exc),
             "success": False
         }), 400
     except Exception as exc:
+        current_app.logger.error(f"Exception in start_training: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in start_training ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
         return jsonify({
             "error": f"启动训练时发生未知错误: {str(exc)}",
             "success": False
@@ -77,6 +90,12 @@ def stop_training():
             "success": True
         })
     except Exception as exc:
+        current_app.logger.error(f"Exception in stop_training: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in stop_training ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
         return jsonify({
             "error": f"停止训练时发生错误: {str(exc)}",
             "success": False
@@ -115,9 +134,12 @@ def status():
 
         return jsonify(result)
     except Exception as exc:
-        print(f"获取训练状态时发生错误: {exc}")
-        import traceback
+        current_app.logger.error(f"Exception in status: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in status ===")
+        print(f"Error: {exc}")
         traceback.print_exc()
+        print(f"=== End Error ===")
 
         return jsonify({
             "running": False,
@@ -136,9 +158,23 @@ def health_check():
     返回:
         JSON响应表示服务状态
     """
-    return jsonify({
-        "status": "healthy",
-        "service": "training-api",
-        "manager_running": training_manager.running,
-        "timestamp": __import__("time").time()
-    })
+    try:
+        return jsonify({
+            "status": "healthy",
+            "service": "training-api",
+            "manager_running": training_manager.running,
+            "timestamp": __import__("time").time()
+        })
+    except Exception as exc:
+        current_app.logger.error(f"Exception in health_check: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== Exception in health_check ===")
+        print(f"Error: {exc}")
+        traceback.print_exc()
+        print(f"=== End Error ===")
+        return jsonify({
+            "status": "unhealthy",
+            "service": "training-api",
+            "error": str(exc),
+            "timestamp": __import__("time").time()
+        }), 500
