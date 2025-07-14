@@ -18,29 +18,25 @@ class SACAgent:
         cfg = load_config() if config is None else config
         sac_cfg = cfg.get("sac_agent", {})
 
-        # 确保所有数值参数都转换为正确的类型
         hidden_dim = int(sac_cfg.get("hidden_dim", 128))
         self.gamma = float(sac_cfg.get("gamma", 0.99))
         self.tau = float(sac_cfg.get("tau", 0.005))
+        self.max_grad_norm = float(sac_cfg.get("max_grad_norm", 10.0))
 
-        # 初始化 Actor、Critic 以及对应的目标网络。
-        # Critic_target 是 Critic 的深拷贝，其参数会以软更新方式延迟更新。
         self.actor = Actor(state_dim, action_dim, hidden_dim=hidden_dim, max_action=max_action).to(device)
         self.critic = Critic(state_dim, action_dim, hidden_dim=hidden_dim).to(device)
         self.critic_target = deepcopy(self.critic)
 
-        # 初始化优化器，学习率等超参数参考论文表1。
-        # 确保学习率被正确转换为浮点数
         actor_lr = float(sac_cfg.get("actor_lr", 3e-4))
         critic_lr = float(sac_cfg.get("critic_lr", 3e-4))
         alpha_lr = float(sac_cfg.get("alpha_lr", 3e-4))
+        critic_weight_decay = float(sac_cfg.get("critic_weight_decay", sac_cfg.get("weight_decay", 0.0)))
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
         self.critic_optimizer = torch.optim.Adam(
-            self.critic.parameters(), lr=critic_lr, weight_decay=sac_cfg.get("weight_decay", 1e-4)
+            self.critic.parameters(), lr=critic_lr, weight_decay=critic_weight_decay
         )
 
-        # 初始化自动熵调优相关的参数。alpha（温度参数）会在训练过程中自动学习。
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
         self.alpha_optimizer = torch.optim.Adam([self.log_alpha], lr=alpha_lr)
         self.target_entropy = -torch.prod(torch.Tensor((action_dim,)).to(device)).item()
@@ -63,8 +59,8 @@ class SACAgent:
         支持普通经验回放、优先级经验回放(PER)和在线学习模式
 
         Args:
-            replay_buffer: 经验回放缓冲区，可以是ReplayBuffer、PrioritizedReplayBuffer或NoReplayBuffer
-            batch_size: 批次大小
+            replay_buffer: 经验回放缓冲区，可以是 ReplayBuffer、PrioritizedReplayBuffer 或 NoReplayBuffer
+            batch_size:    批次大小
 
         Returns:
             dict: 包含损失和指标的字典
@@ -72,12 +68,16 @@ class SACAgent:
         Raises:
             RuntimeError: 当在线学习模式下调用此方法时
         """
+        # ------------------------------------------------------------
+        # 一、采样经验
+        # ------------------------------------------------------------
         # 检查是否为在线学习模式
-        if hasattr(replay_buffer, 'get_statistics') and replay_buffer.get_statistics().get("mode") == "online_learning":
+        if hasattr(replay_buffer, "get_statistics") and \
+                replay_buffer.get_statistics().get("mode") == "online_learning":
             raise RuntimeError("在线学习模式下请使用 train_online() 方法")
 
-        # 检测是否为优先级经验回放
-        is_prioritized = hasattr(replay_buffer, 'update_priorities')
+        # 判断是否为优先级经验回放
+        is_prioritized = hasattr(replay_buffer, "update_priorities")
 
         if is_prioritized:
             # 优先级经验回放
@@ -95,29 +95,43 @@ class SACAgent:
         next_state = torch.FloatTensor(next_state).to(self.device)
         done = torch.FloatTensor(done).unsqueeze(1).to(self.device)
 
-        # 计算目标Q值
+        # ------------------------------------------------------------
+        # 二、计算目标 Q 值
+        # ------------------------------------------------------------
         with torch.no_grad():
             next_action, next_log_prob, _ = self.actor(next_state)
             target_q1, target_q2 = self.critic_target(next_state, next_action)
             target_q = torch.min(target_q1, target_q2) - self.log_alpha.exp() * next_log_prob
             target_q = reward + (1 - done) * self.gamma * target_q
 
-        # 获取当前Q值
+        # 当前 Q 值
         current_q1, current_q2 = self.critic(state, action)
 
-        # 计算TD误差（用于PER）
+        # TD 误差（用于 PER）
         td_errors = torch.abs(current_q1 - target_q).detach().cpu().numpy().flatten()
 
-        # 计算Critic损失
-        critic_loss = (weights * F.mse_loss(current_q1, target_q, reduction='none')).mean() + \
-                      (weights * F.mse_loss(current_q2, target_q, reduction='none')).mean()
+        # ------------------------------------------------------------
+        # 三、更新 Critic
+        # ------------------------------------------------------------
+        critic_loss = (
+                (weights * F.mse_loss(current_q1, target_q, reduction="none")).mean() +
+                (weights * F.mse_loss(current_q2, target_q, reduction="none")).mean()
+        )
 
-        # 更新Critic
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+
+        # ★ 梯度裁剪（Critic）
+        torch.nn.utils.clip_grad_norm_(
+            self.critic.parameters(),
+            getattr(self, "max_grad_norm", 10.0)  # 若 __init__ 未显式设置则默认 10.0
+        )
+
         self.critic_optimizer.step()
 
-        # 更新Actor
+        # ------------------------------------------------------------
+        # 四、更新 Actor
+        # ------------------------------------------------------------
         new_action, log_prob, _ = self.actor(state)
         q1_new, q2_new = self.critic(state, new_action)
         q_new = torch.min(q1_new, q2_new)
@@ -126,23 +140,39 @@ class SACAgent:
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+
+        # ★ 梯度裁剪（Actor）
+        torch.nn.utils.clip_grad_norm_(
+            self.actor.parameters(),
+            getattr(self, "max_grad_norm", 10.0)
+        )
+
         self.actor_optimizer.step()
 
-        # 更新Alpha（温度参数）
+        # ------------------------------------------------------------
+        # 五、更新 Alpha（温度参数）
+        # ------------------------------------------------------------
         alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach()).mean()
 
         self.alpha_optimizer.zero_grad()
         alpha_loss.backward()
         self.alpha_optimizer.step()
 
-        # 软更新目标网络
+        # ------------------------------------------------------------
+        # 六、软更新目标网络
+        # ------------------------------------------------------------
         for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+            target_param.data.copy_(self.tau * param.data + (1.0 - self.tau) * target_param.data)
 
-        # 更新优先级经验回放的优先级
+        # ------------------------------------------------------------
+        # 七、更新 PER 优先级
+        # ------------------------------------------------------------
         if is_prioritized and indices is not None:
             replay_buffer.update_priorities(indices, td_errors)
 
+        # ------------------------------------------------------------
+        # 八、返回监控指标
+        # ------------------------------------------------------------
         return {
             "critic_loss": float(critic_loss.item()),
             "actor_loss": float(actor_loss.item()),
