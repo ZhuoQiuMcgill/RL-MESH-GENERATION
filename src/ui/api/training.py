@@ -93,15 +93,14 @@ def initialize_trainer():
 @training_bp.route("/start", methods=["POST"])
 def start_training():
     """
-    开始训练过程
+    启动训练过程
 
     Body参数:
-        max_timesteps (int): 最大训练步数，默认1000000
-        max_episode_steps (int): 每episode最大步数，默认1000
-        mesh_name (str): 训练用的mesh名称，可选
-        description (str): 训练描述，可选
-        batch_size (int): 批量大小，可选
-        start_training_steps (int): 开始训练的步数，可选
+        max_timesteps (int, optional): 最大训练步数
+        boundary_source (str, optional): 边界数据源
+        backend (str, optional): SAC后端类型
+        device (str, optional): 训练设备
+        description (str, optional): 训练描述
 
     Returns:
         JSON响应表示启动结果
@@ -109,41 +108,28 @@ def start_training():
     try:
         data = request.get_json() or {}
 
-        # 验证必需参数
-        max_timesteps = data.get('max_timesteps', 1000000)
-        max_episode_steps = data.get('max_episode_steps', 1000)
-
-        if not isinstance(max_timesteps, int) or max_timesteps <= 0:
-            return jsonify({
-                "success": False,
-                "error": "max_timesteps必须是正整数"
-            }), 400
-
-        if not isinstance(max_episode_steps, int) or max_episode_steps <= 0:
-            return jsonify({
-                "success": False,
-                "error": "max_episode_steps必须是正整数"
-            }), 400
-
-        # 构建训练参数 - 关键修复：将max_episode_steps映射为max_steps
-        training_params = {
-            'max_timesteps': max_timesteps,
-            'max_steps': max_episode_steps,  # 修复：使用max_steps而不是max_episode_steps
-            'description': data.get('description', ''),
-            'mesh_name': data.get('mesh_name', '')
-        }
-
-        # 添加可选参数
-        if 'batch_size' in data:
-            training_params['batch_size'] = data['batch_size']
-        if 'start_training_steps' in data:
-            training_params['start_training_steps'] = data['start_training_steps']
+        # 提取训练参数
+        max_timesteps = data.get('max_timesteps', 100000)
+        boundary_source = data.get('boundary_source')
+        backend = data.get('backend')
+        device = data.get('device')
+        description = data.get('description', '')
 
         # 启动训练
-        result = training_manager.start_training(**training_params)
+        result = training_manager.start_training(
+            max_timesteps=max_timesteps,
+            boundary_source=boundary_source,
+            backend=backend,
+            device=device,
+            description=description
+        )
 
         if result["success"]:
-            return jsonify(result)
+            return jsonify({
+                "success": True,
+                "message": "training_started",
+                "training_id": result.get("training_id", "")
+            })
         else:
             return jsonify(result), 400
 
@@ -258,7 +244,7 @@ def get_training_status():
             if "current_alpha" in stats:
                 stats["current_alpha"] = stats["current_alpha"]
 
-            # 添加 progress 对象（前端期望的格式）
+            # 添加 progress 对象（前端期望的完整格式）
             result["progress"] = {
                 "current_episode": episode,
                 "total_steps": total_steps,
@@ -270,6 +256,7 @@ def get_training_status():
             # 计算训练进度百分比（如果有最大步数信息）
             if "max_timesteps" in stats and stats["max_timesteps"] > 0:
                 progress_percent = min(100.0, (total_steps / stats["max_timesteps"]) * 100)
+                result["progress"]["progress_percent"] = progress_percent
                 stats["progress_percent"] = progress_percent
 
             # 添加训练时长格式化
