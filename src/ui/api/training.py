@@ -125,10 +125,10 @@ def start_training():
                 "error": "max_episode_steps必须是正整数"
             }), 400
 
-        # 构建训练参数
+        # 构建训练参数 - 关键修复：将max_episode_steps映射为max_steps
         training_params = {
             'max_timesteps': max_timesteps,
-            'max_episode_steps': max_episode_steps,
+            'max_steps': max_episode_steps,  # 修复：使用max_steps而不是max_episode_steps
             'description': data.get('description', ''),
             'mesh_name': data.get('mesh_name', '')
         }
@@ -151,18 +151,14 @@ def start_training():
         current_app.logger.error(f"训练参数错误: {exc}")
         return jsonify({
             "success": False,
-            "error": str(exc)
+            "error": f"参数验证失败: {str(exc)}"
         }), 400
     except Exception as exc:
-        current_app.logger.error(f"启动训练异常: {exc}")
+        current_app.logger.error(f"启动训练失败: {exc}")
         current_app.logger.error(traceback.format_exc())
-        print(f"=== 启动训练异常 ===")
-        print(f"错误: {exc}")
-        traceback.print_exc()
-        print(f"=== 错误结束 ===")
         return jsonify({
             "success": False,
-            "error": f"启动训练时发生未知错误: {str(exc)}"
+            "error": f"启动训练时发生错误: {str(exc)}"
         }), 500
 
 
