@@ -90,60 +90,18 @@ def initialize_trainer():
         }), 500
 
 
-@training_bp.route("/switch-backend", methods=["POST"])
-def switch_backend():
-    """
-    切换SAC后端
-
-    Body参数:
-        backend_type (str): 目标后端类型 ("custom" 或 "sb3")
-        boundary_source (str, optional): 边界数据源
-
-    Returns:
-        JSON响应表示切换结果
-    """
-    try:
-        data = request.get_json() or {}
-        backend_type = data.get('backend_type')
-
-        if not backend_type:
-            return jsonify({
-                "success": False,
-                "error": "缺少必需参数: backend_type"
-            }), 400
-
-        result = training_manager.switch_backend(
-            backend_type=backend_type,
-            boundary_source=data.get('boundary_source')
-        )
-
-        if result["success"]:
-            return jsonify(result)
-        else:
-            return jsonify(result), 400
-
-    except Exception as exc:
-        current_app.logger.error(f"切换后端失败: {exc}")
-        current_app.logger.error(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "error": f"切换后端时发生错误: {str(exc)}"
-        }), 500
-
-
 @training_bp.route("/start", methods=["POST"])
 def start_training():
     """
-    启动训练过程
+    开始训练过程
 
     Body参数:
-        max_timesteps (int, optional): 最大训练步数，默认100000
-        max_steps (int, optional): 每episode最大步数，默认1000
-        batch_size (int, optional): 批次大小
-        start_training_steps (int, optional): 开始训练的步数
-        description (str, optional): 训练描述
-        mesh_name (str, optional): Mesh名称
-        boundary_source (str, optional): 边界数据源
+        max_timesteps (int): 最大训练步数，默认1000000
+        max_episode_steps (int): 每episode最大步数，默认1000
+        mesh_name (str): 训练用的mesh名称，可选
+        description (str): 训练描述，可选
+        batch_size (int): 批量大小，可选
+        start_training_steps (int): 开始训练的步数，可选
 
     Returns:
         JSON响应表示启动结果
@@ -151,20 +109,26 @@ def start_training():
     try:
         data = request.get_json() or {}
 
-        # 如果指定了新的边界源，先加载
-        boundary_source = data.get('boundary_source')
-        if boundary_source:
-            load_result = training_manager.load_boundary(boundary_source)
-            if not load_result["success"]:
-                return jsonify({
-                    "success": False,
-                    "error": f"加载边界失败: {load_result['error']}"
-                }), 400
+        # 验证必需参数
+        max_timesteps = data.get('max_timesteps', 1000000)
+        max_episode_steps = data.get('max_episode_steps', 1000)
 
-        # 提取训练参数
+        if not isinstance(max_timesteps, int) or max_timesteps <= 0:
+            return jsonify({
+                "success": False,
+                "error": "max_timesteps必须是正整数"
+            }), 400
+
+        if not isinstance(max_episode_steps, int) or max_episode_steps <= 0:
+            return jsonify({
+                "success": False,
+                "error": "max_episode_steps必须是正整数"
+            }), 400
+
+        # 构建训练参数
         training_params = {
-            'max_timesteps': data.get('max_timesteps', 100000),
-            'max_steps': data.get('max_steps', 1000),
+            'max_timesteps': max_timesteps,
+            'max_episode_steps': max_episode_steps,
             'description': data.get('description', ''),
             'mesh_name': data.get('mesh_name', '')
         }
@@ -240,26 +204,74 @@ def get_training_status():
     获取当前训练状态
 
     Returns:
-        JSON响应包含完整的训练状态信息
+        JSON响应包含完整的训练状态信息，符合前端API文档要求
     """
     try:
         status_data = training_manager.get_status()
 
-        # 确保返回的数据结构完整
+        # 构建符合API文档的基础响应结构
         result = {
             "running": status_data.get("running", False),
             "status": status_data.get("status", "idle"),
             "stats": status_data.get("stats"),
             "backend_type": status_data.get("backend_type"),
-            "timestamp": status_data.get("timestamp", 0)
+            "timestamp": status_data.get("timestamp", __import__("time").time())
         }
 
-        # 添加额外的统计信息
+        # 如果有训练统计数据，添加 progress 字段（前端期望的格式）
         if result["stats"] and isinstance(result["stats"], dict):
             stats = result["stats"]
 
-            # 计算训练进度百分比（如果有最大步数信息）
+            # 确保包含前端期望的所有字段，设置默认值
+            episode = stats.get("episode", 0)
             total_steps = stats.get("total_steps", 0)
+            episode_reward = stats.get("episode_reward", 0.0)
+            average_reward = stats.get("average_reward", 0.0)
+            episode_length = stats.get("episode_length", 0)
+            boundary_vertices = stats.get("boundary_vertices", 0)
+            buffer_size = stats.get("buffer_size", 0)
+            training_id = stats.get("training_id", "")
+            online_learning_mode = stats.get("online_learning_mode", False)
+
+            # 确保包含网格可视化数据
+            mesh_data = stats.get("mesh_data", {})
+            boundary_vertices_data = stats.get("boundary_vertices_data", [])
+            reference_point_info = stats.get("reference_point_info", {})
+
+            # 更新 stats 对象，确保所有字段都存在
+            stats.update({
+                "episode": episode,
+                "total_steps": total_steps,
+                "episode_reward": episode_reward,
+                "average_reward": average_reward,
+                "episode_length": episode_length,
+                "boundary_vertices": boundary_vertices,
+                "buffer_size": buffer_size,
+                "training_id": training_id,
+                "online_learning_mode": online_learning_mode,
+                "mesh_data": mesh_data,
+                "boundary_vertices_data": boundary_vertices_data,
+                "reference_point_info": reference_point_info
+            })
+
+            # 添加可选的损失和alpha值
+            if "recent_actor_loss" in stats:
+                stats["recent_actor_loss"] = stats["recent_actor_loss"]
+            if "recent_critic_loss" in stats:
+                stats["recent_critic_loss"] = stats["recent_critic_loss"]
+            if "current_alpha" in stats:
+                stats["current_alpha"] = stats["current_alpha"]
+
+            # 添加 progress 对象（前端期望的格式）
+            result["progress"] = {
+                "current_episode": episode,
+                "total_steps": total_steps,
+                "latest_reward": episode_reward,
+                "average_reward": average_reward,
+                "buffer_utilization": buffer_size
+            }
+
+            # 计算训练进度百分比（如果有最大步数信息）
             if "max_timesteps" in stats and stats["max_timesteps"] > 0:
                 progress_percent = min(100.0, (total_steps / stats["max_timesteps"]) * 100)
                 stats["progress_percent"] = progress_percent
@@ -322,105 +334,3 @@ def load_boundary():
             "success": False,
             "error": f"加载边界时发生错误: {str(exc)}"
         }), 500
-
-
-@training_bp.route("/model/save", methods=["POST"])
-def save_model():
-    """
-    保存模型
-
-    Body参数:
-        path (str): 保存路径
-
-    Returns:
-        JSON响应表示保存结果
-    """
-    try:
-        data = request.get_json() or {}
-        path = data.get('path')
-
-        if not path:
-            return jsonify({
-                "success": False,
-                "error": "缺少必需参数: path"
-            }), 400
-
-        result = training_manager.save_model(path)
-
-        if result["success"]:
-            return jsonify(result)
-        else:
-            return jsonify(result), 400
-
-    except Exception as exc:
-        current_app.logger.error(f"保存模型异常: {exc}")
-        current_app.logger.error(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "error": f"保存模型时发生错误: {str(exc)}"
-        }), 500
-
-
-@training_bp.route("/model/load", methods=["POST"])
-def load_model():
-    """
-    加载模型
-
-    Body参数:
-        path (str): 模型路径
-
-    Returns:
-        JSON响应表示加载结果
-    """
-    try:
-        data = request.get_json() or {}
-        path = data.get('path')
-
-        if not path:
-            return jsonify({
-                "success": False,
-                "error": "缺少必需参数: path"
-            }), 400
-
-        result = training_manager.load_model(path)
-
-        if result["success"]:
-            return jsonify(result)
-        else:
-            return jsonify(result), 400
-
-    except Exception as exc:
-        current_app.logger.error(f"加载模型异常: {exc}")
-        current_app.logger.error(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "error": f"加载模型时发生错误: {str(exc)}"
-        }), 500
-
-
-# 错误处理器
-@training_bp.errorhandler(404)
-def not_found(error):
-    """处理404错误"""
-    return jsonify({
-        "success": False,
-        "error": "API端点不存在"
-    }), 404
-
-
-@training_bp.errorhandler(405)
-def method_not_allowed(error):
-    """处理405错误"""
-    return jsonify({
-        "success": False,
-        "error": "不支持的HTTP方法"
-    }), 405
-
-
-@training_bp.errorhandler(500)
-def internal_error(error):
-    """处理500错误"""
-    return jsonify({
-        "success": False,
-        "error": "服务器内部错误"
-    }), 500
