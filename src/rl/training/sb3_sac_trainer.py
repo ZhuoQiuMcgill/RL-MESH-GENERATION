@@ -78,68 +78,23 @@ class SB3TrainingCallback(BaseCallback):
         """判断是否应该输出日志"""
         return current_timestep - self.last_log_timestep >= self.trainer.log_frequency
 
-    def _log_training_progress(self, current_timestep):
-        """输出训练进度日志"""
-        try:
-            # 获取最近的奖励统计
-            if self.trainer.recent_rewards:
-                avg_reward = np.mean(list(self.trainer.recent_rewards))
-                latest_reward = list(self.trainer.recent_rewards)[-1]
-            else:
-                avg_reward = 0.0
-                latest_reward = 0.0
-
-            training_id = self.trainer.history_manager.get_current_training_id()
-
-            print(f"SB3 Timestep {current_timestep} Episode {self.episode_count} [{training_id}]: "
-                  f"最新奖励={latest_reward:.3f}, 平均奖励={avg_reward:.3f}")
-
-        except Exception as e:
-            print(f"SB3训练日志输出错误: {e}")
+    def _log_training_progress(self, current_timestep: int):
+        """输出训练进度"""
+        training_id = self.trainer.history_manager.get_current_training_id()
+        print(f"SB3 Timestep {current_timestep} [{training_id}]: Episode {self.episode_count}")
 
     def _on_episode_end(self):
-        """Episode结束时的处理"""
+        """episode结束时的处理"""
         self.episode_count += 1
 
-        # 获取episode统计信息
-        episode_reward = 0.0
-        episode_length = 0
-
-        try:
-            # 尝试从环境中获取episode统计
-            env = self.training_env
-
-            # 多种方式尝试获取episode统计
-            if hasattr(env, 'episode_reward'):
-                episode_reward = float(env.episode_reward)
-            elif hasattr(env, 'get_wrapper_attr'):
-                try:
-                    episode_reward = float(env.get_wrapper_attr('episode_reward'))
-                except:
-                    pass
-
-            if hasattr(env, 'episode_length'):
-                episode_length = int(env.episode_length)
-            elif hasattr(env, 'get_wrapper_attr'):
-                try:
-                    episode_length = int(env.get_wrapper_attr('episode_length'))
-                except:
-                    pass
-
-        except Exception as e:
-            print(f"SB3获取episode统计失败: {e}")
-            # 使用默认值
-            episode_reward = 0.0
-            episode_length = 0
+        # 获取episode信息
+        episode_reward = self.locals.get('episode_reward', 0.0)
+        episode_length = self.locals.get('episode_length', 0)
 
         # 获取参考信息
         ref_info = None
-        try:
-            env = self.training_env
-            if hasattr(env, 'get_last_reference_info'):
-                ref_info = env.get_last_reference_info()
-        except Exception as e:
-            print(f"SB3获取参考信息失败: {e}")
+        if hasattr(self.trainer.env, 'get_last_reference_info'):
+            ref_info = self.trainer.env.get_last_reference_info()
 
         # 更新trainer统计
         self.trainer._update_training_stats(episode_reward, episode_length)
@@ -202,37 +157,129 @@ class SB3SACTrainer(BaseTrainer):
         # 初始化智能体
         self._initialize_agent()
 
+        # 训练频率配置
+        training_config = self.config.get("training", {})
+        self.log_frequency = training_config.get("log_frequency", 1000)
+        self.save_frequency = training_config.get("save_frequency", 10000)
+        self.evaluation_frequency = training_config.get("evaluation_frequency", 5000)
+
         print("SB3 SAC训练器初始化完成")
 
     def _create_boundary_from_source(self, boundary_source: Union[Boundary, str, Dict[str, str], None]) -> Boundary:
-        """根据源创建边界对象"""
+        """
+        根据源创建边界对象
+
+        Args:
+            boundary_source: 边界数据源
+
+        Returns:
+            Boundary: 创建的边界对象
+
+        Raises:
+            FileNotFoundError: 当指定的文件不存在时
+            IOError: 当文件读取失败时
+            ValueError: 当数据格式不正确时
+        """
         if boundary_source is None:
-            print("使用默认示例边界（正方形）")
+            print("警告: boundary_source为None，使用默认示例边界（正方形）")
+            print("这通常表示前端没有正确传递边界数据源参数")
+            print("如果您期望使用特定的边界，请检查前端请求参数")
             default_vertices = [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]
             return Boundary(default_vertices)
         elif isinstance(boundary_source, Boundary):
-            print("使用提供的边界对象")
+            print(f"使用提供的边界对象，包含{len(boundary_source.get_vertices())}个顶点")
             return boundary_source
         elif isinstance(boundary_source, str):
+            if not boundary_source.strip():
+                raise ValueError("boundary_source字符串不能为空")
+
             if boundary_source.endswith('.txt'):
                 print(f"从文件加载边界: {boundary_source}")
-                return self.importer.load_boundary_from_file(boundary_source)
+                try:
+                    return self.importer.load_boundary_from_file(boundary_source)
+                except FileNotFoundError as e:
+                    raise FileNotFoundError(
+                        f"找不到边界文件: {boundary_source}\n"
+                        f"请检查文件路径是否正确。\n"
+                        f"原始错误: {e}"
+                    )
+                except Exception as e:
+                    raise IOError(
+                        f"加载边界文件失败: {boundary_source}\n"
+                        f"原始错误: {e}\n"
+                        f"请检查文件格式是否正确。"
+                    )
             else:
                 print(f"从mesh加载边界: {boundary_source}")
-                return self.importer.load_boundary_from_mesh(boundary_source)
+                try:
+                    return self.importer.load_boundary_from_mesh(boundary_source)
+                except FileNotFoundError as e:
+                    raise FileNotFoundError(
+                        f"找不到mesh文件: {boundary_source}\n"
+                        f"请检查mesh名称是否正确，或确认文件存在于data/mesh/目录下。\n"
+                        f"原始错误: {e}"
+                    )
+                except Exception as e:
+                    raise IOError(
+                        f"加载mesh边界失败: {boundary_source}\n"
+                        f"原始错误: {e}\n"
+                        f"请检查mesh文件格式是否正确。"
+                    )
         elif isinstance(boundary_source, dict):
             source_type = boundary_source.get('type')
-            if source_type == 'file':
+            if source_type is None:
+                raise ValueError(
+                    f"字典格式的boundary_source必须包含'type'字段。\n"
+                    f"当前字典: {boundary_source}\n"
+                    f"支持的类型: 'file' 或 'mesh'"
+                )
+            elif source_type == 'file':
                 path = boundary_source.get('path')
-                return self.importer.load_boundary_from_file(path)
+                if path is None:
+                    raise ValueError(
+                        f"type为'file'时必须提供'path'字段。\n"
+                        f"当前字典: {boundary_source}"
+                    )
+                print(f"从字典指定的文件加载边界: {path}")
+                try:
+                    return self.importer.load_boundary_from_file(path)
+                except Exception as e:
+                    raise IOError(
+                        f"从字典指定的文件加载边界失败: {path}\n"
+                        f"原始错误: {e}"
+                    )
             elif source_type == 'mesh':
                 name = boundary_source.get('name')
+                if name is None:
+                    raise ValueError(
+                        f"type为'mesh'时必须提供'name'字段。\n"
+                        f"当前字典: {boundary_source}"
+                    )
                 subfolder = boundary_source.get('subfolder', 'mesh')
-                return self.importer.load_boundary_from_mesh(name, subfolder)
+                print(f"从字典指定的mesh加载边界: {name} (subfolder: {subfolder})")
+                try:
+                    return self.importer.load_boundary_from_mesh(name, subfolder)
+                except Exception as e:
+                    raise IOError(
+                        f"从字典指定的mesh加载边界失败: {name}\n"
+                        f"subfolder: {subfolder}\n"
+                        f"原始错误: {e}"
+                    )
             else:
-                raise ValueError(f"不支持的边界源类型: {source_type}")
+                raise ValueError(
+                    f"不支持的边界源类型: {source_type}\n"
+                    f"支持的类型: 'file' 或 'mesh'\n"
+                    f"当前字典: {boundary_source}"
+                )
         else:
-            raise ValueError(f"不支持的边界源格式: {type(boundary_source)}")
+            raise ValueError(
+                f"不支持的边界源格式: {type(boundary_source)}\n"
+                f"传入的值: {boundary_source}\n"
+                f"支持的格式:\n"
+                f"1. Boundary对象\n"
+                f"2. 字符串（文件路径或mesh名称）\n"
+                f"3. 字典 {{'type': 'file', 'path': '...'}} 或 {{'type': 'mesh', 'name': '...'}}"
+            )
 
     def _init_environments(self, max_steps=None):
         """初始化训练和评估环境"""
@@ -266,117 +313,75 @@ class SB3SACTrainer(BaseTrainer):
             net_arch=sb3_config.get("net_arch", [128, 128, 128])
         )
 
-        # 创建SAC模型
+        # 创建SAC智能体
         self.agent = SAC(
-            policy='MlpPolicy',
+            policy="MlpPolicy",
             env=self.env,
-            learning_rate=float(sb3_config.get("learning_rate", 3e-4)),
-            buffer_size=int(sb3_config.get("buffer_size", 1000000)),
-            learning_starts=int(sb3_config.get("learning_starts", 10000)),
-            batch_size=int(sb3_config.get("batch_size", 100)),
-            tau=float(sb3_config.get("tau", 0.005)),
-            gamma=float(sb3_config.get("gamma", 0.99)),
-            train_freq=int(sb3_config.get("train_freq", 1)),
-            gradient_steps=int(sb3_config.get("gradient_steps", 1)),
+            learning_rate=sb3_config.get("learning_rate", 0.0003),
+            buffer_size=sb3_config.get("buffer_size", 1000000),
+            learning_starts=sb3_config.get("learning_starts", 10000),
+            batch_size=sb3_config.get("batch_size", 100),
+            tau=sb3_config.get("tau", 0.005),
+            gamma=sb3_config.get("gamma", 0.99),
+            train_freq=sb3_config.get("train_freq", 1),
+            gradient_steps=sb3_config.get("gradient_steps", 1),
             policy_kwargs=policy_kwargs,
+            verbose=sb3_config.get("verbose", 0),
             seed=sb3_config.get("seed", None),
-            device=str(self.device),
-            verbose=sb3_config.get("verbose", 0)
+            device=self.device
         )
 
-    def _select_action(self, state: np.ndarray, deterministic: bool = False) -> np.ndarray:
-        """选择动作"""
-        # 确保state是正确的形状
-        if isinstance(state, np.ndarray):
-            if len(state.shape) == 1:
-                state = state.reshape(1, -1)
-
-        action, _ = self.agent.predict(state, deterministic=deterministic)
-        return action
-
-    def _train_step(self, **kwargs) -> Dict[str, Any]:
-        """执行一步训练（SB3内部处理）"""
-        # SB3内部处理训练，这里只返回空字典
-        return {}
-
     def _save_model(self, path: str):
-        """保存模型"""
+        """保存SB3模型"""
         self.agent.save(path)
 
     def _load_model(self, path: str):
-        """加载模型"""
-        self.agent = SAC.load(path, env=self.env)
+        """加载SB3模型"""
+        self.agent.load(path, env=self.env)
 
-    def train(self, max_timesteps: int = 100000, max_steps: int = 1000,
-              batch_size: int = 128, start_training_steps: int = 10000,
-              description: str = None, mesh_name: str = None) -> Dict[str, Any]:
+    def train(self, max_timesteps: int = 100000, **kwargs) -> Dict[str, Any]:
         """
-        执行训练主循环
+        执行SB3训练主循环
 
         Args:
             max_timesteps: 最大训练步数
-            max_steps: 每episode最大步数（SB3中由环境控制）
-            batch_size: 批次大小（SB3内部处理）
-            start_training_steps: 开始训练的步数（SB3的learning_starts）
-            description: 训练描述
-            mesh_name: Mesh名称
+            **kwargs: 其他训练参数
 
         Returns:
             Dict[str, Any]: 训练统计信息
         """
-        print(f"开始SB3训练: 最大timesteps={max_timesteps}")
+        print(f"开始SB3 SAC训练: 最大timesteps={max_timesteps}")
 
         start_time = time.time()
 
-        # 创建回调函数
-        callback = SB3TrainingCallback(trainer_instance=self)
+        # 创建训练回调
+        callback = SB3TrainingCallback(self)
 
         try:
-            # 使用SB3进行训练，定期检查停止事件
-            training_stopped_early = False
-            remaining_timesteps = max_timesteps
-            check_interval = 5000  # 每5000步检查一次停止事件
-
-            while remaining_timesteps > 0 and not self.stop_event.is_set():
-                # 计算当前批次的训练步数
-                current_batch = min(check_interval, remaining_timesteps)
-
-                # 执行训练
-                self.agent.learn(
-                    total_timesteps=current_batch,
-                    callback=callback,
-                    reset_num_timesteps=False
-                )
-
-                remaining_timesteps -= current_batch
-
-                # 检查停止事件
-                if self.stop_event.is_set():
-                    print("收到停止信号，停止SB3训练")
-                    training_stopped_early = True
-                    break
-
-            if remaining_timesteps <= 0:
-                print("SB3训练完成所有timesteps")
+            # 开始训练
+            self.agent.learn(
+                total_timesteps=max_timesteps,
+                callback=callback,
+                progress_bar=False
+            )
 
         except KeyboardInterrupt:
-            print("SB3训练被用户中断")
-            training_stopped_early = True
+            print("训练被用户中断")
         except Exception as e:
-            print(f"SB3训练过程中发生错误: {e}")
-            import traceback
-            traceback.print_exc()
-            training_stopped_early = True
+            if self.stop_event.is_set():
+                print("训练被停止信号中断")
+            else:
+                print(f"训练过程中发生错误: {e}")
+                raise
 
-        # 更新统计信息
+        # 训练结束处理
         self.training_stats['training_time'] = time.time() - start_time
-        self.training_stats['total_steps'] = self.agent.num_timesteps
-        self.training_stats['episodes_completed'] = callback.episode_count
 
         # 强制保存剩余缓存数据
         self.history_manager.force_save_cache()
 
         # 结束训练会话
+        training_stopped_early = self.stop_event.is_set()
         self.history_manager.finish_training_session(
             final_stats=self.training_stats,
             stopped_early=training_stopped_early

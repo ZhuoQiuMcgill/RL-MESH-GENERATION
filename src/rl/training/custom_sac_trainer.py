@@ -58,37 +58,130 @@ class CustomSACTrainer(BaseTrainer):
         # 初始化经验回放缓冲区
         self._init_replay_buffer()
 
+        # 训练频率配置
+        training_config = self.config.get("training", {})
+        self.log_frequency = training_config.get("log_frequency", 1000)
+        self.save_frequency = training_config.get("save_frequency", 10000)
+        self.evaluation_frequency = training_config.get("evaluation_frequency", 5000)
+        self.history_save_frequency = training_config.get("history_save_frequency", 10000)
+
         print("自制SAC训练器初始化完成")
 
     def _create_boundary_from_source(self, boundary_source: Union[Boundary, str, Dict[str, str], None]) -> Boundary:
-        """根据源创建边界对象"""
+        """
+        根据源创建边界对象
+
+        Args:
+            boundary_source: 边界数据源
+
+        Returns:
+            Boundary: 创建的边界对象
+
+        Raises:
+            FileNotFoundError: 当指定的文件不存在时
+            IOError: 当文件读取失败时
+            ValueError: 当数据格式不正确时
+        """
         if boundary_source is None:
-            print("使用默认示例边界（正方形）")
+            print("警告: boundary_source为None，使用默认示例边界（正方形）")
+            print("这通常表示前端没有正确传递边界数据源参数")
+            print("如果您期望使用特定的边界，请检查前端请求参数")
             default_vertices = [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)]
             return Boundary(default_vertices)
         elif isinstance(boundary_source, Boundary):
-            print("使用提供的边界对象")
+            print(f"使用提供的边界对象，包含{len(boundary_source.get_vertices())}个顶点")
             return boundary_source
         elif isinstance(boundary_source, str):
+            if not boundary_source.strip():
+                raise ValueError("boundary_source字符串不能为空")
+
             if boundary_source.endswith('.txt'):
                 print(f"从文件加载边界: {boundary_source}")
-                return self.importer.load_boundary_from_file(boundary_source)
+                try:
+                    return self.importer.load_boundary_from_file(boundary_source)
+                except FileNotFoundError as e:
+                    raise FileNotFoundError(
+                        f"找不到边界文件: {boundary_source}\n"
+                        f"请检查文件路径是否正确。\n"
+                        f"原始错误: {e}"
+                    )
+                except Exception as e:
+                    raise IOError(
+                        f"加载边界文件失败: {boundary_source}\n"
+                        f"原始错误: {e}\n"
+                        f"请检查文件格式是否正确。"
+                    )
             else:
                 print(f"从mesh加载边界: {boundary_source}")
-                return self.importer.load_boundary_from_mesh(boundary_source)
+                try:
+                    return self.importer.load_boundary_from_mesh(boundary_source)
+                except FileNotFoundError as e:
+                    raise FileNotFoundError(
+                        f"找不到mesh文件: {boundary_source}\n"
+                        f"请检查mesh名称是否正确，或确认文件存在于data/mesh/目录下。\n"
+                        f"原始错误: {e}"
+                    )
+                except Exception as e:
+                    raise IOError(
+                        f"加载mesh边界失败: {boundary_source}\n"
+                        f"原始错误: {e}\n"
+                        f"请检查mesh文件格式是否正确。"
+                    )
         elif isinstance(boundary_source, dict):
             source_type = boundary_source.get('type')
-            if source_type == 'file':
+            if source_type is None:
+                raise ValueError(
+                    f"字典格式的boundary_source必须包含'type'字段。\n"
+                    f"当前字典: {boundary_source}\n"
+                    f"支持的类型: 'file' 或 'mesh'"
+                )
+            elif source_type == 'file':
                 path = boundary_source.get('path')
-                return self.importer.load_boundary_from_file(path)
+                if path is None:
+                    raise ValueError(
+                        f"type为'file'时必须提供'path'字段。\n"
+                        f"当前字典: {boundary_source}"
+                    )
+                print(f"从字典指定的文件加载边界: {path}")
+                try:
+                    return self.importer.load_boundary_from_file(path)
+                except Exception as e:
+                    raise IOError(
+                        f"从字典指定的文件加载边界失败: {path}\n"
+                        f"原始错误: {e}"
+                    )
             elif source_type == 'mesh':
                 name = boundary_source.get('name')
+                if name is None:
+                    raise ValueError(
+                        f"type为'mesh'时必须提供'name'字段。\n"
+                        f"当前字典: {boundary_source}"
+                    )
                 subfolder = boundary_source.get('subfolder', 'mesh')
-                return self.importer.load_boundary_from_mesh(name, subfolder)
+                print(f"从字典指定的mesh加载边界: {name} (subfolder: {subfolder})")
+                try:
+                    return self.importer.load_boundary_from_mesh(name, subfolder)
+                except Exception as e:
+                    raise IOError(
+                        f"从字典指定的mesh加载边界失败: {name}\n"
+                        f"subfolder: {subfolder}\n"
+                        f"原始错误: {e}"
+                    )
             else:
-                raise ValueError(f"不支持的边界源类型: {source_type}")
+                raise ValueError(
+                    f"不支持的边界源类型: {source_type}\n"
+                    f"支持的类型: 'file' 或 'mesh'\n"
+                    f"当前字典: {boundary_source}"
+                )
         else:
-            raise ValueError(f"不支持的边界源格式: {type(boundary_source)}")
+            raise ValueError(
+                f"不支持的边界源格式: {type(boundary_source)}\n"
+                f"传入的值: {boundary_source}\n"
+                f"支持的格式:\n"
+                f"1. Boundary对象\n"
+                f"2. 字符串（文件路径或mesh名称）\n"
+                f"3. 字典 {{'type': 'file', 'path': '...'}} 或 {{'type': 'mesh', 'name': '...'}}"
+            )
 
     def _init_environments(self, max_steps=None):
         """初始化训练和评估环境"""
@@ -156,6 +249,27 @@ class CustomSACTrainer(BaseTrainer):
 
         return loss_info if loss_info else {}
 
+    def _should_log_progress(self, current_timestep: int, last_log_timestep: int) -> bool:
+        """判断是否应该输出训练日志"""
+        return current_timestep - last_log_timestep >= self.log_frequency
+
+    def _should_save_history(self, current_timestep: int, last_save_timestep: int) -> bool:
+        """判断是否应该保存历史数据"""
+        return current_timestep - last_save_timestep >= self.history_save_frequency
+
+    def _should_evaluate(self, current_timestep: int, last_eval_timestep: int) -> bool:
+        """判断是否应该进行评估"""
+        return current_timestep - last_eval_timestep >= self.evaluation_frequency
+
+    def _log_training_progress(self, episode: int, episode_reward: float):
+        """输出训练进度日志"""
+        training_id = self.history_manager.get_current_training_id()
+        avg_reward = self.training_stats['average_reward']
+        total_steps = self.training_stats['total_steps']
+
+        print(f"Timestep {total_steps} Episode {episode} [{training_id}]: "
+              f"最新奖励={episode_reward:.3f}, 平均奖励={avg_reward:.3f}")
+
     def _save_model(self, path: str):
         """保存模型"""
         self.agent.save(path)
@@ -164,19 +278,18 @@ class CustomSACTrainer(BaseTrainer):
         """加载模型"""
         self.agent.load(path)
 
-    def train(self, max_timesteps: int = 100000, max_steps: int = 1000,
+    def train(self, max_timesteps: int = 100000, max_steps_per_episode: int = 1000,
               batch_size: int = 128, start_training_steps: int = 5000,
-              description: str = None, mesh_name: str = None) -> Dict[str, Any]:
+              **kwargs) -> Dict[str, Any]:
         """
         执行训练主循环
 
         Args:
             max_timesteps: 最大训练步数
-            max_steps: 每episode最大步数
+            max_steps_per_episode: 每episode最大步数
             batch_size: 批次大小
             start_training_steps: 开始训练的步数
-            description: 训练描述
-            mesh_name: Mesh名称
+            **kwargs: 其他训练参数
 
         Returns:
             Dict[str, Any]: 训练统计信息
@@ -209,7 +322,7 @@ class CustomSACTrainer(BaseTrainer):
             state, info = self.env.reset()
 
             # Episode循环
-            for step in range(max_steps):
+            for step in range(max_steps_per_episode):
                 if self.stop_event.is_set():
                     break
 
@@ -221,7 +334,7 @@ class CustomSACTrainer(BaseTrainer):
                 if self.training_stats['total_steps'] < start_training_steps:
                     action = self.env.action_space.sample()
                 else:
-                    action = self._select_action(state)  # 移除deterministic参数
+                    action = self._select_action(state)
 
                 # 执行动作
                 next_state, reward, done, truncated, info = self.env.step(action)

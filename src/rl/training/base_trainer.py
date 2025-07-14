@@ -1,25 +1,23 @@
 """
 基础训练器抽象类
 
-定义了所有SAC实现共同的训练接口和行为
+定义了训练器的通用接口和基础功能
 """
 import os
 import time
 import threading
+import traceback
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable, List
-from collections import deque
-import numpy as np
 
-from ..training_history_manager import TrainingHistoryManager
-from ..config import load_config
+from src.rl.training_history_manager import TrainingHistoryManager
 
 
 class BaseTrainer(ABC):
     """
-    训练器基础抽象类
+    训练器基类
 
-    定义了训练流程的标准接口，具体的SAC实现只需要实现抽象方法
+    定义了训练器的标准接口和通用功能
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -29,71 +27,46 @@ class BaseTrainer(ABC):
         Args:
             config: 配置字典
         """
-        self.config = config if config is not None else load_config()
+        self.config = config or {}
 
-        # 训练状态管理
+        # 训练状态
         self.is_training = False
+        self.training_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
-        self.training_thread = None
 
         # 训练统计
         self.training_stats = {
             'total_steps': 0,
             'episodes_completed': 0,
             'training_time': 0.0,
-            'episode_rewards': [],
+            'latest_reward': 0.0,
             'average_reward': 0.0,
-            'latest_reward': 0.0
+            'episode_rewards': []
         }
 
-        # 历史管理
-        self.history_manager = TrainingHistoryManager(config=self.config)
-
-        # 回调系统
+        # 回调函数
         self.episode_callbacks: List[Callable] = []
         self.step_callbacks: List[Callable] = []
 
-        # 用于前端展示的最近奖励队列
-        self.recent_rewards = deque(maxlen=100)
-
-        # 获取配置参数
-        training_config = self.config.get("training", {})
-        self.log_frequency = training_config.get("log_frequency", 1000)
-        self.save_frequency = training_config.get("save_frequency", 10000)
-        self.evaluation_frequency = training_config.get("evaluation_frequency", 5000)
-        self.history_save_frequency = training_config.get("history_save_frequency", 10000)
-
-    @abstractmethod
-    def _initialize_agent(self):
-        """初始化智能体（子类实现）"""
-        pass
-
-    @abstractmethod
-    def _select_action(self, state: np.ndarray, deterministic: bool = False) -> np.ndarray:
-        """选择动作（子类实现）"""
-        pass
-
-    @abstractmethod
-    def _train_step(self, **kwargs) -> Dict[str, Any]:
-        """执行一步训练（子类实现）"""
-        pass
-
-    @abstractmethod
-    def _save_model(self, path: str):
-        """保存模型（子类实现）"""
-        pass
-
-    @abstractmethod
-    def _load_model(self, path: str):
-        """加载模型（子类实现）"""
-        pass
+        # 历史管理器
+        self.history_manager = TrainingHistoryManager(config=self.config)
 
     def add_episode_callback(self, callback: Callable):
-        """添加episode完成回调"""
+        """
+        添加episode完成回调
+
+        Args:
+            callback: 回调函数，接收episode数据字典作为参数
+        """
         self.episode_callbacks.append(callback)
 
     def add_step_callback(self, callback: Callable):
-        """添加训练步骤回调"""
+        """
+        添加训练步骤回调
+
+        Args:
+            callback: 回调函数，接收step数据字典作为参数
+        """
         self.step_callbacks.append(callback)
 
     def _trigger_episode_callbacks(self, episode_data: Dict[str, Any]):
@@ -105,74 +78,59 @@ class BaseTrainer(ABC):
                 print(f"Episode回调执行失败: {e}")
 
     def _trigger_step_callbacks(self, step_data: Dict[str, Any]):
-        """触发步骤回调"""
+        """触发step回调"""
         for callback in self.step_callbacks:
             try:
                 callback(step_data)
             except Exception as e:
                 print(f"Step回调执行失败: {e}")
 
-    def _update_training_stats(self, episode_reward: float = None,
-                               episode_length: int = None):
+    def _update_training_stats(self, episode_reward: float, episode_length: int):
         """更新训练统计信息"""
-        if episode_reward is not None:
-            self.training_stats['episode_rewards'].append(episode_reward)
-            self.recent_rewards.append(episode_reward)
-            self.training_stats['latest_reward'] = episode_reward
+        self.training_stats['episodes_completed'] += 1
+        self.training_stats['latest_reward'] = episode_reward
+        self.training_stats['episode_rewards'].append(episode_reward)
 
-            # 计算平均奖励
-            if self.recent_rewards:
-                self.training_stats['average_reward'] = np.mean(list(self.recent_rewards))
-
-        if episode_length is not None:
-            self.training_stats['episodes_completed'] += 1
+        # 计算平均奖励（最近100个episodes）
+        recent_rewards = self.training_stats['episode_rewards'][-100:]
+        self.training_stats['average_reward'] = sum(recent_rewards) / len(recent_rewards)
 
     def _create_episode_data(self, episode: int, episode_reward: float,
-                             episode_length: int, ref_info: Dict = None) -> Dict[str, Any]:
-        """创建标准的episode数据格式"""
-        current_time = time.time()
-        current_timestep = self.training_stats['total_steps']
-
+                             episode_length: int, ref_info: Optional[Dict] = None) -> Dict[str, Any]:
+        """创建episode数据字典"""
         episode_data = {
             'episode': episode,
-            'timestep': current_timestep,
-            'episode_reward': float(episode_reward),
-            'episode_length': int(episode_length),
+            'episode_reward': episode_reward,
+            'episode_length': episode_length,
+            'total_steps': self.training_stats['total_steps'],
             'average_reward': self.training_stats['average_reward'],
-            'timestamp': current_time,
-            'training_id': self.history_manager.get_current_training_id()
+            'timestamp': time.time()
         }
 
-        # 添加参考信息
+        # 添加参考点信息
         if ref_info:
-            episode_data['ref_info'] = ref_info
+            episode_data['reference_point_info'] = ref_info
+
+        # 添加边界信息
+        if hasattr(self, 'initial_boundary'):
+            episode_data['boundary_vertices'] = len(self.initial_boundary.get_vertices())
+            episode_data['boundary_vertices_data'] = self.initial_boundary.get_vertices()
+
+        # 添加mesh数据（如果可用）
+        if hasattr(self, 'env') and hasattr(self.env, 'get_mesh_data'):
+            try:
+                episode_data['mesh_data'] = self.env.get_mesh_data()
+            except Exception as e:
+                print(f"获取mesh数据失败: {e}")
 
         return episode_data
-
-    def _should_save_history(self, current_timestep: int, last_save_timestep: int) -> bool:
-        """判断是否应该保存历史数据"""
-        return current_timestep - last_save_timestep >= self.history_save_frequency
-
-    def _should_log_progress(self, current_timestep: int, last_log_timestep: int) -> bool:
-        """判断是否应该输出训练日志"""
-        return current_timestep - last_log_timestep >= self.log_frequency
-
-    def _should_evaluate(self, current_timestep: int, last_eval_timestep: int) -> bool:
-        """判断是否应该进行评估"""
-        return current_timestep - last_eval_timestep >= self.evaluation_frequency
-
-    def _log_training_progress(self, episode: int, episode_reward: float):
-        """输出训练进度日志"""
-        training_id = self.history_manager.get_current_training_id()
-        avg_reward = self.training_stats['average_reward']
-        total_steps = self.training_stats['total_steps']
-
-        print(f"Timestep {total_steps} Episode {episode} [{training_id}]: "
-              f"最新奖励={episode_reward:.3f}, 平均奖励={avg_reward:.3f}")
 
     def start_training_async(self, **kwargs) -> str:
         """
         异步启动训练
+
+        Args:
+            **kwargs: 训练参数，如max_timesteps, boundary_source等
 
         Returns:
             str: 训练ID
@@ -183,34 +141,66 @@ class BaseTrainer(ABC):
         # 重置停止事件
         self.stop_event.clear()
 
-        # 启动训练会话
+        # 开始新的训练会话
+        description = kwargs.get('description', '')
+        boundary_source = kwargs.get('boundary_source', '')
+
+        # 获取mesh名称（如果可用）
+        mesh_name = None
+        if boundary_source and isinstance(boundary_source, str):
+            mesh_name = boundary_source
+
         training_id = self.history_manager.start_training_session(
-            mesh_name=kwargs.get('mesh_name', None),
+            mesh_name=mesh_name,
             config_overrides={
                 'max_timesteps': kwargs.get('max_timesteps', 100000),
-                'max_steps': kwargs.get('max_steps', 1000),
-                'batch_size': kwargs.get('batch_size', None),
-                'history_save_frequency': self.history_save_frequency
+                'boundary_source': boundary_source,
+                'backend_type': getattr(self, 'backend_type', 'unknown')
             },
-            description=kwargs.get('description', None)
+            description=description
         )
 
-        # 启动训练线程 - 移除stop_event参数
+        # 启动训练线程，只传递train()方法需要的参数
         self.training_thread = threading.Thread(
             target=self._train_worker,
-            kwargs=kwargs  # 直接传递kwargs，_train_worker会过滤掉stop_event
+            kwargs=self._filter_train_kwargs(kwargs)
         )
         self.training_thread.start()
 
         return training_id
 
+    def _filter_train_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        过滤出train()方法需要的参数
+
+        Args:
+            kwargs: 原始参数字典
+
+        Returns:
+            Dict[str, Any]: 过滤后的参数字典
+        """
+        # 定义train()方法接受的参数列表
+        valid_train_params = {
+            'max_timesteps',
+            'max_steps_per_episode',
+            'save_frequency',
+            'log_frequency',
+            'evaluation_frequency'
+        }
+
+        # 只保留有效的训练参数
+        filtered_kwargs = {
+            k: v for k, v in kwargs.items()
+            if k in valid_train_params
+        }
+
+        return filtered_kwargs
+
     def _train_worker(self, **kwargs):
         """训练工作线程"""
         try:
             self.is_training = True
-            # 移除stop_event参数，因为它已经存储在self.stop_event中
-            train_kwargs = {k: v for k, v in kwargs.items() if k != 'stop_event'}
-            self.train(**train_kwargs)
+            self.train(**kwargs)
         except Exception as e:
             print(f"训练过程中发生错误: {e}")
             import traceback
@@ -254,7 +244,33 @@ class BaseTrainer(ABC):
         """
         执行训练主循环（子类实现）
 
+        Args:
+            **kwargs: 训练参数，通常包括：
+                - max_timesteps (int): 最大训练步数
+                - max_steps_per_episode (int): 每episode最大步数
+                - save_frequency (int): 保存频率
+                - log_frequency (int): 日志频率
+                - evaluation_frequency (int): 评估频率
+
         Returns:
             Dict[str, Any]: 训练统计信息
         """
         pass
+
+    def _save_model(self, path: str):
+        """
+        保存模型（子类可覆盖）
+
+        Args:
+            path: 保存路径
+        """
+        print(f"基类不支持模型保存: {path}")
+
+    def _load_model(self, path: str):
+        """
+        加载模型（子类可覆盖）
+
+        Args:
+            path: 模型路径
+        """
+        print(f"基类不支持模型加载: {path}")

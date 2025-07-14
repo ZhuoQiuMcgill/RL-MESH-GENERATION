@@ -1,3 +1,8 @@
+"""
+网格类定义
+
+提供网格的构建、维护和查询功能
+"""
 import copy
 
 
@@ -42,3 +47,51 @@ class Mesh:
         callers cannot mutate the internal state accidentally.
         """
         return copy.deepcopy(self.mesh)
+
+    def get_adjacency_dict(self):
+        """
+        返回网格的邻接关系字典，格式适合前端可视化
+
+        Returns:
+            Dict[str, List[List[float]]]: 字符串化的顶点坐标到邻接顶点列表的映射
+        """
+        adjacency_dict = {}
+        for vertex, neighbors in self.mesh.items():
+            # 将顶点坐标转换为字符串格式 "[x,y]"
+            vertex_key = f"[{vertex[0]},{vertex[1]}]"
+            # 邻接顶点保持为坐标列表格式
+            adjacency_dict[vertex_key] = [[neighbor[0], neighbor[1]] for neighbor in neighbors]
+
+        return adjacency_dict
+
+    # ──────────────────────── other utility methods ────────────────
+    def get_vertices(self):
+        """返回网格中所有顶点的列表"""
+        return list(self.mesh.keys())
+
+    def get_vertex_count(self):
+        """返回网格中顶点的数量"""
+        return len(self.mesh)
+
+    def get_edge_count(self):
+        """返回网格中边的数量（每条边计算一次）"""
+        total_degree = sum(len(neighbors) for neighbors in self.mesh.values())
+        return total_degree // 2  # 每条边被计算了两次
+
+    def has_vertex(self, vertex):
+        """检查顶点是否在网格中"""
+        return vertex in self.mesh
+
+    def get_neighbors(self, vertex):
+        """获取指定顶点的所有邻接顶点"""
+        if vertex not in self.mesh:
+            raise ValueError(f"Vertex {vertex} not found in the mesh.")
+        return copy.deepcopy(self.mesh[vertex])
+
+    def __str__(self):
+        """返回网格的字符串表示"""
+        return f"Mesh(vertices={self.get_vertex_count()}, edges={self.get_edge_count()})"
+
+    def __repr__(self):
+        """返回网格的详细字符串表示"""
+        return f"Mesh(vertices={self.get_vertex_count()}, edges={self.get_edge_count()}, adjacency={dict(self.mesh)})"

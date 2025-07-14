@@ -103,7 +103,12 @@ class TrainingManager:
         启动训练
 
         Args:
-            **training_params: 训练参数
+            **training_params: 训练参数，包括：
+                - boundary_source: 边界数据源
+                - backend: SAC后端类型
+                - device: 训练设备
+                - max_timesteps: 最大训练步数
+                - 等等
 
         Returns:
             Dict[str, Any]: 启动结果
@@ -111,8 +116,19 @@ class TrainingManager:
         try:
             # 检查训练器是否已初始化
             if self.trainer is None:
-                # 尝试使用默认配置初始化
-                init_result = self.initialize_trainer()
+                # 从training_params中提取初始化参数
+                boundary_source = training_params.get('boundary_source')
+                backend = training_params.get('backend')
+                device = training_params.get('device')
+
+                print(f"训练器未初始化，正在使用参数初始化: boundary_source={boundary_source}, backend={backend}, device={device}")
+
+                # 使用传入的参数初始化训练器
+                init_result = self.initialize_trainer(
+                    boundary_source=boundary_source,
+                    backend=backend,
+                    device=device
+                )
                 if not init_result["success"]:
                     return init_result
 
@@ -181,27 +197,15 @@ class TrainingManager:
             error_msg = f"停止训练失败: {str(e)}"
             print(error_msg)
             traceback.print_exc()
-
-            # 强制设置状态
-            self._is_training = False
-
             return {
                 "success": False,
                 "error": error_msg
             }
 
-    def _wait_for_training_stop(self, timeout=5.0):
-        """等待训练停止"""
-        start_time = time.time()
-        while self._is_training and (time.time() - start_time) < timeout:
-            time.sleep(0.1)
-
-            # 检查训练器状态
-            if self.trainer:
-                status = self.trainer.get_training_status()
-                if not status.get('running', False):
-                    self._is_training = False
-                    break
+    def _wait_for_training_stop(self, timeout: float = 10.0):
+        """等待训练完全停止"""
+        if hasattr(self.trainer, 'training_thread') and self.trainer.training_thread:
+            self.trainer.training_thread.join(timeout=timeout)
 
     def get_status(self) -> Dict[str, Any]:
         """
@@ -214,46 +218,136 @@ class TrainingManager:
             if self.trainer is None:
                 return {
                     "running": False,
-                    "status": "not_initialized",
+                    "status": "idle",
                     "stats": None,
-                    "backend_type": None
+                    "backend_type": None,
+                    "timestamp": time.time()
                 }
 
             # 获取训练器状态
-            status = self.trainer.get_training_status()
+            trainer_status = self.trainer.get_training_status()
 
-            # 更新本地状态
-            actual_running = status.get('running', False)
-            if not actual_running and self._is_training:
-                self._is_training = False
-
-            # 清理统计数据，确保JSON安全
-            stats = status.get('stats', {})
+            # 清理统计数据以确保JSON兼容性
+            stats = trainer_status.get("stats", {})
             if stats:
                 stats = self._clean_stats_for_json(stats)
 
-            result = {
-                "running": actual_running,
-                "status": status.get('status', 'unknown'),
+                # 确保包含可视化数据
+                stats = self._ensure_visualization_data(stats)
+
+            return {
+                "running": trainer_status.get("running", False),
+                "status": trainer_status.get("status", "stopped"),
                 "stats": stats,
-                "backend_type": status.get('backend_type', None),
+                "backend_type": trainer_status.get("backend_type"),
                 "timestamp": time.time()
             }
 
-            # 缓存最新统计
-            self._last_stats = result
-
-            return result
-
         except Exception as e:
             print(f"获取训练状态失败: {e}")
+            traceback.print_exc()
             return {
                 "running": False,
                 "status": "error",
                 "stats": None,
                 "backend_type": None,
-                "error": str(e)
+                "error": str(e),
+                "timestamp": time.time()
             }
+
+    def _ensure_visualization_data(self, stats: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        确保统计数据包含前端需要的可视化数据
+
+        Args:
+            stats: 统计数据字典
+
+        Returns:
+            Dict[str, Any]: 包含可视化数据的统计信息
+        """
+        # 如果trainer有环境，尝试获取可视化数据
+        if self.trainer and hasattr(self.trainer, 'trainer'):
+            trainer_instance = self.trainer.trainer
+
+            # 获取边界数据
+            if hasattr(trainer_instance, 'initial_boundary') and trainer_instance.initial_boundary:
+                boundary_vertices = trainer_instance.initial_boundary.get_vertices()
+                stats["boundary_vertices"] = len(boundary_vertices)
+                stats["boundary_vertices_data"] = boundary_vertices
+            else:
+                stats["boundary_vertices"] = stats.get("boundary_vertices", 0)
+                stats["boundary_vertices_data"] = stats.get("boundary_vertices_data", [])
+
+            # 获取网格数据
+            if hasattr(trainer_instance, 'env') and trainer_instance.env:
+                try:
+                    # 尝试从环境获取网格数据
+                    if hasattr(trainer_instance.env, 'get_mesh_data'):
+                        mesh_data = trainer_instance.env.get_mesh_data()
+                        stats["mesh_data"] = mesh_data if mesh_data else {}
+                    elif hasattr(trainer_instance.env, 'mesh') and trainer_instance.env.mesh:
+                        # 手动构建网格数据
+                        mesh_data = trainer_instance.env.mesh.get_adjacency_dict()
+                        stats["mesh_data"] = mesh_data if mesh_data else {}
+                    else:
+                        stats["mesh_data"] = stats.get("mesh_data", {})
+
+                    # 获取参考点信息
+                    if hasattr(trainer_instance.env, 'get_last_reference_info'):
+                        ref_info = trainer_instance.env.get_last_reference_info()
+                        stats["reference_point_info"] = ref_info if ref_info else {}
+                    elif hasattr(trainer_instance.env, 'last_reference_info'):
+                        stats["reference_point_info"] = trainer_instance.env.last_reference_info or {}
+                    else:
+                        stats["reference_point_info"] = stats.get("reference_point_info", {})
+
+                except Exception as e:
+                    print(f"获取环境可视化数据失败: {e}")
+                    stats["mesh_data"] = stats.get("mesh_data", {})
+                    stats["reference_point_info"] = stats.get("reference_point_info", {})
+            else:
+                stats["mesh_data"] = stats.get("mesh_data", {})
+                stats["reference_point_info"] = stats.get("reference_point_info", {})
+
+            # 获取缓冲区大小
+            if hasattr(trainer_instance, 'replay_buffer') and trainer_instance.replay_buffer:
+                try:
+                    buffer_size = len(trainer_instance.replay_buffer)
+                    stats["buffer_size"] = buffer_size
+                except:
+                    stats["buffer_size"] = stats.get("buffer_size", 0)
+            else:
+                stats["buffer_size"] = stats.get("buffer_size", 0)
+
+            # 确保训练ID存在
+            if hasattr(trainer_instance, 'history_manager'):
+                training_id = trainer_instance.history_manager.get_current_training_id()
+                stats["training_id"] = training_id or stats.get("training_id", "")
+            else:
+                stats["training_id"] = stats.get("training_id", "")
+
+            # 确保在线学习模式标志存在
+            if hasattr(trainer_instance, 'online_learning_mode'):
+                stats["online_learning_mode"] = trainer_instance.online_learning_mode
+            else:
+                stats["online_learning_mode"] = stats.get("online_learning_mode", False)
+
+        # 确保所有必需字段都存在
+        required_fields = {
+            "mesh_data": {},
+            "boundary_vertices_data": [],
+            "reference_point_info": {},
+            "boundary_vertices": 0,
+            "buffer_size": 0,
+            "training_id": "",
+            "online_learning_mode": False
+        }
+
+        for field, default_value in required_fields.items():
+            if field not in stats:
+                stats[field] = default_value
+
+        return stats
 
     def _clean_stats_for_json(self, data):
         """
@@ -335,186 +429,31 @@ class TrainingManager:
             }
 
     def get_trainer_info(self) -> Dict[str, Any]:
-        """
-        获取训练器信息
-
-        Returns:
-            Dict[str, Any]: 训练器信息
-        """
-        if self.trainer is None:
-            return {
-                "initialized": False,
-                "available_backends": get_available_backends()
-            }
-
+        """获取训练器信息"""
         try:
+            if self.trainer is None:
+                return {
+                    "is_training": self._is_training,
+                    "available_backends": get_available_backends(),
+                    "timestamp": time.time()
+                }
+
             trainer_info = self.trainer.get_trainer_info()
-            trainer_info["initialized"] = True
-            trainer_info["available_backends"] = get_available_backends()
+            trainer_info.update({
+                "is_training": self._is_training,
+                "available_backends": get_available_backends(),
+                "timestamp": time.time()
+            })
+
             return trainer_info
+
         except Exception as e:
             return {
-                "initialized": False,
                 "error": str(e),
-                "available_backends": get_available_backends()
+                "is_training": self._is_training,
+                "available_backends": get_available_backends(),
+                "timestamp": time.time()
             }
-
-    def add_stats_callback(self, callback: Callable):
-        """
-        添加统计回调函数
-
-        Args:
-            callback: 回调函数
-        """
-        self._stats_callbacks.append(callback)
-
-    def remove_stats_callback(self, callback: Callable):
-        """
-        移除统计回调函数
-
-        Args:
-            callback: 回调函数
-        """
-        if callback in self._stats_callbacks:
-            self._stats_callbacks.remove(callback)
-
-    def _on_episode_complete(self, episode_data: Dict[str, Any]):
-        """
-        Episode完成回调
-
-        Args:
-            episode_data: Episode数据
-        """
-        try:
-            # 触发统计回调
-            for callback in self._stats_callbacks:
-                try:
-                    callback(episode_data)
-                except Exception as e:
-                    print(f"统计回调执行失败: {e}")
-        except Exception as e:
-            print(f"Episode回调处理失败: {e}")
-
-    def _on_training_step(self, step_data: Dict[str, Any]):
-        """
-        训练步骤回调
-
-        Args:
-            step_data: 步骤数据
-        """
-        try:
-            # 这里可以添加步骤级别的处理
-            pass
-        except Exception as e:
-            print(f"训练步骤回调处理失败: {e}")
-
-    def save_model(self, path: str) -> Dict[str, Any]:
-        """
-        保存模型
-
-        Args:
-            path: 保存路径
-
-        Returns:
-            Dict[str, Any]: 保存结果
-        """
-        try:
-            if self.trainer is None:
-                return {
-                    "success": False,
-                    "error": "训练器未初始化"
-                }
-
-            self.trainer.save_model(path)
-
-            return {
-                "success": True,
-                "message": f"模型已保存到: {path}"
-            }
-
-        except Exception as e:
-            error_msg = f"保存模型失败: {str(e)}"
-            print(error_msg)
-            return {
-                "success": False,
-                "error": error_msg
-            }
-
-    def load_model(self, path: str) -> Dict[str, Any]:
-        """
-        加载模型
-
-        Args:
-            path: 模型路径
-
-        Returns:
-            Dict[str, Any]: 加载结果
-        """
-        try:
-            if self.trainer is None:
-                return {
-                    "success": False,
-                    "error": "训练器未初始化"
-                }
-
-            # 检查文件是否存在
-            if not os.path.exists(path):
-                return {
-                    "success": False,
-                    "error": f"模型文件不存在: {path}"
-                }
-
-            self.trainer.load_model(path)
-
-            return {
-                "success": True,
-                "message": f"模型已从 {path} 加载"
-            }
-
-        except Exception as e:
-            error_msg = f"加载模型失败: {str(e)}"
-            print(error_msg)
-            return {
-                "success": False,
-                "error": error_msg
-            }
-
-    def reset(self):
-        """重置训练管理器"""
-        try:
-            # 停止训练
-            if self._is_training:
-                self.stop_training()
-
-            # 清理训练器
-            self.trainer = None
-
-            # 重置状态
-            self._is_training = False
-            self._training_thread = None
-            self._stop_event.clear()
-            self._last_stats = {}
-            self._stats_callbacks = []
-
-            print("训练管理器已重置")
-
-        except Exception as e:
-            print(f"重置训练管理器失败: {e}")
-
-    def get_health_status(self) -> Dict[str, Any]:
-        """
-        获取健康状态
-
-        Returns:
-            Dict[str, Any]: 健康状态信息
-        """
-        return {
-            "status": "healthy",
-            "trainer_initialized": self.trainer is not None,
-            "is_training": self._is_training,
-            "available_backends": get_available_backends(),
-            "timestamp": time.time()
-        }
 
     def switch_backend(self, backend_type: str, boundary_source=None) -> Dict[str, Any]:
         """
@@ -578,6 +517,15 @@ class TrainingManager:
                 "success": False,
                 "error": error_msg
             }
+
+    def _on_episode_complete(self, episode_data: Dict[str, Any]):
+        """处理episode完成事件"""
+        self._last_stats = episode_data
+
+    def _on_training_step(self, step_data: Dict[str, Any]):
+        """处理训练步骤事件"""
+        # 可以在这里处理步骤级别的数据
+        pass
 
 
 # 全局训练管理器实例
