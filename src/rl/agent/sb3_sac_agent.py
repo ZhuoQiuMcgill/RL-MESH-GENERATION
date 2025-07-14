@@ -18,55 +18,66 @@ from ..config import load_config
 class HistoryCallback(BaseCallback):
     """
     自定义回调函数，用于收集训练过程中的数据并触发episode回调
+    现在使用环境的episode统计功能
     """
 
     def __init__(self, trainer_instance, verbose=0):
         super(HistoryCallback, self).__init__(verbose)
         self.trainer = trainer_instance
         self.episode_count = 0
-        self.current_episode_reward = 0
-        self.current_episode_length = 0
-        self.last_obs = None
 
     def _on_step(self) -> bool:
         """在每个训练步骤后调用"""
-        # 获取当前环境信息
-        if hasattr(self.training_env, 'get_attr'):
-            # 处理VecEnv
-            infos = self.training_env.get_attr('get_last_reference_info')
-            ref_info = infos[0]() if infos and callable(infos[0]) else None
-        else:
-            # 处理单个环境
-            ref_info = getattr(self.training_env, 'get_last_reference_info', lambda: None)()
-
-        # 更新episode统计
-        self.current_episode_length += 1
-
         # 检查是否完成了一个episode
         dones = self.locals.get('dones', [False])
         if any(dones):
-            self._on_episode_end(ref_info)
+            self._on_episode_end()
 
         return True
 
-    def _on_episode_end(self, ref_info):
+    def _on_episode_end(self):
         """episode结束时的处理"""
         self.episode_count += 1
 
-        # 获取episode奖励
-        if hasattr(self.training_env, 'get_attr'):
-            # VecEnv
-            episode_rewards = self.training_env.get_attr('episode_reward')
-            episode_reward = episode_rewards[0] if episode_rewards else 0
-        else:
-            # 单个环境
-            episode_reward = getattr(self.training_env, 'episode_reward', 0)
+        # 获取episode统计信息
+        try:
+            if hasattr(self.training_env, 'get_attr'):
+                # 处理VecEnv
+                episode_rewards = self.training_env.get_attr('episode_reward')
+                episode_lengths = self.training_env.get_attr('episode_length')
+
+                episode_reward = episode_rewards[0] if episode_rewards else 0.0
+                episode_length = episode_lengths[0] if episode_lengths else 0
+            else:
+                # 处理单个环境
+                episode_reward = self.training_env.get_wrapper_attr('episode_reward')
+                episode_length = self.training_env.get_wrapper_attr('episode_length')
+        except Exception as e:
+            # 如果获取失败，使用默认值
+            print(f"警告: 获取episode统计信息失败: {e}")
+            episode_reward = 0.0
+            episode_length = 0
+
+        # 获取当前环境的参考信息
+        ref_info = None
+        try:
+            if hasattr(self.training_env, 'get_attr'):
+                # 处理VecEnv
+                infos = self.training_env.get_attr('get_last_reference_info')
+                ref_info = infos[0]() if infos and callable(infos[0]) else None
+            else:
+                # 处理单个环境
+                if hasattr(self.training_env, 'get_last_reference_info'):
+                    ref_info = self.training_env.get_last_reference_info()
+        except Exception:
+            # 如果获取参考信息失败，设为None
+            ref_info = None
 
         # 创建episode数据
         episode_data = self.trainer._create_sb3_episode_data(
             episode=self.episode_count,
             episode_reward=float(episode_reward),
-            episode_length=self.current_episode_length,
+            episode_length=int(episode_length),
             ref_info=ref_info
         )
 
@@ -76,9 +87,6 @@ class HistoryCallback(BaseCallback):
         # 缓存到历史管理器
         if hasattr(self.trainer, 'history_manager'):
             self.trainer.history_manager.cache_episode_data(episode_data)
-
-        # 重置episode统计
-        self.current_episode_length = 0
 
 
 class SB3SACAgent:
@@ -110,7 +118,7 @@ class SB3SACAgent:
 
         # 设置网络架构
         policy_kwargs = dict(
-            activation_fn=th.nn.ReLU,
+            activation_fn=th.ReLU,
             net_arch=sb3_config.get("net_arch", [128, 128, 128])
         )
 

@@ -3,6 +3,7 @@ from gymnasium import spaces
 import numpy as np
 import math
 import copy
+from typing import Any
 
 # 导入几何模块和动作模块
 from src.geometry import Mesh, Boundary
@@ -18,6 +19,7 @@ class MeshEnv(gym.Env):
     """
     网格生成的强化学习环境
     实现了基于论文的MDP formulation
+    现在包含SB3兼容的episode统计功能
     """
     metadata = {'render_modes': ['human']}
 
@@ -70,6 +72,28 @@ class MeshEnv(gym.Env):
         self.generated_elements = 0
         self.first_invalid_action = True
 
+        # SB3兼容的episode统计属性
+        self.episode_reward = 0.0
+        self.episode_length = 0
+        self.episode_count = 0
+
+    def _reset_episode_stats(self) -> None:
+        """重置episode级别的统计信息"""
+        self.episode_reward = 0.0
+        self.episode_length = 0
+
+    def _update_episode_stats(self, reward: float) -> None:
+        """更新episode级别的统计信息"""
+        self.episode_reward += float(reward)
+        self.episode_length += 1
+
+    def get_wrapper_attr(self, name: str) -> Any:
+        """获取环境属性，兼容SB3/gymnasium wrapper标准"""
+        if hasattr(self, name):
+            return getattr(self, name)
+        else:
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
     def reset(self, seed=None, options=None):
         """
         重置环境到初始状态
@@ -86,6 +110,15 @@ class MeshEnv(gym.Env):
         self.current_step = 0
         self.generated_elements = 0
         # self.first_invalid_action = True
+
+        # 重置episode统计
+        self._reset_episode_stats()
+
+        # 增加episode计数（仅在非首次reset时）
+        if hasattr(self, '_initialized'):
+            self.episode_count += 1
+        else:
+            self._initialized = True
 
         observation = self._get_obs()
         info = {"step": self.current_step, "boundary_vertices": len(self.boundary.get_vertices())}
@@ -182,6 +215,9 @@ class MeshEnv(gym.Env):
             reward = get_invalid_penalty()
             terminated = True
             truncated = True
+
+        # 更新episode统计
+        self._update_episode_stats(reward)
 
         # 获取新状态
         observation = self._get_obs()
