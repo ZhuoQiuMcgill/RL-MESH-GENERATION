@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple, Any, Callable, Union
 from collections import deque
 import json
 import threading
-
+from .agent.sb3_sac_agent import SB3SACAgent, HistoryCallback, SB3_AVAILABLE
 from .agent.sac_agent import SACAgent
 from .environment import MeshEnv
 from .buffer_factory import create_replay_buffer, get_buffer_info
@@ -74,6 +74,19 @@ class MeshTrainer:
 
         print(f"使用设备: {self.device}")
 
+        # 确定SAC后端类型
+        sac_backend_config = self.config.get("sac_backend", {})
+        self.sac_backend = sac_backend_config.get("type", "custom")
+
+        if self.sac_backend not in ["custom", "sb3"]:
+            raise ValueError(f"不支持的SAC后端类型: {self.sac_backend}. 支持的类型: 'custom', 'sb3'")
+
+        if self.sac_backend == "sb3" and not SB3_AVAILABLE:
+            print("警告: stable_baselines3未安装，将回退到自制SAC实现")
+            self.sac_backend = "custom"
+
+        print(f"SAC后端: {self.sac_backend}")
+
         # 初始化网格导入器
         self.importer = MeshImporter(config=self.config)
 
@@ -93,8 +106,12 @@ class MeshTrainer:
         # 初始化智能体
         self._init_agent()
 
-        # 初始化经验回放缓冲区
-        self._init_replay_buffer()
+        # 初始化经验回放缓冲区（仅自制SAC需要）
+        if self.sac_backend == "custom":
+            self._init_replay_buffer()
+        else:
+            self.replay_buffer = None
+            self.online_learning_mode = False  # SB3有自己的缓冲区管理
 
         # 初始化训练统计
         self._init_training_stats()
@@ -312,14 +329,21 @@ class MeshTrainer:
         print(f"边界顶点数量: {len(self.initial_boundary.get_vertices())}")
 
     def _init_agent(self):
-        """初始化SAC智能体"""
-        self.agent = SACAgent(
-            state_dim=self.state_dim,
-            action_dim=self.action_dim,
-            max_action=self.max_action,
-            device=self.device,
-            config=self.config
-        )
+        """初始化SAC智能体（根据后端类型）"""
+        if self.sac_backend == "sb3":
+            self.agent = SB3SACAgent(
+                env=self.env,
+                device=self.device,
+                config=self.config
+            )
+        else:
+            self.agent = SACAgent(
+                state_dim=self.state_dim,
+                action_dim=self.action_dim,
+                max_action=self.max_action,
+                device=self.device,
+                config=self.config
+            )
 
     def _init_replay_buffer(self):
         """初始化经验回放缓冲区"""
@@ -352,6 +376,45 @@ class MeshTrainer:
 
         # 用于记录最近的奖励（用于early stopping等）
         self.recent_rewards = deque(maxlen=100)
+
+    def _create_sb3_episode_data(self, episode: int, episode_reward: float,
+                                 episode_length: int, ref_info: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        为SB3模式创建episode数据包
+
+        Args:
+            episode: episode编号
+            episode_reward: episode总奖励
+            episode_length: episode长度
+            ref_info: 参考点信息
+
+        Returns:
+            包含episode数据的字典
+        """
+        # 获取当前网格数据
+        mesh_data = self.env.mesh.get_mesh() if hasattr(self.env, 'mesh') else {}
+        boundary_vertices = self.env.boundary.get_vertices() if hasattr(self.env, 'boundary') else []
+
+        # 计算统计信息
+        avg_reward = np.mean(list(self.recent_rewards)) if self.recent_rewards else 0
+
+        episode_data = {
+            'episode': episode,
+            'episode_reward': float(episode_reward),
+            'episode_length': episode_length,
+            'average_reward': float(avg_reward),
+            'total_steps': self.agent.training_stats.get('total_timesteps', 0),
+            'mesh_data': mesh_data,
+            'boundary_vertices': boundary_vertices,
+            'boundary_size': len(boundary_vertices),
+            'buffer_size': 0,  # SB3管理自己的缓冲区
+            'online_learning_mode': False,
+            'timestamp': time.time(),
+            'reference_point_info': ref_info,
+            'sac_backend': 'sb3'
+        }
+
+        return episode_data
 
     def add_episode_callback(self, callback: Callable[[Dict[str, Any]], None]):
         """
@@ -459,6 +522,9 @@ class MeshTrainer:
         Returns:
             包含训练统计信息的字典
         """
+
+        # SB3训练路径
+
         # 获取训练参数，确保类型正确
         training_config = self.config.get("training", {})
 
@@ -496,6 +562,15 @@ class MeshTrainer:
             config_overrides=config_overrides,
             description=description
         )
+
+        if self.sac_backend == "sb3":
+            return self._train_with_sb3(
+                max_timesteps=max_timesteps,
+                training_id=training_id,
+                description=description,
+                stop_event=stop_event
+            )
+
         print(f"训练会话已开始，ID: {training_id}")
         print(f"训练数据将保存到: {self.history_manager.current_training_dir}")
         print(f"Episode历史将每{self.history_save_frequency}个timesteps批量保存一次")
@@ -660,6 +735,69 @@ class MeshTrainer:
         cache_status = self.history_manager.get_cache_status()
         print(f"History保存统计: 最后保存在timestep {cache_status['last_save_timestep']}, "
               f"共保存了{episode}个episodes的历史数据")
+
+        return self.training_stats
+
+    def _train_with_sb3(self, max_timesteps: int, training_id: str,
+                        description: Optional[str], stop_event: Optional["threading.Event"]) -> Dict[str, List[float]]:
+        """
+        使用SB3进行训练
+
+        Args:
+            max_timesteps: 最大训练步数
+            training_id: 训练ID
+            description: 训练描述
+            stop_event: 停止事件
+
+        Returns:
+            训练统计信息
+        """
+        print(f"开始SB3训练: 最大timesteps={max_timesteps}")
+
+        start_time = time.time()
+
+        # 创建回调函数
+        callback = HistoryCallback(trainer_instance=self)
+
+        try:
+            # 使用SB3进行训练
+            stats = self.agent.train(
+                total_timesteps=max_timesteps,
+                callback=callback
+            )
+
+            training_stopped_early = False
+            if stop_event is not None and stop_event.is_set():
+                training_stopped_early = True
+
+        except KeyboardInterrupt:
+            print("训练被用户中断")
+            training_stopped_early = True
+            stats = self.agent.training_stats
+
+        # 更新训练统计
+        self.training_stats['training_time'] = time.time() - start_time
+        self.training_stats['total_steps'] = stats.get('total_timesteps', 0)
+        self.training_stats['episodes_completed'] = callback.episode_count
+
+        # 强制保存剩余的缓存数据
+        self.history_manager.force_save_cache()
+
+        # 结束训练会话并生成图表
+        self.history_manager.finish_training_session(
+            final_stats=self.training_stats,
+            stopped_early=training_stopped_early
+        )
+
+        # 保存最终模型到history目录
+        self._save_final_model_to_history()
+
+        if training_stopped_early:
+            print("SB3训练被外部停止")
+        else:
+            print(f"SB3训练完成! 总计{stats.get('total_timesteps', 0)}个timesteps")
+
+        print(f"训练数据已保存到: {self.history_manager.get_training_plots_path()}")
 
         return self.training_stats
 
