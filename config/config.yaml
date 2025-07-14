@@ -32,15 +32,16 @@ paths:
 
 # Default configuration for RL mesh generation
 sac_agent:
-  actor_lr: 0.0005
-  critic_lr: 0.0005
+  actor_lr: 0.0003
+  critic_lr: 0.0003
   alpha_lr: 0.0003
+  weight_decay: 0.0001
   gamma: 0.99
-  tau: 0.005
-  hidden_dim: 128
-  buffer_size: 1000000
-  batch_size: 128
-  start_training_steps: 1000
+  tau: 0.002
+  hidden_dim: 256
+  buffer_size: 800000
+  batch_size: 256
+  start_training_steps: 5000
 
 # 经验回放缓冲区配置
 replay_buffer:

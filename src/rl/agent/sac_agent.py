@@ -36,7 +36,9 @@ class SACAgent:
         alpha_lr = float(sac_cfg.get("alpha_lr", 3e-4))
 
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic.parameters(), lr=critic_lr, weight_decay=sac_cfg.get("weight_decay", 1e-4)
+        )
 
         # 初始化自动熵调优相关的参数。alpha（温度参数）会在训练过程中自动学习。
         self.log_alpha = torch.zeros(1, requires_grad=True, device=device)
