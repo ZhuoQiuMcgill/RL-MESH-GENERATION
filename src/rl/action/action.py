@@ -6,7 +6,7 @@ from src.rl.quality import *
 
 class ActionType(ABC):
     """动作类型的抽象基类"""
-    QUALITY_THRESHOLD = 0.01
+    QUALITY_THRESHOLD = 0.08
 
     @abstractmethod
     def execute(self, mesh, boundary, **kwargs):
@@ -39,16 +39,15 @@ class ActionType(ABC):
         :param gamma: Jacobian penalty exponent (>=1 makes penalty steeper)
         :return: quality in [0, 1]
         """
-        # sj = quality_s_jacobian(element)
-        # if sj <= 0.0:
-        #     return 0.0  # flipped or collapsed
+        sj = quality_s_jacobian(element)
+        if sj <= 0.0:
+            return 0.0  # flipped or collapsed
 
-        # sj = min(1.0, sj)  # clamp to [0,1]
-        # robust = quality_robust(element)
+        sj = min(1.0, sj)  # clamp to [0,1]
+        robust = quality_robust(element)
 
-        # q = robust * (sj ** gamma)  # smooth hybrid metric
-        # return max(0.0, min(1.0, q))
-        return quality_robust(element)
+        q = robust * (sj ** gamma)  # smooth hybrid metric
+        return max(0.0, min(1.0, q))
 
     @abstractmethod
     def get_element_quality(self, boundary, **kwargs):
