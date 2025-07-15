@@ -29,60 +29,86 @@ paths:
   default_meshes:
     - "1"
 
-# Stable-Baselines3 SAC配置 (当sac_backend.type为"sb3"时使用)
+# Stable-Baselines3 SAC配置
+# 注意：前端只会修改training.max_timesteps和environment.max_steps
+# 其他所有SAC参数都从这里读取，保证训练的一致性
 sb3_sac:
+  # 学习率 - 控制优化器的步长
   learning_rate: 0.0003
+
+  # 经验回放缓冲区大小 - 存储经验的容量
   buffer_size: 1000000
+
+  # 开始训练前的随机探索步数 - 确保缓冲区有足够的经验
   learning_starts: 10000
+
+  # 训练批次大小 - 每次从缓冲区采样的经验数量
   batch_size: 128
+
+  # 软更新系数 - 目标网络更新的速度
   tau: 0.005
+
+  # 折扣因子 - 未来奖励的重要性
   gamma: 0.99
+
+  # 训练频率 - 每多少环境步进行一次训练
   train_freq: 1
+
+  # 梯度更新步数 - 每次训练时进行多少次梯度更新
   gradient_steps: 1
-  net_arch: [128, 128, 128]
+
+  # 神经网络架构 - 隐藏层的神经元数量
+  net_arch: [ 128, 128, 128 ]
+
+  # 随机种子 - 保证实验可重现性
   seed: 998
+
+  # 详细输出级别 - 0:无输出, 1:基本信息, 2:详细信息
   verbose: 0
 
-# 经验回放缓冲区配置
-replay_buffer:
-  # 缓冲区类型: "normal", "prioritized", 或 "off"
-  # - "normal": 标准经验回放缓冲区
-  # - "prioritized": 优先级经验回放缓冲区(PER)
-  # - "off": 关闭经验回放，使用在线学习
-  # 注意: SB3模式下此配置将被忽略，因为SB3有自己的缓冲区管理
-  type: "prioritized"
-  capacity: 1000000
-
-  # 优先级经验回放(PER)参数 - 仅当type为"prioritized"时使用
-  prioritized:
-    alpha: 0.65          # 优先级指数，控制优先级的强度 (0=uniform, 1=full prioritization)
-    beta_start: 0.4     # 重要性采样权重的初始值
-    beta_frames: 100000 # beta从beta_start增长到1.0所需的帧数
-    epsilon: 0.000001   # 小常数，防止优先级为0
-
+# 环境配置
 environment:
+  # 邻居顶点数量 - 参考顶点左右各取n个邻居
   n: 2
+
+  # 扇形区域观察点数量 - 在扇形区域内选择g个观察点
   g: 3
+
+  # 动作空间半径因子 - 控制新顶点生成的范围
   alpha: 2
+
+  # 状态观察半径因子 - 控制状态观察的范围
   beta: 6
+
+  # 每episode最大步数 - 前端可以修改此参数
+  # 如果前端没有提供，则使用此默认值
   max_steps: 1000
+
+  # 密度奖励相关参数
   upsilon: 1.0
   kappa: 4.0
+
+  # 最大内角阈值（度）
   M_angle: 60.0
 
+# 训练配置
 training:
-  # 训练基本参数 - 基于timestep
-  max_timesteps: 1000000          # 最大训练步数
-  max_steps_per_episode: 1000     # 每episode最大步数
+  # 最大训练步数 - 前端可以修改此参数
+  # 如果前端没有提供，则使用此默认值
+  max_timesteps: 1000000
 
-  # 保存和日志参数 - 基于timestep
+  # 每episode最大步数 - 与environment.max_steps保持一致
+  # 这里保留是为了向后兼容
+  max_steps_per_episode: 1000
+
+  # 模型保存和日志频率 - 基于timestep
   save_frequency: 10000           # 每多少个timestep保存一次检查点
   log_frequency: 1000             # 每多少个timestep输出一次日志
   evaluation_frequency: 5000      # 每多少个timestep进行一次评估
 
-  # 训练历史保存频率 - 新增配置
+  # 训练历史保存频率
   history_save_frequency: 10000   # 每多少个timestep保存一次episode历史数据
 
-  # 早停和收敛参数
-  early_stopping_patience: 200    # 早停的patience（暂未实现）
-  convergence_threshold: 0.01     # 收敛阈值（暂未实现）
+  # 早停和收敛参数（暂未实现）
+  early_stopping_patience: 200    # 早停的patience
+  convergence_threshold: 0.01     # 收敛阈值

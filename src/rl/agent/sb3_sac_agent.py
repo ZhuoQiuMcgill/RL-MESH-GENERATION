@@ -19,6 +19,7 @@ class SB3SACAgent:
     """
     使用Stable-Baselines3的SAC智能体包装器
     提供与自制SAC相同的接口，但内部使用SB3的实现
+    确保所有SAC参数都从config.yaml中读取
     """
 
     def __init__(self, env, device="cuda", config=None):
@@ -28,7 +29,7 @@ class SB3SACAgent:
         Args:
             env: gymnasium环境
             device: 训练设备
-            config: 配置字典
+            config: 配置字典，如果为None则从config.yaml加载
         """
         if not SB3_AVAILABLE:
             raise ImportError(
@@ -39,30 +40,57 @@ class SB3SACAgent:
         self.device = device
         self.config = config if config is not None else load_config()
 
-        # 获取SB3配置
+        # 获取SB3 SAC配置，确保所有参数都从config中读取
         sb3_config = self.config.get("sb3_sac", {})
 
         # 设置网络架构
+        net_arch = sb3_config.get("net_arch", [128, 128, 128])
         policy_kwargs = dict(
             activation_fn=th.ReLU,
-            net_arch=sb3_config.get("net_arch", [128, 128, 128])
+            net_arch=net_arch
         )
 
-        # 创建SAC模型
+        # 从config读取所有SAC超参数
+        learning_rate = float(sb3_config.get("learning_rate", 3e-4))
+        buffer_size = int(sb3_config.get("buffer_size", 1000000))
+        learning_starts = int(sb3_config.get("learning_starts", 10000))
+        batch_size = int(sb3_config.get("batch_size", 128))
+        tau = float(sb3_config.get("tau", 0.005))
+        gamma = float(sb3_config.get("gamma", 0.99))
+        train_freq = sb3_config.get("train_freq", 1)
+        gradient_steps = sb3_config.get("gradient_steps", 1)
+        verbose = sb3_config.get("verbose", 0)
+        seed = sb3_config.get("seed", 998)
+
+        # 记录使用的参数
+        print(f"SAC Agent配置:")
+        print(f"  learning_rate: {learning_rate}")
+        print(f"  buffer_size: {buffer_size}")
+        print(f"  learning_starts: {learning_starts}")
+        print(f"  batch_size: {batch_size}")
+        print(f"  tau: {tau}")
+        print(f"  gamma: {gamma}")
+        print(f"  train_freq: {train_freq}")
+        print(f"  gradient_steps: {gradient_steps}")
+        print(f"  net_arch: {net_arch}")
+        print(f"  seed: {seed}")
+        print(f"  device: {device}")
+
+        # 创建SAC模型，使用从config读取的所有参数
         self.model = SAC(
             policy='MlpPolicy',
             env=env,
-            learning_rate=float(sb3_config.get("learning_rate", 3e-4)),
-            buffer_size=int(sb3_config.get("buffer_size", 1000000)),
-            learning_starts=int(sb3_config.get("learning_starts", 10000)),
-            batch_size=int(sb3_config.get("batch_size", 100)),
-            tau=float(sb3_config.get("tau", 0.005)),
-            gamma=float(sb3_config.get("gamma", 0.99)),
-            train_freq=sb3_config.get("train_freq", 1),
-            gradient_steps=sb3_config.get("gradient_steps", 1),
+            learning_rate=learning_rate,
+            buffer_size=buffer_size,
+            learning_starts=learning_starts,
+            batch_size=batch_size,
+            tau=tau,
+            gamma=gamma,
+            train_freq=train_freq,
+            gradient_steps=gradient_steps,
             policy_kwargs=policy_kwargs,
-            verbose=sb3_config.get("verbose", 0),
-            seed=sb3_config.get("seed", None),
+            verbose=verbose,
+            seed=seed,
             device=device
         )
 
@@ -87,6 +115,7 @@ class SB3SACAgent:
         Args:
             path: 保存路径
         """
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         self.model.save(path)
 
     def load(self, path):
