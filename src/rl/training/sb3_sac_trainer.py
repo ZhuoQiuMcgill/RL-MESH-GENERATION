@@ -160,7 +160,7 @@ class SB3TrainingCallback(BaseCallback):
         avg_r = self.trainer.training_stats.get("average_reward", 0.0)
         last_r = self.trainer.training_stats.get("latest_reward", 0.0)
         print(f"SB3 Timestep {current_ts} [{tid}]: Episode {self.episode_count}, "
-              f"最新奖励={last_r:.3f}, 平均奖励={avg_r:.3f}")
+              f"最新奖励={last_r:.3f}, 平均奖励={avg_r:.3f}, Element_generated={self.trainer.env.generated_elements}, Steps={self.trainer.env.current_step}")
 
     def _on_episode_end(self):
         """兼容旧代码：逻辑已移至 _on_step，这里保留空实现避免外部调用失败"""
