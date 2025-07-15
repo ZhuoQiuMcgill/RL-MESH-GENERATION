@@ -543,6 +543,15 @@ class TrainingManager:
         # 可以在这里处理步骤级别的数据
         pass
 
+    def is_training_active(self) -> bool:
+        """
+        检查训练是否处于活跃状态
+
+        Returns:
+            bool: 如果训练正在进行返回True，否则返回False
+        """
+        return self._is_training
+
 
 # 全局训练管理器实例
 training_manager = TrainingManager()
