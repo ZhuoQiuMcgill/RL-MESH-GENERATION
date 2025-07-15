@@ -390,7 +390,7 @@ class TrainingHistoryManager:
 
         # 清理当前会话信息
         self.current_training_id = None
-        self.current_training_dir = None
+        # self.current_training_dir = None
         self.training_metadata = {}
         self.episode_count = 0
         self.actor_losses = []
@@ -972,3 +972,9 @@ class TrainingHistoryManager:
         except Exception as e:
             self.logger.warning(f"图表生成失败: {e}")
             # 静默处理，不影响主要的训练停止流程
+
+    def cleanup_session(self):
+        """
+        清理会话信息，用于外部调用完成所有操作后的最终清理
+        """
+        self.current_training_dir = None

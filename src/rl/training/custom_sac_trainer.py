@@ -429,6 +429,9 @@ class CustomSACTrainer(BaseTrainer):
         # 保存最终模型
         self._save_final_model()
 
+        # 清理会话信息
+        self.history_manager.cleanup_session()
+
         mode_str = "在线学习" if self.online_learning_mode else "经验回放"
         if training_stopped_early:
             print(f"自制SAC训练被提前停止! 模式: {mode_str}, "

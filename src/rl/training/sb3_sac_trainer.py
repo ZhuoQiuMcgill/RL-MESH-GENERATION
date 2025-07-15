@@ -390,6 +390,9 @@ class SB3SACTrainer(BaseTrainer):
         # 保存最终模型
         self._save_final_model()
 
+        # 清理会话信息
+        self.history_manager.cleanup_session()
+
         if training_stopped_early:
             print(f"SB3训练被提前停止! 总计{self.training_stats['total_steps']}个timesteps, "
                   f"{callback.episode_count}个episodes")
