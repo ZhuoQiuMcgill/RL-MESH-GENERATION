@@ -39,15 +39,16 @@ class ActionType(ABC):
         :param gamma: Jacobian penalty exponent (>=1 makes penalty steeper)
         :return: quality in [0, 1]
         """
-        sj = quality_s_jacobian(element)
-        if sj <= 0.0:
-            return 0.0  # flipped or collapsed
+        # sj = quality_s_jacobian(element)
+        # if sj <= 0.0:
+        #     return 0.0  # flipped or collapsed
 
-        sj = min(1.0, sj)  # clamp to [0,1]
-        robust = quality_robust(element)
+        # sj = min(1.0, sj)  # clamp to [0,1]
+        # robust = quality_robust(element)
 
-        q = robust * (sj ** gamma)  # smooth hybrid metric
-        return max(0.0, min(1.0, q))
+        # q = robust * (sj ** gamma)  # smooth hybrid metric
+        # return max(0.0, min(1.0, q))
+        return quality_robust(element)
 
     @abstractmethod
     def get_element_quality(self, boundary, **kwargs):
