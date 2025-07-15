@@ -21,7 +21,7 @@ class SB3SACAgent:
     提供与自制SAC相同的接口，但内部使用SB3的实现
     """
 
-    def __init__(self, env, device, config=None):
+    def __init__(self, env, device="cuda", config=None):
         """
         初始化SB3 SAC智能体
 
