@@ -121,7 +121,8 @@ class TrainingManager:
                 backend = training_params.get('backend')
                 device = training_params.get('device')
 
-                print(f"训练器未初始化，正在使用参数初始化: boundary_source={boundary_source}, backend={backend}, device={device}")
+                print(
+                    f"训练器未初始化，正在使用参数初始化: boundary_source={boundary_source}, backend={backend}, device={device}")
 
                 # 使用传入的参数初始化训练器
                 init_result = self.initialize_trainer(
@@ -331,6 +332,21 @@ class TrainingManager:
                 stats["online_learning_mode"] = trainer_instance.online_learning_mode
             else:
                 stats["online_learning_mode"] = stats.get("online_learning_mode", False)
+
+        # 修复关键字段映射问题
+        if 'latest_reward' in stats and 'episode_reward' not in stats:
+            stats['episode_reward'] = stats['latest_reward']
+        elif 'episode_reward' not in stats:
+            stats['episode_reward'] = 0.0
+
+        if 'episodes_completed' in stats and 'episode' not in stats:
+            stats['episode'] = stats['episodes_completed']
+        elif 'episode' not in stats:
+            stats['episode'] = 0
+
+        # 确保episode_length字段存在
+        if 'episode_length' not in stats:
+            stats['episode_length'] = 0
 
         # 确保所有必需字段都存在
         required_fields = {

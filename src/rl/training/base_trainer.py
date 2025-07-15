@@ -89,6 +89,8 @@ class BaseTrainer(ABC):
         """更新训练统计信息"""
         self.training_stats['episodes_completed'] += 1
         self.training_stats['latest_reward'] = episode_reward
+        self.training_stats['episode_reward'] = episode_reward  # 添加此字段以匹配前端期望
+        self.training_stats['episode_length'] = episode_length  # 添加此字段
         self.training_stats['episode_rewards'].append(episode_reward)
 
         # 计算平均奖励（最近100个episodes）
@@ -225,19 +227,55 @@ class BaseTrainer(ABC):
         print("训练已停止")
 
     def get_training_status(self) -> Dict[str, Any]:
-        """获取训练状态"""
-        return {
-            'running': self.is_training,
-            'status': 'running' if self.is_training else 'stopped',
-            'stats': {
-                'total_steps': self.training_stats['total_steps'],
-                'episodes_completed': self.training_stats['episodes_completed'],
-                'training_time': self.training_stats['training_time'],
-                'latest_reward': self.training_stats['latest_reward'],
-                'average_reward': self.training_stats['average_reward'],
-                'total_episodes': len(self.training_stats['episode_rewards'])
+        """
+        获取训练状态
+
+        Returns:
+            Dict[str, Any]: 训练状态信息，包含running, status, stats等字段
+        """
+        try:
+            # 基础状态信息
+            status_info = {
+                "running": self.is_training,
+                "status": "running" if self.is_training else "idle",
+                "stats": None
             }
-        }
+
+            # 如果正在训练或有统计数据，添加stats
+            if self.training_stats['episodes_completed'] > 0 or self.is_training:
+                stats = self.training_stats.copy()
+
+                # 确保字段名与前端期望一致
+                stats['episode'] = stats.get('episodes_completed', 0)
+                stats['episode_reward'] = stats.get('latest_reward', 0.0)
+
+                # 添加其他必需字段的默认值
+                default_fields = {
+                    'boundary_vertices': 0,
+                    'buffer_size': 0,
+                    'training_id': '',
+                    'online_learning_mode': False,
+                    'mesh_data': {},
+                    'boundary_vertices_data': [],
+                    'reference_point_info': {}
+                }
+
+                for field, default_value in default_fields.items():
+                    if field not in stats:
+                        stats[field] = default_value
+
+                status_info["stats"] = stats
+
+            return status_info
+
+        except Exception as e:
+            print(f"获取训练状态失败: {e}")
+            return {
+                "running": False,
+                "status": "error",
+                "stats": None,
+                "error": str(e)
+            }
 
     @abstractmethod
     def train(self, **kwargs) -> Dict[str, Any]:

@@ -143,7 +143,6 @@ class MeshEnv(gym.Env):
         # 检查动作有效性并执行
         action_valid = False
         generated_element = None
-        old_boundary = copy.deepcopy(self.boundary)
 
         def get_invalid_penalty():
             # 无效动作的惩罚，首次为-1，之后为-1/生成元素数量
@@ -152,9 +151,6 @@ class MeshEnv(gym.Env):
                 self.first_invalid_action = False
                 return punish
             return punish
-
-        element_quality_reward = 0
-        boundary_quality_reward = -1
 
         try:
             if action_type == 0:  # ActionType0Left
@@ -216,7 +212,7 @@ class MeshEnv(gym.Env):
             terminated = True
             truncated = True
 
-        # 更新episode统计
+        # 重要修复：必须在所有情况下都更新episode统计
         self._update_episode_stats(reward)
 
         # 获取新状态
@@ -229,6 +225,13 @@ class MeshEnv(gym.Env):
             "boundary_vertices": len(self.boundary.get_vertices()),
             "element_generated": generated_element is not None
         }
+
+        # SB3兼容性：当episode结束时，在info中添加episode统计
+        if terminated or truncated:
+            info['episode'] = {
+                'r': float(self.episode_reward),
+                'l': int(self.episode_length)
+            }
 
         return observation, reward, terminated, truncated, info
 
