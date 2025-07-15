@@ -43,7 +43,7 @@ class ActionType0Right(ActionType):
         try:
             mesh.add_edge(v2, v3)
         except ValueError:
-            pass
+            return None
 
         # 更新边界：移除被消耗的边界顶点V0和V1
         # 注意：移除V0和V1后，V2和V3会在边界上相邻

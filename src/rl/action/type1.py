@@ -42,17 +42,20 @@ class ActionType1(ActionType):
 
         quadrilateral = self.get_element(boundary, reference_vertex_V0_idx, new_vertex_V2_coords)
         v0, v3, v2, v1 = quadrilateral
-        # 向网格中添加新顶点
-        mesh.add_vertex(v2)
 
         # 创建四边形元素
+        try:
+            # 向网格中添加新顶点
+            mesh.add_vertex(v2)
 
-        # 在网格中添加新的边界边
-        mesh.add_edge(v1, v2)
-        mesh.add_edge(v2, v3)
+            # 在网格中添加新的边界边
+            mesh.add_edge(v1, v2)
+            mesh.add_edge(v2, v3)
 
-        # 移除V0（它变成内部点）
-        boundary.remove_vertex(v0)
+            # 移除V0（它变成内部点）
+            boundary.remove_vertex(v0)
+        except ValueError:
+            return None
 
         v1_idx = boundary.get_vertex_index(v1)
         if v1_idx != -1:

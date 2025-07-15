@@ -144,6 +144,9 @@ class MeshEnv(gym.Env):
         action_valid = False
         generated_element = None
 
+        element_quality_reward = 0.0
+        boundary_quality_reward = -0.1
+
         def get_invalid_penalty():
             # 无效动作的惩罚，首次为-1，之后为-1/生成元素数量
             punish = (self.generated_elements - self.max_steps) * 0.1
@@ -161,7 +164,6 @@ class MeshEnv(gym.Env):
                                                                                            reference_vertex_idx,
                                                                                            self.M_angle)
                     generated_element = self.action_type_0_left.execute(self.mesh, self.boundary, reference_vertex_idx)
-                    action_valid = True
 
             elif action_type == 1:  # ActionType0Right
                 if self.action_type_0_right.is_valid(self.boundary, reference_vertex_idx):
@@ -171,7 +173,6 @@ class MeshEnv(gym.Env):
                                                                                             reference_vertex_idx,
                                                                                             self.M_angle)
                     generated_element = self.action_type_0_right.execute(self.mesh, self.boundary, reference_vertex_idx)
-                    action_valid = True
 
             elif action_type == 2:  # ActionType1
                 if self.action_type_1.is_valid(self.boundary, reference_vertex_idx, new_coords[0]):
@@ -182,7 +183,6 @@ class MeshEnv(gym.Env):
                                                                                       new_coords[0], self.M_angle)
                     generated_element = self.action_type_1.execute(self.mesh, self.boundary, reference_vertex_idx,
                                                                    new_coords[0])
-                    action_valid = True
 
             elif action_type == 3:  # ActionType2
                 if self.action_type_2.is_valid(self.boundary, reference_vertex_idx, new_coords[0], new_coords[1]):
@@ -192,13 +192,12 @@ class MeshEnv(gym.Env):
                                                                                       reference_vertex_idx,
                                                                                       new_coords[0], new_coords[1],
                                                                                       self.M_angle)
-
                     generated_element = self.action_type_2.execute(self.mesh, self.boundary, reference_vertex_idx,
                                                                    new_coords[0], new_coords[1])
-                    action_valid = True
         except Exception:
             action_valid = False
 
+        action_valid = generated_element not in (None, [], ())
         if action_valid:
             self.generated_elements += 1
             reward = element_quality_reward + boundary_quality_reward + self._calculate_density_reward(
@@ -209,8 +208,9 @@ class MeshEnv(gym.Env):
 
         else:
             reward = get_invalid_penalty()
+            # 修复：无效动作时只设置terminated，不设置truncated
             terminated = True
-            truncated = True
+            truncated = False
 
         # 重要修复：必须在所有情况下都更新episode统计
         self._update_episode_stats(reward)
