@@ -55,6 +55,9 @@ class SB3TrainingCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         """每个训练步骤后调用"""
+        # 更新trainer的total_steps以保持同步
+        self.trainer.training_stats['total_steps'] = self.model.num_timesteps
+
         # 检查是否有episode结束
         dones = self.locals.get('dones', [False])
 
@@ -81,23 +84,64 @@ class SB3TrainingCallback(BaseCallback):
     def _log_training_progress(self, current_timestep: int):
         """输出训练进度"""
         training_id = self.trainer.history_manager.get_current_training_id()
-        print(f"SB3 Timestep {current_timestep} [{training_id}]: Episode {self.episode_count}")
+        avg_reward = self.trainer.training_stats.get('average_reward', 0.0)
+        latest_reward = self.trainer.training_stats.get('latest_reward', 0.0)
+        print(f"SB3 Timestep {current_timestep} [{training_id}]: Episode {self.episode_count}, "
+              f"最新奖励={latest_reward:.3f}, 平均奖励={avg_reward:.3f}")
 
     def _on_episode_end(self):
         """episode结束时的处理"""
         self.episode_count += 1
 
-        # 获取episode信息
-        episode_reward = self.locals.get('episode_reward', 0.0)
-        episode_length = self.locals.get('episode_length', 0)
+        # 从SB3的infos中获取episode信息
+        episode_reward = 0.0
+        episode_length = 0
+
+        try:
+            # 首先尝试从infos获取（SB3的标准方式）
+            infos = self.locals.get('infos', [])
+            if infos and len(infos) > 0:
+                info = infos[0]
+                if isinstance(info, dict) and 'episode' in info:
+                    episode_stats = info['episode']
+                    episode_reward = float(episode_stats.get('r', 0.0))
+                    episode_length = int(episode_stats.get('l', 0))
+        except Exception:
+            pass
+
+        # 如果infos中没有数据，尝试直接从环境获取
+        if episode_reward == 0.0 and episode_length == 0:
+            try:
+                env = self.training_env
+
+                # 如果是VecEnv，获取第一个环境
+                if hasattr(env, 'envs') and len(env.envs) > 0:
+                    actual_env = env.envs[0]
+                else:
+                    actual_env = env
+
+                # 尝试获取环境的episode统计
+                if hasattr(actual_env, 'episode_reward'):
+                    episode_reward = float(actual_env.episode_reward)
+                if hasattr(actual_env, 'episode_length'):
+                    episode_length = int(actual_env.episode_length)
+
+            except Exception:
+                pass
 
         # 获取参考信息
         ref_info = None
-        if hasattr(self.trainer.env, 'get_last_reference_info'):
-            ref_info = self.trainer.env.get_last_reference_info()
+        try:
+            if hasattr(self.trainer.env, 'get_last_reference_info'):
+                ref_info = self.trainer.env.get_last_reference_info()
+        except Exception:
+            ref_info = None
 
         # 更新trainer统计
         self.trainer._update_training_stats(episode_reward, episode_length)
+
+        # 确保total_steps正确
+        self.trainer.training_stats['total_steps'] = self.model.num_timesteps
 
         # 创建episode数据
         episode_data = self.trainer._create_episode_data(
