@@ -279,26 +279,38 @@ class TrainingManager:
                 stats["boundary_vertices"] = stats.get("boundary_vertices", 0)
                 stats["boundary_vertices_data"] = stats.get("boundary_vertices_data", [])
 
-            # 获取网格数据
+            # 获取网格数据 - 修复SB3环境访问
             if hasattr(trainer_instance, 'env') and trainer_instance.env:
                 try:
+                    # 针对SB3训练器，需要特殊处理Monitor包装的环境
+                    env_to_check = trainer_instance.env
+
+                    # 尝试获取原始环境
+                    if hasattr(env_to_check, 'unwrapped_env'):
+                        # 使用我们添加的直接引用
+                        unwrapped = env_to_check.unwrapped_env
+                    elif hasattr(env_to_check, 'unwrapped'):
+                        unwrapped = env_to_check.unwrapped
+                    else:
+                        unwrapped = env_to_check
+
                     # 尝试从环境获取网格数据
-                    if hasattr(trainer_instance.env, 'get_mesh_data'):
-                        mesh_data = trainer_instance.env.get_mesh_data()
+                    if hasattr(unwrapped, 'get_mesh_data'):
+                        mesh_data = unwrapped.get_mesh_data()
                         stats["mesh_data"] = mesh_data if mesh_data else {}
-                    elif hasattr(trainer_instance.env, 'mesh') and trainer_instance.env.mesh:
+                    elif hasattr(unwrapped, 'mesh') and unwrapped.mesh:
                         # 手动构建网格数据
-                        mesh_data = trainer_instance.env.mesh.get_adjacency_dict()
+                        mesh_data = unwrapped.mesh.get_adjacency_dict()
                         stats["mesh_data"] = mesh_data if mesh_data else {}
                     else:
                         stats["mesh_data"] = stats.get("mesh_data", {})
 
                     # 获取参考点信息
-                    if hasattr(trainer_instance.env, 'get_last_reference_info'):
-                        ref_info = trainer_instance.env.get_last_reference_info()
+                    if hasattr(unwrapped, 'get_last_reference_info'):
+                        ref_info = unwrapped.get_last_reference_info()
                         stats["reference_point_info"] = ref_info if ref_info else {}
-                    elif hasattr(trainer_instance.env, 'last_reference_info'):
-                        stats["reference_point_info"] = trainer_instance.env.last_reference_info or {}
+                    elif hasattr(unwrapped, 'last_reference_info'):
+                        stats["reference_point_info"] = unwrapped.last_reference_info or {}
                     else:
                         stats["reference_point_info"] = stats.get("reference_point_info", {})
 

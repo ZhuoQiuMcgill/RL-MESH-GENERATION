@@ -546,3 +546,19 @@ class MeshEnv(gym.Env):
     def get_last_reference_info(self):
         """返回上一步的参考点及其局部环境信息"""
         return self.last_reference_info
+
+    def get_mesh_data(self):
+        """
+        获取当前网格的邻接关系数据，用于前端可视化
+
+        Returns:
+            dict: 网格邻接关系字典，格式为 {vertex_str: [adjacent_vertices]}
+        """
+        if self.mesh is None:
+            return {}
+
+        try:
+            return self.mesh.get_adjacency_dict()
+        except Exception as e:
+            print(f"获取mesh数据失败: {e}")
+            return {}

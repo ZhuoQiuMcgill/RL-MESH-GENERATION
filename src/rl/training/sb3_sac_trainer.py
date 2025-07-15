@@ -80,19 +80,26 @@ class SB3TrainingCallback(BaseCallback):
             ep_r = float(info["episode"]["r"])
             ep_l = int(info["episode"]["l"])
 
-            # 取 reference_point_info（兼容 DummyVecEnv / 单环境）
+            # 改进的参考点信息获取逻辑
             ref_info = None
             try:
-                if hasattr(self.training_env, "get_attr"):
-                    funcs = self.training_env.get_attr(
-                        "get_last_reference_info", indices=[env_idx]
-                    )
-                    if funcs and callable(funcs[0]):
-                        ref_info = funcs[0]()
-                elif hasattr(self.training_env, "get_last_reference_info"):
-                    ref_info = self.training_env.get_last_reference_info()
+                # 获取原始环境
+                if hasattr(self.training_env, "unwrapped_env"):
+                    # 使用我们添加的直接引用
+                    unwrapped = self.training_env.unwrapped_env
+                elif hasattr(self.training_env, "unwrapped"):
+                    unwrapped = self.training_env.unwrapped
+                else:
+                    unwrapped = self.training_env
+
+                # 从原始环境获取参考点信息
+                if hasattr(unwrapped, 'get_last_reference_info'):
+                    ref_info = unwrapped.get_last_reference_info()
+                elif hasattr(unwrapped, 'last_reference_info'):
+                    ref_info = unwrapped.last_reference_info
             except Exception as e:
                 print(f"获取 reference_point_info 失败: {e}")
+                ref_info = None
 
             # 更新聚合统计
             self.trainer._update_training_stats(ep_r, ep_l)
@@ -110,14 +117,32 @@ class SB3TrainingCallback(BaseCallback):
             if hasattr(self.trainer, "history_manager"):
                 self.trainer.history_manager.cache_episode_data(episode_data)
 
-        # ── 2) 定期打印进度 ────────────────────────────────────────────────
-        if self._should_log_progress(self.num_timesteps):
-            self._log_training_progress(self.num_timesteps)
+        # ── 2) 定期打印进度 ─────────────────────────────────────────────────────
+        if self.num_timesteps - self.last_log_timestep >= self.trainer.log_frequency:
+            current_time = time.time()
+
+            # 安全获取训练开始时间
+            if hasattr(self.trainer, 'training_start_time'):
+                elapsed = current_time - self.trainer.training_start_time
+            else:
+                elapsed = 0.0
+
+            print(f"SB3训练进度 - Step: {self.num_timesteps}, "
+                  f"Episode: {self.episode_count}, "
+                  f"最近奖励: {self.trainer.training_stats.get('episode_reward', 0):.3f}, "
+                  f"平均奖励: {self.trainer.training_stats.get('average_reward', 0):.3f}, "
+                  f"用时: {elapsed:.1f}s")
+
             self.last_log_timestep = self.num_timesteps
 
-        # ── 3) 停止信号 ───────────────────────────────────────────────────
-        if self.trainer.stop_event.is_set():
-            print("收到停止信号，停止SB3训练")
+        # ── 3) 检查停止信号 ────────────────────────────────────────────────────
+        if hasattr(self.trainer, '_stop_requested') and self.trainer._stop_requested:
+            print("检测到停止信号，终止SB3训练")
+            return False
+
+        # 检查stop_event
+        if hasattr(self.trainer, 'stop_event') and self.trainer.stop_event.is_set():
+            print("检测到停止事件，终止SB3训练")
             return False
 
         return True
@@ -311,45 +336,49 @@ class SB3SACTrainer(BaseTrainer):
 
     def _create_sb3_episode_data(self, episode: int, episode_reward: float,
                                  episode_length: int, ref_info: Optional[Dict] = None) -> Dict[str, Any]:
-        """创建SB3特定的episode数据字典"""
-        episode_data = {
-            'episode': episode,
-            'episode_reward': episode_reward,
-            'episode_length': episode_length,
-            'total_steps': self.training_stats['total_steps'],
-            'average_reward': self.training_stats['average_reward'],
-            'timestamp': time.time(),
-            'training_id': self.history_manager.get_current_training_id() if hasattr(self, 'history_manager') else None
-        }
+        """
+        创建适合SB3的episode数据结构
 
-        # 添加参考点信息
-        if ref_info:
-            episode_data['reference_point_info'] = ref_info
+        Args:
+            episode: episode编号
+            episode_reward: episode奖励
+            episode_length: episode长度
+            ref_info: 参考点信息
 
-        # 添加边界信息
-        if hasattr(self, 'initial_boundary'):
-            episode_data['boundary_vertices'] = len(self.initial_boundary.get_vertices())
-            episode_data['boundary_vertices_data'] = self.initial_boundary.get_vertices()
-
-        # 添加mesh数据（如果可用）
-        if hasattr(self, 'env') and hasattr(self.env, 'get_mesh_data'):
+        Returns:
+            Dict: episode数据
+        """
+        # 获取mesh数据
+        mesh_data = {}
+        if hasattr(self, 'env') and self.env:
             try:
-                episode_data['mesh_data'] = self.env.get_mesh_data()
+                # 尝试从Monitor包装的环境中获取mesh数据
+                if hasattr(self.env, 'unwrapped_env'):
+                    # 使用我们添加的直接引用
+                    unwrapped = self.env.unwrapped_env
+                else:
+                    # 通过unwrapped属性获取原始环境
+                    unwrapped = self.env.unwrapped
+
+                if hasattr(unwrapped, 'get_mesh_data'):
+                    mesh_data = unwrapped.get_mesh_data()
+                elif hasattr(unwrapped, 'mesh') and unwrapped.mesh:
+                    mesh_data = unwrapped.mesh.get_adjacency_dict()
             except Exception as e:
-                print(f"获取mesh数据失败: {e}")
+                print(f"SB3 episode数据创建时获取mesh数据失败: {e}")
+                mesh_data = {}
 
-        # 添加buffer统计信息
-        if hasattr(self, 'agent') and hasattr(self.agent, 'model'):
-            try:
-                buffer_size = self.agent.model.replay_buffer.size() if hasattr(self.agent.model.replay_buffer,
-                                                                               'size') else 0
-                episode_data['buffer_size'] = buffer_size
-            except:
-                episode_data['buffer_size'] = 0
-
-        return episode_data
-
-    from stable_baselines3.common.monitor import Monitor
+        return {
+            "episode": episode,
+            "episode_reward": episode_reward,
+            "episode_length": episode_length,
+            "total_steps": self.training_stats.get("total_steps", 0),
+            "average_reward": self.training_stats.get("average_reward", 0.0),
+            "mesh_data": mesh_data,
+            "reference_point_info": ref_info or {},
+            "boundary_vertices": self.initial_boundary.get_vertices() if self.initial_boundary else [],
+            "training_backend": "sb3"
+        }
 
     def _init_environments(self, max_steps: Optional[int] = None):
         """
@@ -364,13 +393,15 @@ class SB3SACTrainer(BaseTrainer):
             max_steps = self.config.get("environment", {}).get("max_steps", None)
 
         def _make_env() -> Monitor:
-            return Monitor(
-                MeshEnv(
-                    initial_boundary=self.initial_boundary,
-                    max_steps=max_steps,
-                    config=self.config
-                )
+            mesh_env = MeshEnv(
+                initial_boundary=self.initial_boundary,
+                max_steps=max_steps,
+                config=self.config
             )
+            # 保存原始环境的引用，以便直接访问其方法
+            monitor = Monitor(mesh_env)
+            monitor.unwrapped_env = mesh_env  # 添加对原始环境的直接引用
+            return monitor
 
         # 训练、评估环境各一份
         self.env = _make_env()
@@ -434,7 +465,8 @@ class SB3SACTrainer(BaseTrainer):
         """
         print(f"开始SB3 SAC训练: 最大timesteps={max_timesteps}")
 
-        start_time = time.time()
+        # 设置训练开始时间，供回调使用
+        self.training_start_time = time.time()
 
         # 创建训练回调
         callback = SB3TrainingCallback(self)
@@ -457,7 +489,7 @@ class SB3SACTrainer(BaseTrainer):
                 raise
 
         # 训练结束处理
-        self.training_stats['training_time'] = time.time() - start_time
+        self.training_stats['training_time'] = time.time() - self.training_start_time
 
         # 强制保存剩余缓存数据
         self.history_manager.force_save_cache()
