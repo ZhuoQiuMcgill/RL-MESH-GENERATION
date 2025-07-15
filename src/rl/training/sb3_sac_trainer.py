@@ -14,16 +14,29 @@ class _EpisodeCallback(BaseCallback):
         self.rewards: List[float] = []
         self.lengths: List[int] = []
         self.infos: List[Dict[str, Any]] = []
+        self.meshes = []
+        self.boundaries = []
+        self.ref_points = []
 
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
         dones = self.locals.get("dones", [])
+
         for done, info in zip(dones, infos):
-            if done and "episode" in info:
-                ep = info["episode"]
-                self.rewards.append(float(ep["r"]))
-                self.lengths.append(int(ep["l"]))
-                self.infos.append(info)
+            if not done:
+                continue
+
+            ep_stats = info.get("episode", {})
+            self.rewards.append(float(ep_stats.get("r", 0.0)))
+            self.lengths.append(int(ep_stats.get("l", 0)))
+
+            geom = info.get("geometry", {})
+            self.meshes.append(geom.get("mesh_data"))
+            self.boundaries.append(geom.get("boundary_vertices_data"))
+            self.ref_points.append(geom.get("last_ref_point"))
+
+            self.infos.append(info)
+
         return True
 
 
@@ -136,6 +149,11 @@ class SB3SACTrainer:
         """
         latest_reward = self._cb.rewards[-1] if self._cb.rewards else None
         latest_length = self._cb.lengths[-1] if self._cb.lengths else None
+
+        latest_mesh = self._cb.meshes[-1] if self._cb.meshes else None
+        latest_boundary = self._cb.boundaries[-1] if self._cb.boundaries else None
+        latest_ref_point = self._cb.ref_points[-1] if self._cb.ref_points else None
+
         latest_info = self._cb.infos[-1] if self._cb.infos else None
 
         return {
@@ -143,6 +161,9 @@ class SB3SACTrainer:
             "episodes": self.total_episodes,
             "latest_reward": latest_reward,
             "latest_length": latest_length,
+            "latest_mesh": latest_mesh,
+            "latest_boundary": latest_boundary,
+            "latest_ref_point": latest_ref_point,
             "avg_reward_100": float(np.mean(self._cb.rewards[-100:])) if self._cb.rewards else 0.0,
             "latest_info": latest_info,
         }

@@ -140,7 +140,10 @@ class MeshEnv(gym.Env):
 
         def invalid_penalty() -> float:
             # Negative reward for invalid action
-            return (self.generated_elements - self.max_steps) * 0.1
+            punish = ((self.generated_elements - self.max_steps) * 0.1)
+            if self.generated_elements == 0:
+                return punish
+            return punish / self.generated_elements
 
         # -------------------------------------------------
         # 2. try to execute
@@ -236,14 +239,15 @@ class MeshEnv(gym.Env):
             "boundary_vertices": len(self.boundary.get_vertices()),
             "element_generated": generated_element is not None,
             "term_reason": term_reason,
-            "trunc_reason": trunc_reason,
-            "mesh_data": self.mesh.get_adjacency_dict(),
-            "boundary_vertices_data": self.boundary.get_vertices(),
-            "last_ref_point": self.boundary.get_vertex_by_index(reference_vertex_idx)
+            "trunc_reason": trunc_reason
         }
 
         if terminated or truncated:
-            info["episode"] = {"r": float(self.episode_reward), "l": int(self.current_step)}
+            info["episode"] = {"r": float(self.episode_reward),
+                               "l": int(self.current_step)}
+            info["geometry"] = {"mesh_data": self.get_mesh_data(),
+                                "boundary_vertices_data": self.boundary.get_vertices(),
+                                "last_ref_point": self.get_last_reference_info()}
 
         return observation, reward, terminated, truncated, info
 

@@ -411,21 +411,14 @@ class TrainingManager:
                 "online_learning_mode": False,  # SB3默认使用经验回放
             })
 
-            # 获取环境信息
-            if self.env:
-                self.current_stats["boundary_vertices"] = self.env.boundary.size()
+            mesh_data = trainer_status.get("latest_mesh")
+            boundary_vertices = trainer_status.get("latest_boundary")
+            ref_info = trainer_status.get("latest_ref_point")
 
-                # 获取mesh数据
-                mesh_data = self.env.get_mesh_data()
-                self.current_stats["mesh_data"] = mesh_data if mesh_data else {}
-
-                # 获取边界顶点数据
-                boundary_vertices = self.env.boundary.get_vertices()
-                self.current_stats["boundary_vertices_data"] = boundary_vertices if boundary_vertices else []
-
-                # 获取参考点信息
-                ref_info = self.env.get_last_reference_info()
-                self.current_stats["reference_point_info"] = ref_info
+            self.current_stats["boundary_vertices"] = len(boundary_vertices)
+            self.current_stats["mesh_data"] = mesh_data if mesh_data else {}
+            self.current_stats["boundary_vertices_data"] = boundary_vertices if boundary_vertices else []
+            self.current_stats["reference_point_info"] = ref_info if ref_info else (0.0, 0.0)
 
             # 获取缓冲区大小
             if hasattr(self.trainer, 'model') and hasattr(self.trainer.model, 'replay_buffer'):
