@@ -19,6 +19,10 @@ from src.rl.environment import MeshEnv
 from src.rl.training.sb3_sac_trainer import SB3SACTrainer
 
 
+BASE_DIR = os.getcwd()
+HISTORY_DIR = os.path.join(BASE_DIR, "data", "history")
+
+
 class TrainingManager:
     """
     训练管理器
