@@ -15,9 +15,6 @@ except ImportError:
     Actor = None
     Critic = None
 
-# 导入缓冲区相关类
-from .replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
-from .buffer_factory import create_replay_buffer, get_buffer_info, NoReplayBuffer
 
 # 导入训练器
 from .training.sb3_sac_trainer import SB3SACTrainer
@@ -33,13 +30,6 @@ __all__ = [
     # 智能体
     'SB3SACAgent',
     'SB3SACTrainer',
-
-    # 经验回放缓冲区
-    'ReplayBuffer',
-    'PrioritizedReplayBuffer',
-    'NoReplayBuffer',
-    'create_replay_buffer',
-    'get_buffer_info',
 
     # 环境
     'MeshEnv',
