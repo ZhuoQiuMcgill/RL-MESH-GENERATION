@@ -14,9 +14,10 @@ export class ApiClient {
      * 通用的API请求方法
      * @param {string} endpoint - API端点
      * @param {Object} options - 请求选项
+     * @param {number} customTimeout - 自定义超时时间（毫秒），如果不提供则使用默认值
      * @returns {Promise<any>} API响应
      */
-    async request(endpoint, options = {}) {
+    async request(endpoint, options = {}, customTimeout = null) {
         const url = `${this.baseUrl}${endpoint}`;
         const defaultOptions = {
             headers: {
@@ -26,10 +27,13 @@ export class ApiClient {
 
         const requestOptions = {...defaultOptions, ...options};
 
+        // 确定超时时间
+        const timeout = customTimeout || CONSTANTS.CONNECTION_TIMEOUT;
+
         try {
             // 创建超时控制器
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), CONSTANTS.CONNECTION_TIMEOUT);
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
 
             const response = await fetch(url, {
                 ...requestOptions,
@@ -46,7 +50,7 @@ export class ApiClient {
             return await response.json();
         } catch (error) {
             if (error.name === 'AbortError') {
-                throw new Error('请求超时，请检查网络连接');
+                throw new Error(`请求超时（${timeout / 1000}秒），请检查网络连接`);
             }
             throw error;
         }
@@ -87,13 +91,13 @@ export class ApiClient {
     }
 
     /**
-     * 停止训练
+     * 停止训练 - 使用较长的超时时间
      * @returns {Promise<Object>} 停止结果
      */
     async stopTraining() {
         return await this.request('/training/stop', {
             method: 'POST'
-        });
+        }, CONSTANTS.TRAINING_STOP_TIMEOUT); // 使用30秒超时
     }
 
     /**
