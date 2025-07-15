@@ -369,15 +369,6 @@ class TrainingHistoryManager:
         # 保存最终元数据
         self._save_metadata()
 
-        # 异步生成训练图表，避免阻塞主线程和产生matplotlib报错
-        try:
-            import threading
-            plot_thread = threading.Thread(target=self._generate_training_plots_safe, daemon=True)
-            plot_thread.start()
-            # 不等待线程完成，允许主程序继续执行
-        except Exception as e:
-            self.logger.warning(f"无法启动图表生成线程: {e}")
-
         # 保存最终统计报告
         if final_stats:
             self._save_final_report(final_stats)
@@ -385,12 +376,18 @@ class TrainingHistoryManager:
         # 保存模型权重到history目录（如果有的话）
         self._save_final_models()
 
+        # 同步生成训练图表，确保在清理会话信息前完成
+        try:
+            self._generate_training_plots()
+        except Exception as e:
+            self.logger.error(f"Failed to generate training plots: {e}")
+
         self.logger.info(f"训练会话结束: {self.current_training_id}, 状态: {status}")
         self.logger.info(f"总共保存了{self.episode_count}个episodes的历史数据")
 
         # 清理当前会话信息
         self.current_training_id = None
-        # self.current_training_dir = None
+        self.current_training_dir = None
         self.training_metadata = {}
         self.episode_count = 0
         self.actor_losses = []

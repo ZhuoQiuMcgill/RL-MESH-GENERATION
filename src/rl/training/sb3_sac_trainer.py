@@ -380,18 +380,15 @@ class SB3SACTrainer(BaseTrainer):
         # 强制保存剩余缓存数据
         self.history_manager.force_save_cache()
 
+        # 保存最终模型（在结束训练会话之前）
+        self._save_final_model()
+
         # 结束训练会话
         training_stopped_early = self.stop_event.is_set()
         self.history_manager.finish_training_session(
             final_stats=self.training_stats,
             stopped_early=training_stopped_early
         )
-
-        # 保存最终模型
-        self._save_final_model()
-
-        # 清理会话信息
-        self.history_manager.cleanup_session()
 
         if training_stopped_early:
             print(f"SB3训练被提前停止! 总计{self.training_stats['total_steps']}个timesteps, "
