@@ -35,7 +35,7 @@ sac_backend:
   # 选择SAC实现方式: "custom" 或 "sb3"
   # - "custom": 使用自制的SAC实现
   # - "sb3": 使用stable_baselines3的SAC实现
-  type: "custom"
+  type: "sb3"
 
 # 自制SAC配置 (当sac_backend.type为"custom"时使用)
 sac_agent:

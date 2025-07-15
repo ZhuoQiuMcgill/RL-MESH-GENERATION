@@ -114,7 +114,7 @@ class CustomSACTrainer(BaseTrainer):
             else:
                 print(f"从mesh加载边界: {boundary_source}")
                 try:
-                    return self.importer.load_boundary_from_mesh(boundary_source)
+                    return self.importer.load_boundary_by_name(boundary_source)
                 except FileNotFoundError as e:
                     raise FileNotFoundError(
                         f"找不到mesh文件: {boundary_source}\n"
@@ -160,7 +160,7 @@ class CustomSACTrainer(BaseTrainer):
                 subfolder = boundary_source.get('subfolder', 'mesh')
                 print(f"从字典指定的mesh加载边界: {name} (subfolder: {subfolder})")
                 try:
-                    return self.importer.load_boundary_from_mesh(name, subfolder)
+                    return self.importer.load_boundary_by_name(name, subfolder)
                 except Exception as e:
                     raise IOError(
                         f"从字典指定的mesh加载边界失败: {name}\n"

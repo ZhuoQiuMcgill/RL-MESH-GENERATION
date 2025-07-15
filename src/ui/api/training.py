@@ -115,6 +115,12 @@ def start_training():
         device = data.get('device')
         description = data.get('description', '')
 
+        # 修复：处理前端mesh_name到boundary_source的映射
+        # 如果boundary_source为None但mesh_name存在，则使用mesh_name作为boundary_source
+        if boundary_source is None and 'mesh_name' in data and data['mesh_name']:
+            boundary_source = data['mesh_name']
+            print(f"从前端mesh_name映射boundary_source: {boundary_source}")
+
         # 启动训练
         result = training_manager.start_training(
             max_timesteps=max_timesteps,
