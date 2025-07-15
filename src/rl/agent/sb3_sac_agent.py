@@ -15,80 +15,6 @@ SB3_AVAILABLE = True
 from ..config import load_config
 
 
-class HistoryCallback(BaseCallback):
-    """
-    自定义回调函数，用于收集训练过程中的数据并触发episode回调
-    现在使用环境的episode统计功能
-    """
-
-    def __init__(self, trainer_instance, verbose=0):
-        super(HistoryCallback, self).__init__(verbose)
-        self.trainer = trainer_instance
-        self.episode_count = 0
-
-    def _on_step(self) -> bool:
-        """在每个训练步骤后调用"""
-        # 检查是否完成了一个episode
-        dones = self.locals.get('dones', [False])
-        if any(dones):
-            self._on_episode_end()
-
-        return True
-
-    def _on_episode_end(self):
-        """episode结束时的处理"""
-        self.episode_count += 1
-
-        # 获取episode统计信息
-        try:
-            if hasattr(self.training_env, 'get_attr'):
-                # 处理VecEnv
-                episode_rewards = self.training_env.get_attr('episode_reward')
-                episode_lengths = self.training_env.get_attr('episode_length')
-
-                episode_reward = episode_rewards[0] if episode_rewards else 0.0
-                episode_length = episode_lengths[0] if episode_lengths else 0
-            else:
-                # 处理单个环境
-                episode_reward = self.training_env.get_wrapper_attr('episode_reward')
-                episode_length = self.training_env.get_wrapper_attr('episode_length')
-        except Exception as e:
-            # 如果获取失败，使用默认值
-            print(f"警告: 获取episode统计信息失败: {e}")
-            episode_reward = 0.0
-            episode_length = 0
-
-        # 获取当前环境的参考信息
-        ref_info = None
-        try:
-            if hasattr(self.training_env, 'get_attr'):
-                # 处理VecEnv
-                infos = self.training_env.get_attr('get_last_reference_info')
-                ref_info = infos[0]() if infos and callable(infos[0]) else None
-            else:
-                # 处理单个环境
-                if hasattr(self.training_env, 'get_last_reference_info'):
-                    ref_info = self.training_env.get_last_reference_info()
-        except Exception:
-            # 如果获取参考信息失败，设为None
-            ref_info = None
-
-        # 创建episode数据
-        episode_data = self.trainer._create_sb3_episode_data(
-            episode=self.episode_count,
-            episode_reward=float(episode_reward),
-            episode_length=int(episode_length),
-            ref_info=ref_info
-        )
-
-        # 触发回调
-        self.trainer._trigger_episode_callbacks(episode_data)
-
-        # 缓存到历史管理器
-        if hasattr(self.trainer, 'history_manager'):
-            self.trainer.history_manager.cache_episode_data(episode_data)
-
-
 class SB3SACAgent:
     """
     使用Stable-Baselines3的SAC智能体包装器
@@ -132,90 +58,41 @@ class SB3SACAgent:
             batch_size=int(sb3_config.get("batch_size", 100)),
             tau=float(sb3_config.get("tau", 0.005)),
             gamma=float(sb3_config.get("gamma", 0.99)),
-            train_freq=int(sb3_config.get("train_freq", 1)),
-            gradient_steps=int(sb3_config.get("gradient_steps", 1)),
+            train_freq=sb3_config.get("train_freq", 1),
+            gradient_steps=sb3_config.get("gradient_steps", 1),
             policy_kwargs=policy_kwargs,
+            verbose=sb3_config.get("verbose", 0),
             seed=sb3_config.get("seed", None),
-            device=str(device),
-            verbose=sb3_config.get("verbose", 0)
+            device=device
         )
 
-        # 用于与自制SAC接口兼容的属性
-        self.state_dim = env.observation_space.shape[0]
-        self.action_dim = env.action_space.shape[0]
-        self.max_action = float(env.action_space.high[0])
-
-        # 训练统计
-        self.training_stats = {
-            'total_timesteps': 0,
-            'episodes_completed': 0
-        }
-
-    def select_action(self, state, deterministic=True):
+    def predict(self, state, deterministic=True):
         """
-        选择动作
+        预测动作
 
         Args:
-            state: 当前状态
+            state: 状态
             deterministic: 是否使用确定性策略
 
         Returns:
-            np.ndarray: 选择的动作
+            action: 预测的动作
         """
-        # 确保state是正确的形状
-        if isinstance(state, np.ndarray):
-            if len(state.shape) == 1:
-                state = state.reshape(1, -1)
-
         action, _ = self.model.predict(state, deterministic=deterministic)
         return action
 
-    def train(self, total_timesteps, callback=None):
+    def train(self, replay_buffer, batch_size):
         """
-        训练模型
+        训练智能体
 
         Args:
-            total_timesteps: 总训练步数
-            callback: 回调函数
+            replay_buffer: 经验回放缓冲区
+            batch_size: 批次大小
 
         Returns:
-            dict: 训练统计信息
+            dict: 损失信息
         """
-        # 开始训练
-        self.model.learn(
-            total_timesteps=total_timesteps,
-            callback=callback,
-            reset_num_timesteps=False  # 不重置timestep计数
-        )
-
-        # 更新统计信息
-        self.training_stats['total_timesteps'] += total_timesteps
-
-        return {
-            'total_timesteps': self.training_stats['total_timesteps'],
-            'episodes_completed': self.training_stats['episodes_completed']
-        }
-
-    def evaluate(self, eval_env, n_eval_episodes=10):
-        """
-        评估模型性能
-
-        Args:
-            eval_env: 评估环境
-            n_eval_episodes: 评估episode数量
-
-        Returns:
-            tuple: (平均奖励, 奖励标准差)
-        """
-        mean_reward, std_reward = evaluate_policy(
-            self.model,
-            eval_env,
-            n_eval_episodes=n_eval_episodes,
-            deterministic=True,
-            return_episode_rewards=False
-        )
-
-        return float(mean_reward), float(std_reward)
+        # SB3会自动进行训练，这里主要用于接口兼容
+        return {}
 
     def save(self, path):
         """
@@ -226,11 +103,6 @@ class SB3SACAgent:
         """
         self.model.save(path)
 
-        # 保存额外的统计信息
-        stats_path = path + "_stats.json"
-        with open(stats_path, 'w', encoding='utf-8') as f:
-            json.dump(self.training_stats, f, indent=2)
-
     def load(self, path):
         """
         加载模型
@@ -240,45 +112,101 @@ class SB3SACAgent:
         """
         self.model = SAC.load(path, env=self.env)
 
-        # 加载统计信息
-        stats_path = path + "_stats.json"
-        if os.path.exists(stats_path):
-            with open(stats_path, 'r', encoding='utf-8') as f:
-                self.training_stats = json.load(f)
-
-    @classmethod
-    def load_from_path(cls, path, env, device, config=None):
+    def learn(self, total_timesteps, callback=None):
         """
-        从路径加载预训练模型
+        开始学习
 
         Args:
-            path: 模型路径
-            env: 环境
-            device: 设备
-            config: 配置
+            total_timesteps: 总时间步数
+            callback: 回调函数
 
         Returns:
-            SB3SACAgent: 加载的智能体
+            学习后的模型
         """
-        agent = cls(env, device, config)
-        agent.load(path)
-        return agent
+        return self.model.learn(total_timesteps=total_timesteps, callback=callback)
 
-    def get_model(self):
+    def get_parameters(self):
         """
-        获取内部的SB3模型
+        获取模型参数
 
         Returns:
-            SAC: SB3的SAC模型
+            dict: 模型参数字典
         """
-        return self.model
+        return {
+            'policy': self.model.policy.state_dict() if self.model.policy else None,
+            'learning_rate': self.model.learning_rate,
+            'gamma': self.model.gamma,
+            'tau': self.model.tau,
+        }
+
+    def set_parameters(self, parameters):
+        """
+        设置模型参数
+
+        Args:
+            parameters: 参数字典
+        """
+        if 'policy' in parameters and parameters['policy'] is not None:
+            self.model.policy.load_state_dict(parameters['policy'])
+
+    def evaluate(self, eval_env, n_eval_episodes=10, deterministic=True):
+        """
+        评估智能体
+
+        Args:
+            eval_env: 评估环境
+            n_eval_episodes: 评估episodes数量
+            deterministic: 是否使用确定性策略
+
+        Returns:
+            tuple: (平均奖励, 奖励标准差)
+        """
+        mean_reward, std_reward = evaluate_policy(
+            self.model,
+            eval_env,
+            n_eval_episodes=n_eval_episodes,
+            deterministic=deterministic,
+            return_episode_rewards=False
+        )
+        return mean_reward, std_reward
+
+    def get_action_probabilities(self, state):
+        """
+        获取动作概率分布
+
+        Args:
+            state: 状态
+
+        Returns:
+            动作概率分布
+        """
+        # SB3的SAC是连续动作空间，返回动作分布的参数
+        obs_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            actions, log_probs = self.model.policy.actor.get_action_log_prob(obs_tensor)
+        return actions.cpu().numpy(), log_probs.cpu().numpy()
+
+    @property
+    def replay_buffer(self):
+        """获取经验回放缓冲区"""
+        return self.model.replay_buffer if hasattr(self.model, 'replay_buffer') else None
+
+    @property
+    def num_timesteps(self):
+        """获取当前时间步数"""
+        return self.model.num_timesteps
+
+    def get_env(self):
+        """获取环境"""
+        return self.env
 
     def set_env(self, env):
-        """
-        设置新的环境
-
-        Args:
-            env: 新环境
-        """
+        """设置环境"""
         self.env = env
         self.model.set_env(env)
+
+    def __getattr__(self, name):
+        """代理到内部SAC模型的属性访问"""
+        if hasattr(self.model, name):
+            return getattr(self.model, name)
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")

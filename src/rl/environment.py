@@ -76,6 +76,7 @@ class MeshEnv(gym.Env):
         self.episode_reward = 0.0
         self.episode_length = 0
         self.episode_count = 0
+        self.real_step = 0
 
     def _reset_episode_stats(self) -> None:
         """重置episode级别的统计信息"""
@@ -109,6 +110,7 @@ class MeshEnv(gym.Env):
         self.total_initial_area = self.boundary.get_area()
         self.current_step = 0
         self.generated_elements = 0
+        self.real_step = 0
         # self.first_invalid_action = True
 
         # 重置episode统计
@@ -127,111 +129,123 @@ class MeshEnv(gym.Env):
 
     def step(self, action):
         """
-        执行一步动作
-
-        Args:
-            action: 连续动作向量 [type_logit, x_coord, y_coord]
-
-        Returns:
-            tuple: (observation, reward, terminated, truncated, info)
+        Execute one environment step.
         """
-        self.current_step += 1
+        # real_step 只在真正向外暴露的一次交互里 +1
+        self.real_step = getattr(self, "real_step", 0) + 1
 
-        # 解码动作
+        # -------------------------------------------------
+        # 1. decode action
+        # -------------------------------------------------
         action_type, new_coords, reference_vertex_idx = self._decode_action(action)
         generated_element = None
         action_valid = False
-
         element_quality_reward = 0.0
         boundary_quality_reward = -0.1
 
-        def get_invalid_penalty():
-            # 无效动作的惩罚，首次为-1，之后为-1/生成元素数量
+        def invalid_penalty() -> float:
+            # Negative reward for invalid action
             return (self.generated_elements - self.max_steps) * 0.1
 
+        # -------------------------------------------------
+        # 2. try to execute
+        # -------------------------------------------------
         try:
-            if action_type == 0:  # ActionType0Left
+            if action_type == 0:  # type‑0‑left
                 action_valid = self.action_type_0_left.is_valid(self.boundary, reference_vertex_idx)
                 if action_valid:
-                    element_quality_reward = self.action_type_0_left.get_element_quality(self.boundary,
-                                                                                         reference_vertex_idx)
-                    boundary_quality_reward = self.action_type_0_left.get_boundary_quality(self.boundary,
-                                                                                           reference_vertex_idx,
-                                                                                           self.M_angle)
-                    generated_element = self.action_type_0_left.execute(self.mesh, self.boundary, reference_vertex_idx)
+                    element_quality_reward = self.action_type_0_left.get_element_quality(
+                        self.boundary, reference_vertex_idx
+                    )
+                    boundary_quality_reward = self.action_type_0_left.get_boundary_quality(
+                        self.boundary, reference_vertex_idx, self.M_angle
+                    )
+                    generated_element = self.action_type_0_left.execute(
+                        self.mesh, self.boundary, reference_vertex_idx
+                    )
 
-            elif action_type == 1:  # ActionType0Right
+            elif action_type == 1:  # type‑0‑right
                 action_valid = self.action_type_0_right.is_valid(self.boundary, reference_vertex_idx)
                 if action_valid:
-                    element_quality_reward = self.action_type_0_right.get_element_quality(self.boundary,
-                                                                                          reference_vertex_idx)
-                    boundary_quality_reward = self.action_type_0_right.get_boundary_quality(self.boundary,
-                                                                                            reference_vertex_idx,
-                                                                                            self.M_angle)
-                    generated_element = self.action_type_0_right.execute(self.mesh, self.boundary, reference_vertex_idx)
+                    element_quality_reward = self.action_type_0_right.get_element_quality(
+                        self.boundary, reference_vertex_idx
+                    )
+                    boundary_quality_reward = self.action_type_0_right.get_boundary_quality(
+                        self.boundary, reference_vertex_idx, self.M_angle
+                    )
+                    generated_element = self.action_type_0_right.execute(
+                        self.mesh, self.boundary, reference_vertex_idx
+                    )
 
-            elif action_type == 2:  # ActionType1
+            elif action_type == 2:  # type‑1
                 action_valid = self.action_type_1.is_valid(self.boundary, reference_vertex_idx, new_coords[0])
                 if action_valid:
-                    element_quality_reward = self.action_type_1.get_element_quality(self.boundary, reference_vertex_idx,
-                                                                                    new_coords[0])
-                    boundary_quality_reward = self.action_type_1.get_boundary_quality(self.boundary,
-                                                                                      reference_vertex_idx,
-                                                                                      new_coords[0], self.M_angle)
-                    generated_element = self.action_type_1.execute(self.mesh, self.boundary, reference_vertex_idx,
-                                                                   new_coords[0])
+                    element_quality_reward = self.action_type_1.get_element_quality(
+                        self.boundary, reference_vertex_idx, new_coords[0]
+                    )
+                    boundary_quality_reward = self.action_type_1.get_boundary_quality(
+                        self.boundary, reference_vertex_idx, new_coords[0], self.M_angle
+                    )
+                    generated_element = self.action_type_1.execute(
+                        self.mesh, self.boundary, reference_vertex_idx, new_coords[0]
+                    )
 
-            elif action_type == 3:  # ActionType2
-                action_valid = self.action_type_2.is_valid(self.boundary, reference_vertex_idx, new_coords[0],
-                                                           new_coords[1])
+            else:  # type‑2
+                action_valid = self.action_type_2.is_valid(
+                    self.boundary, reference_vertex_idx, new_coords[0], new_coords[1]
+                )
                 if action_valid:
-                    element_quality_reward = self.action_type_2.get_element_quality(self.boundary, reference_vertex_idx,
-                                                                                    new_coords[0], new_coords[1])
-                    boundary_quality_reward = self.action_type_2.get_boundary_quality(self.boundary,
-                                                                                      reference_vertex_idx,
-                                                                                      new_coords[0], new_coords[1],
-                                                                                      self.M_angle)
-                    generated_element = self.action_type_2.execute(self.mesh, self.boundary, reference_vertex_idx,
-                                                                   new_coords[0], new_coords[1])
+                    element_quality_reward = self.action_type_2.get_element_quality(
+                        self.boundary, reference_vertex_idx, new_coords[0], new_coords[1]
+                    )
+                    boundary_quality_reward = self.action_type_2.get_boundary_quality(
+                        self.boundary, reference_vertex_idx, new_coords[0], new_coords[1], self.M_angle
+                    )
+                    generated_element = self.action_type_2.execute(
+                        self.mesh, self.boundary, reference_vertex_idx, new_coords[0], new_coords[1]
+                    )
         except Exception:
-            pass
-
-        if generated_element in (None, [], ()):
             action_valid = False
 
+        # -------------------------------------------------
+        # 3. reward & termination
+        # -------------------------------------------------
         if action_valid:
+            reward = (
+                    element_quality_reward
+                    + boundary_quality_reward
+                    + self._calculate_density_reward(generated_element)
+            )
             self.generated_elements += 1
-            reward = element_quality_reward + boundary_quality_reward + self._calculate_density_reward(
-                generated_element)
-            # 判断结束条件
             terminated = self._is_terminated()
-            truncated = self.current_step >= self.max_steps
-
+            truncated = self.real_step >= self.max_steps
+            term_reason = "task_complete" if terminated else None
+            trunc_reason = "time_limit" if truncated else None
         else:
-            reward = get_invalid_penalty()
-            terminated = True
+            reward = invalid_penalty()
+            terminated = True  # illegal action → failure
             truncated = False
+            term_reason = "invalid_action"
+            trunc_reason = None
 
-        # 重要修复：必须在所有情况下都更新episode统计
+        # -------------------------------------------------
+        # 4. episode statistics
+        # -------------------------------------------------
         self._update_episode_stats(reward)
-
-        # 获取新状态
         observation = self._get_obs()
 
         info = {
-            "step": self.current_step,
+            "real_step": self.generated_elements,
             "action_valid": action_valid,
             "action_type": action_type,
             "boundary_vertices": len(self.boundary.get_vertices()),
-            "element_generated": generated_element is not None
+            "element_generated": generated_element is not None,
+            "term_reason": term_reason,
+            "trunc_reason": trunc_reason,
         }
 
-        # SB3兼容性：当episode结束时，在info中添加episode统计
         if terminated or truncated:
-            info['episode'] = {
-                'r': float(self.episode_reward),
-                'l': int(self.episode_length)
-            }
+            info["episode"] = {"r": float(self.episode_reward), "l": int(self.generated_elements)}
 
         return observation, reward, terminated, truncated, info
 
