@@ -1,67 +1,28 @@
-"""
-训练API - 重构版本
-
-提供与前端交互的训练API，支持统一的SAC训练接口
-"""
 import traceback
 from flask import Blueprint, request, jsonify, current_app
+from typing import Optional
+import os
 
-from ..training_manager import training_manager
+from src.ui.training_manager import TrainingManager
 
-# 创建蓝图
-training_bp = Blueprint('training', __name__, url_prefix='/training')
+# 设置OpenMP环境变量，解决库冲突问题
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
+# 使用全局的训练管理器实例
+training_manager = TrainingManager()
 
-@training_bp.route("/health", methods=["GET"])
-def health_check():
-    """健康检查端点"""
-    try:
-        return jsonify({
-            "status": "healthy",
-            "service": "training-api",
-            "timestamp": __import__("time").time(),
-            "backend_available": True
-        })
-    except Exception as exc:
-        current_app.logger.error(f"健康检查失败: {exc}")
-        return jsonify({
-            "status": "unhealthy",
-            "service": "training-api",
-            "error": str(exc),
-            "timestamp": __import__("time").time()
-        }), 500
+# 创建训练管理的蓝图
+training_bp = Blueprint("training", __name__, url_prefix="/training")
 
 
-@training_bp.route("/info", methods=["GET"])
-def get_trainer_info():
-    """
-    获取训练器信息
-
-    Returns:
-        JSON响应包含训练器配置和状态信息
-    """
-    try:
-        trainer_info = training_manager.get_trainer_info()
-        return jsonify({
-            "success": True,
-            "data": trainer_info
-        })
-    except Exception as exc:
-        current_app.logger.error(f"获取训练器信息失败: {exc}")
-        return jsonify({
-            "success": False,
-            "error": str(exc)
-        }), 500
-
-
-@training_bp.route("/initialize", methods=["POST"])
+@training_bp.route("/init", methods=["POST"])
 def initialize_trainer():
     """
     初始化训练器
 
     Body参数:
-        backend (str, optional): SAC后端类型 ("custom" 或 "sb3")
         boundary_source (str, optional): 边界数据源
+        backend (str, optional): SAC后端类型
         device (str, optional): 训练设备
 
     Returns:
@@ -70,14 +31,35 @@ def initialize_trainer():
     try:
         data = request.get_json() or {}
 
+        # 提取初始化参数
+        boundary_source = data.get('boundary_source')
+        backend = data.get('backend')
+        device = data.get('device')
+
+        # 修复：处理前端mesh_name到boundary_source的映射
+        if boundary_source is None and 'mesh_name' in data and data['mesh_name']:
+            boundary_source = data['mesh_name']
+            print(f"从前端mesh_name映射boundary_source: {boundary_source}")
+
+        # 确保boundary_source不为None
+        if boundary_source is None or boundary_source == "":
+            boundary_source = "simple_square"  # 使用默认mesh
+            print(f"boundary_source为空，使用默认值: {boundary_source}")
+
         result = training_manager.initialize_trainer(
-            boundary_source=data.get('boundary_source'),
-            device=data.get('device'),
-            backend=data.get('backend')
+            boundary_source=boundary_source,
+            backend=backend,
+            device=device
         )
 
         if result["success"]:
-            return jsonify(result)
+            return jsonify({
+                "success": True,
+                "message": "trainer_initialized",
+                "boundary_source": boundary_source,
+                "backend": result.get("backend", "unknown"),
+                "device": result.get("device", "auto")
+            })
         else:
             return jsonify(result), 400
 
@@ -121,6 +103,11 @@ def start_training():
             boundary_source = data['mesh_name']
             print(f"从前端mesh_name映射boundary_source: {boundary_source}")
 
+        # 确保boundary_source不为None
+        if boundary_source is None or boundary_source == "":
+            boundary_source = "simple_square"  # 使用默认mesh
+            print(f"boundary_source为空，使用默认值: {boundary_source}")
+
         # 启动训练
         result = training_manager.start_training(
             max_timesteps=max_timesteps,
@@ -134,7 +121,8 @@ def start_training():
             return jsonify({
                 "success": True,
                 "message": "training_started",
-                "training_id": result.get("training_id", "")
+                "training_id": result.get("training_id", ""),
+                "boundary_source": boundary_source
             })
         else:
             return jsonify(result), 400
@@ -215,42 +203,8 @@ def get_training_status():
             total_steps = stats.get("total_steps", 0)
             episode_reward = stats.get("episode_reward", 0.0)
             average_reward = stats.get("average_reward", 0.0)
-            episode_length = stats.get("episode_length", 0)
-            boundary_vertices = stats.get("boundary_vertices", 0)
             buffer_size = stats.get("buffer_size", 0)
-            training_id = stats.get("training_id", "")
-            online_learning_mode = stats.get("online_learning_mode", False)
 
-            # 确保包含网格可视化数据
-            mesh_data = stats.get("mesh_data", {})
-            boundary_vertices_data = stats.get("boundary_vertices_data", [])
-            reference_point_info = stats.get("reference_point_info", {})
-
-            # 更新 stats 对象，确保所有字段都存在
-            stats.update({
-                "episode": episode,
-                "total_steps": total_steps,
-                "episode_reward": episode_reward,
-                "average_reward": average_reward,
-                "episode_length": episode_length,
-                "boundary_vertices": boundary_vertices,
-                "buffer_size": buffer_size,
-                "training_id": training_id,
-                "online_learning_mode": online_learning_mode,
-                "mesh_data": mesh_data,
-                "boundary_vertices_data": boundary_vertices_data,
-                "reference_point_info": reference_point_info
-            })
-
-            # 添加可选的损失和alpha值
-            if "recent_actor_loss" in stats:
-                stats["recent_actor_loss"] = stats["recent_actor_loss"]
-            if "recent_critic_loss" in stats:
-                stats["recent_critic_loss"] = stats["recent_critic_loss"]
-            if "current_alpha" in stats:
-                stats["current_alpha"] = stats["current_alpha"]
-
-            # 添加 progress 对象（前端期望的完整格式）
             result["progress"] = {
                 "current_episode": episode,
                 "total_steps": total_steps,
@@ -259,25 +213,15 @@ def get_training_status():
                 "buffer_utilization": buffer_size
             }
 
-            # 计算训练进度百分比（如果有最大步数信息）
-            if "max_timesteps" in stats and stats["max_timesteps"] > 0:
-                progress_percent = min(100.0, (total_steps / stats["max_timesteps"]) * 100)
-                result["progress"]["progress_percent"] = progress_percent
-                stats["progress_percent"] = progress_percent
-
-            # 添加训练时长格式化
-            training_time = stats.get("training_time", 0)
-            if training_time > 0:
-                hours = int(training_time // 3600)
-                minutes = int((training_time % 3600) // 60)
-                seconds = int(training_time % 60)
-                stats["training_time_formatted"] = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
         return jsonify(result)
 
     except Exception as exc:
-        current_app.logger.error(f"获取训练状态异常: {exc}")
+        current_app.logger.error(f"获取训练状态失败: {exc}")
         current_app.logger.error(traceback.format_exc())
+        print(f"=== 获取训练状态异常 ===")
+        print(f"错误: {exc}")
+        traceback.print_exc()
+        print(f"=== 错误结束 ===")
         return jsonify({
             "running": False,
             "status": "error",
@@ -288,38 +232,33 @@ def get_training_status():
         }), 500
 
 
-@training_bp.route("/boundary/load", methods=["POST"])
-def load_boundary():
+@training_bp.route("/health", methods=["GET"])
+def training_health_check():
     """
-    加载新的边界数据
-
-    Body参数:
-        boundary_source (str): 边界数据源
+    训练管理API健康检查
 
     Returns:
-        JSON响应表示加载结果
+        JSON响应表示训练服务状态
     """
     try:
-        data = request.get_json() or {}
-        boundary_source = data.get('boundary_source')
+        manager_running = training_manager.is_training_active()
 
-        if not boundary_source:
-            return jsonify({
-                "success": False,
-                "error": "缺少必需参数: boundary_source"
-            }), 400
-
-        result = training_manager.load_boundary(boundary_source)
-
-        if result["success"]:
-            return jsonify(result)
-        else:
-            return jsonify(result), 400
-
-    except Exception as exc:
-        current_app.logger.error(f"加载边界异常: {exc}")
-        current_app.logger.error(traceback.format_exc())
         return jsonify({
-            "success": False,
-            "error": f"加载边界时发生错误: {str(exc)}"
+            "status": "healthy",
+            "service": "training-api",
+            "manager_running": manager_running,
+            "timestamp": __import__("time").time()
+        })
+    except Exception as exc:
+        current_app.logger.error(f"训练健康检查异常: {exc}")
+        current_app.logger.error(traceback.format_exc())
+        print(f"=== 训练健康检查异常 ===")
+        print(f"错误: {exc}")
+        traceback.print_exc()
+        print(f"=== 错误结束 ===")
+        return jsonify({
+            "status": "unhealthy",
+            "service": "training-api",
+            "error": str(exc),
+            "timestamp": __import__("time").time()
         }), 500

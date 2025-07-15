@@ -355,7 +355,7 @@ class TrainingHistoryManager:
 
         # 更新元数据
         end_time = time.time()
-        status = "stopped" if stopped_early else "completed"
+        status = "stopped_early" if stopped_early else "completed"
 
         self.training_metadata.update({
             "status": status,
@@ -369,8 +369,14 @@ class TrainingHistoryManager:
         # 保存最终元数据
         self._save_metadata()
 
-        # 生成训练图表
-        self._generate_training_plots()
+        # 异步生成训练图表，避免阻塞主线程和产生matplotlib报错
+        try:
+            import threading
+            plot_thread = threading.Thread(target=self._generate_training_plots_safe, daemon=True)
+            plot_thread.start()
+            # 不等待线程完成，允许主程序继续执行
+        except Exception as e:
+            self.logger.warning(f"无法启动图表生成线程: {e}")
 
         # 保存最终统计报告
         if final_stats:
@@ -405,13 +411,28 @@ class TrainingHistoryManager:
             return
 
         try:
-            # 设置matplotlib的中文字体支持
-            plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial Unicode MS']
-            plt.rcParams['axes.unicode_minus'] = False
+            # 设置matplotlib后端为Agg（非交互式），避免GUI相关问题
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+
+            # 禁用matplotlib的详细日志输出
+            import logging
+            matplotlib_logger = logging.getLogger('matplotlib')
+            original_level = matplotlib_logger.getEffectiveLevel()
+            matplotlib_logger.setLevel(logging.WARNING)
+
+            # 设置matplotlib的中文字体支持，添加异常处理
+            try:
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial Unicode MS']
+                plt.rcParams['axes.unicode_minus'] = False
+            except Exception:
+                # 如果字体设置失败，使用默认字体
+                plt.rcParams['font.family'] = 'sans-serif'
 
             # 创建2x2的子图
             fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
-            fig.suptitle(f'训练过程分析 - {self.current_training_id}', fontsize=16, fontweight='bold')
+            fig.suptitle(f'Training Analysis - {self.current_training_id}', fontsize=16, fontweight='bold')
 
             # 计算滑动平均
             def moving_average(data, window=50):
@@ -423,11 +444,11 @@ class TrainingHistoryManager:
 
             # 1. Actor Loss
             if len(self.actor_losses) > 0:
-                ax1.plot(episodes_array, self.actor_losses, alpha=0.3, color='blue', label='原始数据')
+                ax1.plot(episodes_array, self.actor_losses, alpha=0.3, color='blue', label='Raw Data')
                 if len(self.actor_losses) > 10:
                     smoothed = moving_average(self.actor_losses)
                     ax1.plot(episodes_array[len(episodes_array) - len(smoothed):], smoothed,
-                             color='blue', linewidth=2, label='滑动平均')
+                             color='blue', linewidth=2, label='Moving Average')
                 ax1.set_title('Actor Loss', fontweight='bold')
                 ax1.set_xlabel('Episode')
                 ax1.set_ylabel('Loss')
@@ -436,76 +457,76 @@ class TrainingHistoryManager:
 
             # 2. Critic Loss
             if len(self.critic_losses) > 0:
-                ax2.plot(episodes_array, self.critic_losses, alpha=0.3, color='red', label='原始数据')
+                ax2.plot(episodes_array, self.critic_losses, alpha=0.3, color='green', label='Raw Data')
                 if len(self.critic_losses) > 10:
                     smoothed = moving_average(self.critic_losses)
                     ax2.plot(episodes_array[len(episodes_array) - len(smoothed):], smoothed,
-                             color='red', linewidth=2, label='滑动平均')
+                             color='green', linewidth=2, label='Moving Average')
                 ax2.set_title('Critic Loss', fontweight='bold')
                 ax2.set_xlabel('Episode')
                 ax2.set_ylabel('Loss')
                 ax2.legend()
                 ax2.grid(True, alpha=0.3)
 
-            # 3. Alpha值
+            # 3. Alpha Values
             if len(self.alpha_values) > 0:
-                ax3.plot(episodes_array, self.alpha_values, alpha=0.3, color='green', label='原始数据')
-                if len(self.alpha_values) > 10:
-                    smoothed = moving_average(self.alpha_values)
-                    ax3.plot(episodes_array[len(episodes_array) - len(smoothed):], smoothed,
-                             color='green', linewidth=2, label='滑动平均')
-                ax3.set_title('Alpha (α) 值', fontweight='bold')
+                ax3.plot(episodes_array, self.alpha_values, alpha=0.7, color='purple', linewidth=2)
+                ax3.set_title('Alpha Values', fontweight='bold')
                 ax3.set_xlabel('Episode')
                 ax3.set_ylabel('Alpha')
-                ax3.legend()
                 ax3.grid(True, alpha=0.3)
 
-            # 4. 平均回报
+            # 4. Episode Rewards and Average Rewards
             if len(self.episode_rewards) > 0:
-                ax4.plot(episodes_array, self.episode_rewards, alpha=0.3, color='orange', label='Episode奖励')
+                ax4.plot(episodes_array, self.episode_rewards, alpha=0.3, color='orange', label='Episode Reward')
                 if len(self.episode_rewards) > 10:
                     smoothed = moving_average(self.episode_rewards)
                     ax4.plot(episodes_array[len(episodes_array) - len(smoothed):], smoothed,
-                             color='orange', linewidth=2, label='滑动平均奖励')
+                             color='orange', linewidth=2, label='Moving Average Reward')
 
-                # 计算累积平均奖励
+                # Calculate cumulative average reward
                 cumulative_avg = np.cumsum(self.episode_rewards) / np.arange(1, len(self.episode_rewards) + 1)
                 ax4.plot(episodes_array, cumulative_avg, color='darkred', linewidth=2,
-                         linestyle='--', label='累积平均奖励')
+                         linestyle='--', label='Cumulative Average Reward')
 
-                ax4.set_title('回报分析', fontweight='bold')
+                ax4.set_title('Reward Analysis', fontweight='bold')
                 ax4.set_xlabel('Episode')
                 ax4.set_ylabel('Reward')
                 ax4.legend()
                 ax4.grid(True, alpha=0.3)
 
-            # 调整布局
+            # Adjust layout
             plt.tight_layout()
 
-            # 保存图表
+            # Save plots
             plots_dir = os.path.join(self.current_training_dir, "plots")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-            # 保存高分辨率PNG
+            # Save high-resolution PNG
             png_path = os.path.join(plots_dir, f"training_analysis_{timestamp}.png")
             plt.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
 
-            # 保存PDF版本
+            # Save PDF version
             pdf_path = os.path.join(plots_dir, f"training_analysis_{timestamp}.pdf")
             plt.savefig(pdf_path, bbox_inches='tight', facecolor='white')
 
-            plt.close()  # 关闭图形以释放内存
+            # Close figure to release memory and avoid threading issues
+            plt.close(fig)
+            plt.close('all')  # 确保关闭所有图形
 
-            # 同时生成训练统计摘要
+            # 恢复matplotlib日志级别
+            matplotlib_logger.setLevel(original_level)
+
+            # Generate training statistics summary
             self._save_training_statistics()
 
-            self.logger.info(f"训练图表已生成: {png_path}")
-            self.logger.info(f"训练图表PDF已生成: {pdf_path}")
+            self.logger.info(f"Training plot generated: {png_path}")
+            self.logger.info(f"Training plot PDF generated: {pdf_path}")
 
         except Exception as e:
-            self.logger.error(f"生成训练图表失败: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.error(f"Failed to generate training plots: {e}")
+            # 不打印详细的traceback，避免产生更多日志噪音
+            pass
 
     def _save_training_statistics(self):
         """
@@ -941,3 +962,13 @@ class TrainingHistoryManager:
             "save_frequency": self.save_frequency_timesteps,
             "will_save_next": self._should_save_history()
         }
+
+    def _generate_training_plots_safe(self):
+        """
+        安全地生成训练图表，用于在单独线程中执行
+        """
+        try:
+            self._generate_training_plots()
+        except Exception as e:
+            self.logger.warning(f"图表生成失败: {e}")
+            # 静默处理，不影响主要的训练停止流程
