@@ -51,6 +51,7 @@ class SB3TrainingCallback(BaseCallback):
     def _on_step(self) -> bool:
         self.trainer.training_stats["total_steps"] = self.num_timesteps
         infos = self.locals.get("infos", [])
+        print(infos)
 
         for info in infos:
             if "episode" not in info:
@@ -60,14 +61,13 @@ class SB3TrainingCallback(BaseCallback):
 
             raw_len = int(info["episode"]["l"])
             ep_r = float(info["episode"]["r"])
-            real_len = int(info.get("real_step", raw_len))
 
-            self.trainer._update_training_stats(ep_r, real_len)
+            self.trainer._update_training_stats(ep_r, 0)
 
             episode_data = self.trainer._create_sb3_episode_data(
                 episode=self.episode_count,
                 episode_reward=ep_r,
-                episode_length=real_len,
+                episode_length=0,
                 raw_episode_length=raw_len,
                 ref_info=info.get("reference_point_info", None),
             )
@@ -176,7 +176,7 @@ class SB3SACTrainer(BaseTrainer):
                 max_steps=max_steps,
                 config=self.config,
             )
-            return Monitor(env, info_keywords=("real_step", "term_reason", "trunc_reason"))
+            return Monitor(env, info_keywords=("term_reason", "trunc_reason"))
 
         self.env = make_env()
         self.eval_env = make_env()

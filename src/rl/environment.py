@@ -76,7 +76,6 @@ class MeshEnv(gym.Env):
         self.episode_reward = 0.0
         self.episode_length = 0
         self.episode_count = 0
-        self.real_step = 0
 
     def _reset_episode_stats(self) -> None:
         """重置episode级别的统计信息"""
@@ -110,8 +109,6 @@ class MeshEnv(gym.Env):
         self.total_initial_area = self.boundary.get_area()
         self.current_step = 0
         self.generated_elements = 0
-        self.real_step = 0
-        # self.first_invalid_action = True
 
         # 重置episode统计
         self._reset_episode_stats()
@@ -131,15 +128,13 @@ class MeshEnv(gym.Env):
         """
         Execute one environment step.
         """
-        # real_step 只在真正向外暴露的一次交互里 +1
-        self.real_step = getattr(self, "real_step", 0) + 1
 
         # -------------------------------------------------
         # 1. decode action
         # -------------------------------------------------
         action_type, new_coords, reference_vertex_idx = self._decode_action(action)
         generated_element = None
-        action_valid = False
+
         element_quality_reward = 0.0
         boundary_quality_reward = -0.1
 
@@ -218,7 +213,7 @@ class MeshEnv(gym.Env):
             )
             self.generated_elements += 1
             terminated = self._is_terminated()
-            truncated = self.real_step >= self.max_steps
+            truncated = self.current_step >= self.max_steps
             term_reason = "task_complete" if terminated else None
             trunc_reason = "time_limit" if truncated else None
         else:
@@ -235,13 +230,15 @@ class MeshEnv(gym.Env):
         observation = self._get_obs()
 
         info = {
-            "real_step": self.generated_elements,
             "action_valid": action_valid,
             "action_type": action_type,
             "boundary_vertices": len(self.boundary.get_vertices()),
             "element_generated": generated_element is not None,
             "term_reason": term_reason,
             "trunc_reason": trunc_reason,
+            "mesh_data": self.mesh.get_adjacency_dict(),
+            "boundary_vertices_data": self.boundary.get_vertices(),
+            "last_ref_point": reference_vertex_idx
         }
 
         if terminated or truncated:
