@@ -29,39 +29,18 @@ paths:
   default_meshes:
     - "1"
 
-
-# SAC算法选择配置
-sac_backend:
-  # 选择SAC实现方式: "custom" 或 "sb3"
-  # - "custom": 使用自制的SAC实现
-  # - "sb3": 使用stable_baselines3的SAC实现
-  type: "sb3"
-
-# 自制SAC配置 (当sac_backend.type为"custom"时使用)
-sac_agent:
-  actor_lr: 0.0003
-  critic_lr: 0.00010
-  alpha_lr: 0.0003
-  weight_decay: 0.00001
-  gamma: 0.99
-  tau: 0.005
-  hidden_dim: 128
-  buffer_size: 800000
-  batch_size: 128
-  start_training_steps: 5000
-
 # Stable-Baselines3 SAC配置 (当sac_backend.type为"sb3"时使用)
 sb3_sac:
   learning_rate: 0.0003
   buffer_size: 1000000
   learning_starts: 10000
-  batch_size: 100
+  batch_size: 128
   tau: 0.005
   gamma: 0.99
   train_freq: 1
   gradient_steps: 1
-  net_arch: [128, 128, 128]  # 网络架构，对应论文中的最佳配置S2
-  seed: null
+  net_arch: [128, 128, 128]
+  seed: 998
   verbose: 0
 
 # 经验回放缓冲区配置

@@ -80,20 +80,6 @@ class SB3SACAgent:
         action, _ = self.model.predict(state, deterministic=deterministic)
         return action
 
-    def train(self, replay_buffer, batch_size):
-        """
-        训练智能体
-
-        Args:
-            replay_buffer: 经验回放缓冲区
-            batch_size: 批次大小
-
-        Returns:
-            dict: 损失信息
-        """
-        # SB3会自动进行训练，这里主要用于接口兼容
-        return {}
-
     def save(self, path):
         """
         保存模型

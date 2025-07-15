@@ -212,6 +212,7 @@ class MeshEnv(gym.Env):
                     + self._calculate_density_reward(generated_element)
             )
             self.generated_elements += 1
+            self.current_step += 1
             terminated = self._is_terminated()
             truncated = self.current_step >= self.max_steps
             term_reason = "task_complete" if terminated else None
@@ -238,11 +239,11 @@ class MeshEnv(gym.Env):
             "trunc_reason": trunc_reason,
             "mesh_data": self.mesh.get_adjacency_dict(),
             "boundary_vertices_data": self.boundary.get_vertices(),
-            "last_ref_point": reference_vertex_idx
+            "last_ref_point": self.boundary.get_vertex_by_index(reference_vertex_idx)
         }
 
         if terminated or truncated:
-            info["episode"] = {"r": float(self.episode_reward), "l": int(self.generated_elements)}
+            info["episode"] = {"r": float(self.episode_reward), "l": int(self.current_step)}
 
         return observation, reward, terminated, truncated, info
 
