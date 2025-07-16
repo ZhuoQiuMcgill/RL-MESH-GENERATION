@@ -178,6 +178,10 @@
                         <span id="episode-length" class="font-semibold text-gray-800">0</span>
                     </div>
                     <div class="text-sm">
+                        <span class="text-gray-600">Episode奖励:</span>
+                        <span id="episode-reward" class="font-semibold text-gray-800">0.000</span>
+                    </div>
+                    <div class="text-sm">
                         <span class="text-gray-600">参考点:</span>
                         <span id="ref-point" class="font-semibold text-gray-800">N/A</span>
                     </div>
@@ -223,7 +227,7 @@
 <!-- 引入模块化的JavaScript文件 -->
 <script type="module">
     // 导入并初始化训练管理器
-    import {TrainingManager} from './js';
+    import {TrainingManager} from './js/training-manager.js';
 
     // 当页面加载完成后初始化应用
     document.addEventListener('DOMContentLoaded', () => {
@@ -257,8 +261,4 @@
     });
 </script>
 </body>
-</html>gray-600">Episode奖励:</span>
-                        <span id="episode-reward" class="font-semibold text-gray-800">0.000</span>
-                    </div>
-                    <div class="text-sm">
-                        <span class="text-
+</html>

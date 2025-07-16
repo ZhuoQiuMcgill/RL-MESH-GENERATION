@@ -5,66 +5,59 @@
 
 import {CONSTANTS, delay} from './utils.js';
 
+/**
+ * API错误处理装饰器
+ * @param {Function} apiMethod - API方法
+ * @returns {Function} 包装后的方法
+ */
+export function withErrorHandling(apiMethod) {
+    return async function (...args) {
+        try {
+            return await apiMethod.apply(this, args);
+        } catch (error) {
+            console.error(`API调用失败:`, error);
+
+            // 根据错误类型返回不同的错误信息
+            if (error.message.includes('timeout') || error.message.includes('超时')) {
+                throw new Error('请求超时，请检查网络连接');
+            } else if (error.message.includes('Failed to fetch')) {
+                throw new Error('网络连接失败，请检查服务器状态');
+            } else {
+                throw error;
+            }
+        }
+    };
+}
+
+/**
+ * 带重试机制的API调用
+ * @param {Function} apiCall - API调用函数
+ * @param {number} maxRetries - 最大重试次数
+ * @param {number} retryDelay - 重试延迟时间（毫秒）
+ * @returns {Promise<any>} API响应
+ */
+export async function withRetry(apiCall, maxRetries = 3, retryDelay = 1000) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await apiCall();
+        } catch (error) {
+            lastError = error;
+
+            if (attempt < maxRetries) {
+                console.warn(`API调用失败，尝试重试 (${attempt + 1}/${maxRetries}):`, error.message);
+                await delay(retryDelay * Math.pow(2, attempt)); // 指数退避
+            }
+        }
+    }
+
+    throw lastError;
+}
+
 export class ApiClient {
     constructor() {
         this.baseUrl = CONSTANTS.API_BASE_URL;
-    }
-
-    /**
-     * API错误处理装饰器
-     * @param {Function} apiMethod - API方法
-     * @returns {Function} 包装后的方法
-     */
-    export
-    function
-
-    withErrorHandling(apiMethod) {
-        return async function (...args) {
-            try {
-                return await apiMethod.apply(this, args);
-            } catch (error) {
-                console.error(`API调用失败:`, error);
-
-                // 根据错误类型返回不同的错误信息
-                if (error.message.includes('timeout') || error.message.includes('超时')) {
-                    throw new Error('请求超时，请检查网络连接');
-                } else if (error.message.includes('Failed to fetch')) {
-                    throw new Error('网络连接失败，请检查服务器状态');
-                } else {
-                    throw error;
-                }
-            }
-        };
-    }
-
-    /**
-     * 带重试机制的API调用
-     * @param {Function} apiCall - API调用函数
-     * @param {number} maxRetries - 最大重试次数
-     * @param {number} retryDelay - 重试延迟时间（毫秒）
-     * @returns {Promise<any>} API响应
-     */
-    export
-
-
-
-    async function withRetry(apiCall, maxRetries = 3, retryDelay = 1000) {
-        let lastError;
-
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-                return await apiCall();
-            } catch (error) {
-                lastError = error;
-
-                if (attempt < maxRetries) {
-                    console.warn(`API调用失败，尝试重试 (${attempt + 1}/${maxRetries}):`, error.message);
-                    await delay(retryDelay * Math.pow(2, attempt)); // 指数退避
-                }
-            }
-        }
-
-        throw lastError;
     }
 
     /**
