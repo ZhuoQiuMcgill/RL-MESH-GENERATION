@@ -217,12 +217,14 @@ class MeshEnv(gym.Env):
             self.generated_elements += 1
             self.current_step += 1
             terminated = self._is_terminated()
+            complete = terminated
             truncated = self.current_step >= self.max_steps
             term_reason = "task_complete" if terminated else None
             trunc_reason = "time_limit" if truncated else None
         else:
             reward = invalid_penalty()
             terminated = True  # illegal action → failure
+            complete = False
             truncated = False
             term_reason = "invalid_action"
             trunc_reason = None
@@ -245,9 +247,12 @@ class MeshEnv(gym.Env):
         if terminated or truncated:
             info["episode"] = {"r": float(self.episode_reward),
                                "l": int(self.current_step)}
-            info["geometry"] = {"mesh_data": self.get_mesh_data(),
-                                "boundary_vertices_data": self.boundary.get_vertices(),
-                                "last_ref_point": self.get_last_reference_info()}
+            info["detail"] = {"r": float(self.episode_reward),
+                              "l": int(self.current_step),
+                              "mesh_data": self.get_mesh_data(),
+                              "boundary_vertices_data": self.boundary.get_vertices(),
+                              "last_ref_point": self.get_last_reference_info(),
+                              "is_completed": complete}
 
         return observation, reward, terminated, truncated, info
 

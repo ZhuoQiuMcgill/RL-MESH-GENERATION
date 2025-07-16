@@ -1,132 +1,144 @@
-"""
-强化学习可视化模块
-"""
-
 import os
 import logging
-import numpy as np
 from typing import List
-
-# 设置环境变量解决OpenMP冲突
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-
-# 禁用matplotlib的DEBUG日志
-logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
-
+import numpy as np
 import matplotlib
 
-# 使用Agg后端避免GUI相关问题
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+# 允许重复加载 Intel OpenMP 库，避免 libiomp5md.dll 冲突
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+# 屏蔽 matplotlib.font_manager 的 DEBUG 日志
+logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
 
-def plot_reward_change(episode_rewards: List[float], save_path: str) -> str:
+logger = logging.getLogger(__name__)
+
+
+def plot_reward_change(episode_rewards: List[float],
+                       episode_lengths: List[int],
+                       save_path: str) -> str:
     """
-    绘制episode奖励变化图 - 真正的Claude风格设计
+    绘制训练过程中各 episode reward 随累计 timesteps 的变化曲线，
+    并把图例和统计信息放到图表外部。
 
     Args:
-        episode_rewards: episode奖励列表
-        save_path: 保存路径
-
+        episode_rewards: 各 episode 的 reward 列表，长度为 N。
+        episode_lengths: 各 episode 对应的步数列表，长度也应为 N。
+        save_path: 图表保存路径。
     Returns:
-        str: 保存的文件路径
+        str: 最终保存的文件路径。
     """
-    if not episode_rewards or len(episode_rewards) < 2:
-        raise ValueError("需要至少2个episode的奖励数据")
+    # 校验 & 截断
+    rewards = np.array(episode_rewards, dtype=float)
+    lengths = np.array(episode_lengths, dtype=float)
+    if rewards.ndim != 1 or lengths.ndim != 1:
+        raise ValueError("episode_rewards 和 episode_lengths 必须都是一维列表")
+    if rewards.shape[0] != lengths.shape[0]:
+        logger.warning(f"Rewards 长度 {len(rewards)} 与 Lengths 长度 {len(lengths)} 不一致，截断到最小长度")
+        m = min(len(rewards), len(lengths))
+        rewards = rewards[:m]
+        lengths = lengths[:m]
 
-    episodes = list(range(1, len(episode_rewards) + 1))
+    # 计算横轴（累计 timesteps）
+    x_data = np.cumsum(lengths)
+    if x_data.shape[0] != rewards.shape[0]:
+        raise ValueError("x_data 与 rewards 长度不匹配")
 
-    # 真正的Claude风格配色 - 橙色/暖色调
-    bg_color = '#1a1a1a'  # 深色背景
-    primary_color = '#ff6b35'  # Claude橙色
-    secondary_color = '#ffa726'  # 浅橙色
-    accent_color = '#ff8f65'  # 强调色
-    text_color = '#e8e8e8'  # 浅色文字
-    grid_color = '#333333'  # 深色网格
-    card_bg = '#2a2a2a'  # 卡片背景
+    # 配色
+    bg_color = '#1a1a1a'
+    primary_color = '#ff6b35'
+    secondary_color = '#ffa726'
+    accent_color = '#ff8f65'
+    text_color = '#e8e8e8'
+    grid_color = '#333333'
+    card_bg = '#2a2a2a'
 
-    # 创建图形，使用深色现代样式
+    # 创建图和轴，预留右侧空间
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(12, 7), facecolor=bg_color)
     ax.set_facecolor(bg_color)
+    fig.subplots_adjust(right=0.75)  # 留 25% 空间给外部图例和文本
 
-    # 绘制主要的奖励曲线 - 使用Claude橙色
-    ax.plot(episodes, episode_rewards, color=primary_color, linewidth=2.5,
-            alpha=0.9, label='Episode Rewards', zorder=3)
+    # 主曲线
+    ax.plot(x_data, rewards,
+            color=primary_color, linewidth=2.5,
+            alpha=0.9, label='Episode Reward', zorder=3)
+    # 移动平均
+    if len(rewards) > 10:
+        window = min(20, len(rewards) // 5)
+        ma = np.convolve(rewards, np.ones(window) / window, mode='valid')
+        ax.plot(x_data[window - 1:], ma,
+                color=secondary_color, linewidth=3,
+                alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
+    # 少量点时加散点
+    if len(x_data) <= 100:
+        ax.scatter(x_data, rewards,
+                   color=accent_color, s=30,
+                   alpha=0.7, edgecolors=bg_color,
+                   linewidth=1, zorder=5)
+    # 填充
+    if len(rewards) > 5:
+        ax.fill_between(x_data, rewards,
+                        alpha=0.15, color=primary_color,
+                        zorder=1)
 
-    # 添加移动平均线 - 使用浅橙色
-    if len(episode_rewards) > 10:
-        window = min(20, len(episode_rewards) // 5)
-        moving_avg = np.convolve(episode_rewards, np.ones(window) / window, mode='valid')
-        ax.plot(episodes[window - 1:], moving_avg, color=secondary_color,
-                linewidth=3, alpha=0.95, label=f'Moving Average ({window})', zorder=4)
-
-    # 添加数据点 - 使用强调色
-    if len(episodes) <= 100:  # 只在数据点不太多时显示
-        ax.scatter(episodes, episode_rewards, color=accent_color, s=30,
-                   alpha=0.7, zorder=5, edgecolors=bg_color, linewidth=1)
-
-    # 添加填充区域显示趋势 - 使用渐变橙色
-    if len(episode_rewards) > 5:
-        ax.fill_between(episodes, episode_rewards, alpha=0.15, color=primary_color, zorder=1)
-
-    # 设置坐标轴样式
-    ax.set_xlabel('Episode', fontsize=13, color=text_color, fontweight='500')
+    # 坐标与标题
+    ax.set_xlabel('Timesteps', fontsize=13, color=text_color, fontweight='500')
     ax.set_ylabel('Reward', fontsize=13, color=text_color, fontweight='500')
-    ax.set_title('Training Progress', fontsize=16, color=text_color,
+    ax.set_title('Training Progress by Timesteps',
+                 fontsize=16, color=text_color,
                  fontweight='600', pad=20)
 
-    # 美化网格 - 深色主题
+    # 网格 & 边框
     ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
     ax.set_axisbelow(True)
-
-    # 设置坐标轴颜色和样式 - 深色主题
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
     ax.spines['left'].set_color(grid_color)
     ax.spines['bottom'].set_color(grid_color)
     ax.spines['left'].set_linewidth(1.5)
     ax.spines['bottom'].set_linewidth(1.5)
-
-    # 设置刻度样式
     ax.tick_params(colors=text_color, labelsize=11)
     ax.tick_params(axis='x', length=6, width=1.5, color=grid_color)
     ax.tick_params(axis='y', length=6, width=1.5, color=grid_color)
 
-    # 添加图例，使用深色主题样式
-    legend = ax.legend(loc='upper left', frameon=True, shadow=False,
-                       fancybox=True, fontsize=11)
+    # 图例：放在右侧外部
+    legend = ax.legend(loc='upper left',
+                       bbox_to_anchor=(1.02, 1.0),
+                       borderaxespad=0, fancybox=True, fontsize=11)
     legend.get_frame().set_facecolor(card_bg)
     legend.get_frame().set_edgecolor(grid_color)
     legend.get_frame().set_alpha(0.95)
     legend.get_frame().set_linewidth(1)
-    for text in legend.get_texts():
-        text.set_color(text_color)
+    for txt in legend.get_texts():
+        txt.set_color(text_color)
 
-    # 添加统计信息框 - 深色卡片样式
-    max_reward = np.max(episode_rewards)
-    min_reward = np.min(episode_rewards)
-    final_reward = episode_rewards[-1]
-    mean_reward = np.mean(episode_rewards)
+    # 统计信息：放在右侧外部
+    total_ts = int(lengths.sum())
+    stats = (
+        f"Episodes:     {len(rewards):,}\n"
+        f"Timesteps:    {total_ts:,}\n"
+        f"Avg Length:   {lengths.mean():.1f}\n"
+        f"Max Reward:   {rewards.max():.3f}\n"
+        f"Min Reward:   {rewards.min():.3f}\n"
+        f"Final Reward: {rewards[-1]:.3f}\n"
+        f"Mean Reward:  {rewards.mean():.3f}"
+    )
+    fig.text(0.78, 0.50, stats,
+             fontsize=10, color=text_color,
+             fontfamily='monospace',
+             bbox=dict(boxstyle='round,pad=0.6',
+                       facecolor=card_bg,
+                       edgecolor=primary_color,
+                       alpha=0.95,
+                       linewidth=1.5))
 
-    stats_text = f'Episodes: {len(episode_rewards):,}\nMax: {max_reward:.3f}\nMin: {min_reward:.3f}\nFinal: {final_reward:.3f}\nMean: {mean_reward:.3f}'
-
-    # 创建深色主题的文本框
-    props = dict(boxstyle='round,pad=0.6', facecolor=card_bg,
-                 edgecolor=primary_color, alpha=0.95, linewidth=1.5)
-    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-            verticalalignment='top', fontsize=10, color=text_color,
-            bbox=props, fontfamily='monospace')
-
-    # 调整布局
-    plt.tight_layout(pad=2.0)
-
-    # 确保目录存在
+    # 保存 & 关闭
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-    # 保存高质量图片
-    plt.savefig(save_path, dpi=300, bbox_inches='tight',
+    plt.tight_layout(pad=2.0)
+    plt.savefig(save_path, dpi=300,
                 facecolor=bg_color, edgecolor='none')
-    plt.close()
+    plt.close(fig)
 
     return save_path

@@ -16,7 +16,7 @@ from datetime import datetime
 
 from src.rl.config import load_config
 from src.utils import create_default_importer
-from src.utils.rl_ploter import plot_reward_change
+
 from src.utils.checkpoint_manager import get_checkpoint_manager
 from src.rl.environment import MeshEnv
 from src.rl.training.sb3_sac_trainer import SB3SACTrainer
@@ -584,10 +584,9 @@ class TrainingManager:
                 self.logger.info(f"模型配置已保存: {config_path}")
 
             # 保存奖励图表
-            if hasattr(self.trainer, '_cb') and self.trainer._cb.rewards and len(self.trainer._cb.rewards) >= 2:
-                plot_path = os.path.join(self.training_session_dir, "plot", f"{self.training_id}_rewards.png")
-                plot_reward_change(self.trainer._cb.rewards, plot_path)
-                self.logger.info(f"奖励图表已保存: {plot_path}")
+            plot_path = os.path.join(self.training_session_dir, "plot", f"{self.training_id}_rewards.png")
+            self.trainer.plot_reward(plot_path)
+            self.logger.info(f"奖励图表已保存: {plot_path}")
 
         except Exception as e:
             self.logger.error(f"保存训练结果失败: {e}")

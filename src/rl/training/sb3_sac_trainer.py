@@ -6,17 +6,13 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from src.rl.agent.sb3_sac_agent import SB3SACAgent
 from src.rl.config import load_config
+from src.utils.rl_ploter import plot_reward_change
 
 
 class _EpisodeCallback(BaseCallback):
     def __init__(self):
         super().__init__()
-        self.rewards: List[float] = []
-        self.lengths: List[int] = []
-        self.infos: List[Dict[str, Any]] = []
-        self.meshes = []
-        self.boundaries = []
-        self.ref_points = []
+        self.details = []
 
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
@@ -25,19 +21,30 @@ class _EpisodeCallback(BaseCallback):
         for done, info in zip(dones, infos):
             if not done:
                 continue
-
-            ep_stats = info.get("episode", {})
-            self.rewards.append(float(ep_stats.get("r", 0.0)))
-            self.lengths.append(int(ep_stats.get("l", 0)))
-
-            geom = info.get("geometry", {})
-            self.meshes.append(geom.get("mesh_data"))
-            self.boundaries.append(geom.get("boundary_vertices_data"))
-            self.ref_points.append(geom.get("last_ref_point"))
-
-            self.infos.append(info)
+            self.details.append(info.get("detail", {}))
 
         return True
+
+    def get_last_detail(self):
+        return self.details[-1]
+
+    def get_details(self):
+        return self.details
+
+    def get_data(self, key):
+        return [d.get(key) for d in self.details]
+
+    def current_episodes(self):
+        return len(self.details)
+
+    def current_timesteps(self):
+        return sum(self.get_data('l'))
+
+    def avg_reward_100(self):
+        rewards = self.get_data('r')
+        if not rewards:
+            return 0.0
+        return float(np.mean(rewards[-100:]))
 
 
 class SB3SACTrainer:
@@ -147,7 +154,8 @@ class SB3SACTrainer:
     @property
     def average_reward(self) -> float:
         """获取平均奖励"""
-        return float(np.mean(self._cb.rewards)) if self._cb.rewards else 0.0
+        rewards = self._cb.get_data('r')
+        return float(np.mean(rewards) if rewards else 0.0)
 
     @property
     def total_steps(self) -> int:
@@ -157,11 +165,7 @@ class SB3SACTrainer:
     @property
     def total_episodes(self) -> int:
         """获取总episode数"""
-        return len(self._cb.rewards)
-
-    def get_episode_infos(self) -> List[Dict[str, Any]]:
-        """获取episode信息列表"""
-        return list(self._cb.infos)
+        return self._cb.current_episodes()
 
     def summary(self) -> Dict[str, Any]:
         """获取训练摘要"""
@@ -178,25 +182,18 @@ class SB3SACTrainer:
         Returns:
             Dict[str, Any]: 训练状态信息
         """
-        latest_reward = self._cb.rewards[-1] if self._cb.rewards else None
-        latest_length = self._cb.lengths[-1] if self._cb.lengths else None
-
-        latest_mesh = self._cb.meshes[-1] if self._cb.meshes else None
-        latest_boundary = self._cb.boundaries[-1] if self._cb.boundaries else None
-        latest_ref_point = self._cb.ref_points[-1] if self._cb.ref_points else None
-
-        latest_info = self._cb.infos[-1] if self._cb.infos else None
+        last_detail = self._cb.get_last_detail()
 
         return {
-            "timesteps": self.total_steps,
-            "episodes": self.total_episodes,
-            "latest_reward": latest_reward,
-            "latest_length": latest_length,
-            "latest_mesh": latest_mesh,
-            "latest_boundary": latest_boundary,
-            "latest_ref_point": latest_ref_point,
-            "avg_reward_100": float(np.mean(self._cb.rewards[-100:])) if self._cb.rewards else 0.0,
-            "latest_info": latest_info,
+            "timesteps": self._cb.current_timesteps(),
+            "episodes": self._cb.current_episodes(),
+            "latest_reward": last_detail.get('r'),
+            "latest_length": last_detail.get('l'),
+            "latest_mesh": last_detail.get('mesh_data'),
+            "latest_boundary": last_detail.get('boundary_vertices_data'),
+            "latest_ref_point": last_detail.get('last_ref_point'),
+            "avg_reward_100": self._cb.avg_reward_100(),
+            "is_completed": last_detail.get('is_completed'),
         }
 
     def __getattr__(self, name):
@@ -204,3 +201,6 @@ class SB3SACTrainer:
         if hasattr(self.agent, name):
             return getattr(self.agent, name)
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+    def plot_reward(self, path):
+        plot_reward_change(self._cb.get_data('r'), self._cb.get_data('l'), path)
