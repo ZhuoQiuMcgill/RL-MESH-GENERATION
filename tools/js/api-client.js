@@ -134,6 +134,11 @@ export class ApiClient {
      * @returns {Promise<Object>} 启动结果
      */
     async startTraining(config) {
+        console.log('=== API客户端发送请求 ===');
+        console.log('请求配置:', config);
+        console.log('请求体:', JSON.stringify(config));
+        console.log('========================');
+
         return await this.request('/training/start', {
             method: 'POST',
             body: JSON.stringify(config)

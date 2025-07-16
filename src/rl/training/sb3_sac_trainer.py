@@ -108,6 +108,37 @@ class SB3SACTrainer:
         env = eval_env if eval_env is not None else self.env
         return self.agent.evaluate(env, n_eval_episodes=n_eval_episodes)
 
+    def get_policy_optimizers(self):
+        """
+        获取策略的优化器列表 - 修复版本
+
+        Returns:
+            list: 优化器列表 [actor_optimizer, critic_optimizer, ent_coef_optimizer]
+        """
+        optimizers = []
+        try:
+            model = self.agent.model
+            policy = model.policy
+
+            # SB3 SAC的优化器通常存储在policy中
+            if hasattr(policy, 'actor') and hasattr(policy.actor, 'optimizer'):
+                optimizers.append(policy.actor.optimizer)
+            elif hasattr(policy, 'actor_optimizer'):
+                optimizers.append(policy.actor_optimizer)
+
+            if hasattr(policy, 'critic') and hasattr(policy.critic, 'optimizer'):
+                optimizers.append(policy.critic.optimizer)
+            elif hasattr(policy, 'critic_optimizer'):
+                optimizers.append(policy.critic_optimizer)
+
+            if hasattr(policy, 'ent_coef_optimizer'):
+                optimizers.append(policy.ent_coef_optimizer)
+
+        except Exception as e:
+            print(f"获取优化器时出错: {e}")
+
+        return optimizers
+
     @property
     def model(self):
         """获取内部SB3模型"""

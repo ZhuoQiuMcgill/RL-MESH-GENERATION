@@ -398,10 +398,17 @@ export class UIController {
         const maxStepsValue = this.getElementValue('max-steps');
         const descriptionValue = this.getElementValue('description');
 
-        // 获取checkpoint相关配置
-        const checkpointModeElement = this.elements['checkpoint-mode'];
-        const useCheckpoint = checkpointModeElement && checkpointModeElement.checked;
-        const checkpointName = useCheckpoint ? this.getElementValue('checkpoint-select') : null;
+        // 获取checkpoint相关配置 - 修复版本
+        const checkpointModeElement = document.getElementById('checkpoint-mode');
+        const useCheckpoint = checkpointModeElement ? checkpointModeElement.checked : false;
+
+        const rawName = this.getElementValue('checkpoint-select').trim();
+        const checkpointName = rawName !== '' ? rawName : null;
+
+        // 添加调试日志
+        console.log('Checkpoint mode element:', checkpointModeElement);
+        console.log('Use checkpoint:', useCheckpoint);
+        console.log('Selected checkpoint:', checkpointName);
 
         let maxTimesteps = null;
         let maxSteps = null;
@@ -430,8 +437,9 @@ export class UIController {
         };
 
         // 如果使用checkpoint，添加checkpoint配置
-        if (useCheckpoint && checkpointName) {
+        if (checkpointName) {
             config.checkpoint_name = checkpointName;
+            config.from_checkpoint = !!useCheckpoint;
         }
 
         return config;
@@ -461,7 +469,7 @@ export class UIController {
         }
 
         // 验证checkpoint（如果选择了使用checkpoint）
-        const checkpointModeElement = this.elements['checkpoint-mode'];
+        const checkpointModeElement = document.getElementById('checkpoint-mode');
         const useCheckpoint = checkpointModeElement && checkpointModeElement.checked;
 
         if (useCheckpoint) {
@@ -537,8 +545,24 @@ export class UIController {
      * @returns {string} 元素值
      */
     getElementValue(elementId) {
-        const element = this.elements[elementId];
-        return element ? element.value : '';
+        // 如果初始化时没拿到元素，再即时查一次并写回缓存
+        let element = this.elements[elementId];
+        if (!element) {
+            element = document.getElementById(elementId);
+            if (element) this.elements[elementId] = element;   // 补进缓存
+        }
+        const value = element ? element.value : '';
+
+        // 添加调试日志
+        if (elementId === 'checkpoint-select') {
+            console.log(`getElementValue(${elementId}):`, {
+                element: element,
+                value: value,
+                directValue: document.getElementById(elementId)?.value
+            });
+        }
+
+        return value;
     }
 
     /**

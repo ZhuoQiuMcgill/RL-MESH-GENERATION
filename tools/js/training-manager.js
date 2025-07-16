@@ -326,6 +326,12 @@ export class TrainingManager {
 
         const config = this.uiController.getTrainingConfig();
 
+        // 添加调试日志
+        console.log('=== 发送训练请求 ===');
+        console.log('完整配置:', config);
+        console.log('checkpoint_name:', config.checkpoint_name);
+        console.log('====================');
+
         try {
             this.uiController.showLoading(true);
 
@@ -342,10 +348,7 @@ export class TrainingManager {
             this.uiController.updateButtonStates(true);
             this.uiController.updateStatusIndicator(STATUS.RUNNING);
 
-            // 修复：立即开始状态更新
             this.startPeriodicUpdate();
-
-            // 新增：立即获取第一次状态更新，减少延迟
             this.scheduleImmediateUpdate();
 
         } catch (error) {
@@ -558,9 +561,6 @@ export class TrainingManager {
         }
 
         this.uiController.reset();
-
-        // 清理事件监听器
-        // 注：在实际应用中，应该存储事件监听器引用并在此处移除
 
         console.log('TrainingManager已销毁');
     }

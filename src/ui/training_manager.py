@@ -116,10 +116,13 @@ class TrainingManager:
             # 验证配置
             self._validate_config(merged_config)
 
-            # 处理checkpoint
+            # 处理checkpoint - 修复：确保checkpoint_name正确传递
             checkpoint_name = merged_config.get("checkpoint_name")
             if checkpoint_name:
+                self.logger.info(f"准备加载checkpoint: {checkpoint_name}")
                 self._load_checkpoint(checkpoint_name)
+            else:
+                self.logger.info("未指定checkpoint，将从头开始训练")
 
             # 生成训练ID
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -144,9 +147,12 @@ class TrainingManager:
             # 创建训练器
             self._create_trainer(merged_config)
 
-            # 如果有checkpoint，加载到训练器中
+            # 如果有checkpoint，加载到训练器中 - 修复：确保在训练器创建后立即应用
             if checkpoint_name and self.checkpoint_data:
+                self.logger.info(f"应用checkpoint到训练器: {checkpoint_name}")
                 self._apply_checkpoint_to_trainer()
+            else:
+                self.logger.info("无checkpoint数据需要应用")
 
             # 保存配置
             self.current_training_config = merged_config.copy()
@@ -297,79 +303,158 @@ class TrainingManager:
 
         self.loaded_checkpoint_name = checkpoint_name
         self.logger.info(f"成功加载checkpoint: {checkpoint_name}")
+        self.logger.info(f"Checkpoint包含的键: {list(self.checkpoint_data.keys())}")
 
     def _apply_checkpoint_to_trainer(self) -> None:
         """
-        将checkpoint数据应用到训练器中
+        将checkpoint数据应用到训练器中 - 修复版本
         """
         if not self.checkpoint_data or not self.trainer:
+            self.logger.warning("无checkpoint数据或训练器，跳过应用")
             return
 
         try:
             model = self.trainer.model
+            self.logger.info("开始应用checkpoint到SB3模型")
+
+            # 修复：使用正确的SB3模型结构来加载参数
+            policy = model.policy
 
             # 加载Actor网络参数
             if 'actor_state_dict' in self.checkpoint_data:
-                model.policy.actor.load_state_dict(self.checkpoint_data['actor_state_dict'])
-                self.logger.info("已加载Actor网络参数")
+                try:
+                    policy.actor.load_state_dict(self.checkpoint_data['actor_state_dict'])
+                    self.logger.info("✓ 成功加载Actor网络参数")
+                except Exception as e:
+                    self.logger.error(f"✗ 加载Actor网络参数失败: {e}")
+                    raise
 
             # 加载Critic网络参数
             if 'critic_state_dict' in self.checkpoint_data:
-                model.policy.critic.load_state_dict(self.checkpoint_data['critic_state_dict'])
-                self.logger.info("已加载Critic网络参数")
+                try:
+                    policy.critic.load_state_dict(self.checkpoint_data['critic_state_dict'])
+                    self.logger.info("✓ 成功加载Critic网络参数")
+                except Exception as e:
+                    self.logger.error(f"✗ 加载Critic网络参数失败: {e}")
+                    raise
 
             # 加载Target Critic网络参数
             if 'critic_target_state_dict' in self.checkpoint_data:
-                model.policy.critic_target.load_state_dict(self.checkpoint_data['critic_target_state_dict'])
-                self.logger.info("已加载Target Critic网络参数")
+                try:
+                    policy.critic_target.load_state_dict(self.checkpoint_data['critic_target_state_dict'])
+                    self.logger.info("✓ 成功加载Target Critic网络参数")
+                except Exception as e:
+                    self.logger.error(f"✗ 加载Target Critic网络参数失败: {e}")
+                    raise
 
             # 加载温度参数α
             if 'log_ent_coef' in self.checkpoint_data:
-                model.policy.log_ent_coef.data = self.checkpoint_data['log_ent_coef']
-                self.logger.info("已加载温度参数α")
+                try:
+                    import torch
+                    if hasattr(policy, 'log_ent_coef'):
+                        # 确保张量在正确的设备上
+                        device = policy.log_ent_coef.device
+                        loaded_coef = self.checkpoint_data['log_ent_coef'].to(device)
+                        policy.log_ent_coef.data.copy_(loaded_coef)
+                        self.logger.info("✓ 成功加载温度参数log_ent_coef")
+                    else:
+                        self.logger.warning("模型没有log_ent_coef属性")
+                except Exception as e:
+                    self.logger.error(f"✗ 加载温度参数失败: {e}")
+
             elif 'ent_coef' in self.checkpoint_data:
-                if hasattr(model.policy, 'ent_coef'):
-                    model.policy.ent_coef = self.checkpoint_data['ent_coef']
-
-            # 加载优化器状态（可选）
-            if 'actor_optimizer_state_dict' in self.checkpoint_data and hasattr(model.policy.actor, 'optimizer'):
                 try:
-                    model.policy.actor.optimizer.load_state_dict(self.checkpoint_data['actor_optimizer_state_dict'])
-                    self.logger.info("已加载Actor优化器状态")
+                    if hasattr(policy, 'ent_coef'):
+                        policy.ent_coef = self.checkpoint_data['ent_coef']
+                        self.logger.info("✓ 成功加载温度参数ent_coef")
+                    else:
+                        self.logger.warning("模型没有ent_coef属性")
                 except Exception as e:
-                    self.logger.warning(f"加载Actor优化器状态失败: {e}")
+                    self.logger.error(f"✗ 加载温度参数失败: {e}")
 
-            if 'critic_optimizer_state_dict' in self.checkpoint_data and hasattr(model.policy.critic, 'optimizer'):
-                try:
-                    model.policy.critic.optimizer.load_state_dict(self.checkpoint_data['critic_optimizer_state_dict'])
-                    self.logger.info("已加载Critic优化器状态")
-                except Exception as e:
-                    self.logger.warning(f"加载Critic优化器状态失败: {e}")
+            # 修复：正确加载优化器状态
+            # SB3中优化器是在policy内部管理的，需要通过trainer的方法访问
+            try:
+                # 通过trainer获取优化器
+                optimizers = self.trainer.get_policy_optimizers()
+                if optimizers and len(optimizers) >= 2:
+                    actor_optimizer = optimizers[0]  # 通常第一个是actor优化器
+                    critic_optimizer = optimizers[1]  # 第二个是critic优化器
 
-            if 'ent_coef_optimizer_state_dict' in self.checkpoint_data and hasattr(model.policy, 'ent_coef_optimizer'):
+                    if 'actor_optimizer_state_dict' in self.checkpoint_data:
+                        actor_optimizer.load_state_dict(self.checkpoint_data['actor_optimizer_state_dict'])
+                        self.logger.info("✓ 成功加载Actor优化器状态")
+
+                    if 'critic_optimizer_state_dict' in self.checkpoint_data:
+                        critic_optimizer.load_state_dict(self.checkpoint_data['critic_optimizer_state_dict'])
+                        self.logger.info("✓ 成功加载Critic优化器状态")
+                else:
+                    self.logger.warning("无法获取优化器，跳过优化器状态加载")
+            except Exception as e:
+                self.logger.warning(f"加载优化器状态时出现问题: {e}")
+
+            # 加载温度参数优化器状态
+            if 'ent_coef_optimizer_state_dict' in self.checkpoint_data:
                 try:
-                    model.policy.ent_coef_optimizer.load_state_dict(
-                        self.checkpoint_data['ent_coef_optimizer_state_dict'])
-                    self.logger.info("已加载温度参数优化器状态")
+                    if hasattr(policy, 'ent_coef_optimizer'):
+                        policy.ent_coef_optimizer.load_state_dict(
+                            self.checkpoint_data['ent_coef_optimizer_state_dict'])
+                        self.logger.info("✓ 成功加载温度参数优化器状态")
+                    else:
+                        self.logger.warning("模型没有ent_coef_optimizer属性")
                 except Exception as e:
                     self.logger.warning(f"加载温度参数优化器状态失败: {e}")
 
             # 尝试加载经验回放缓冲区
             if self.checkpoint_data.get('has_replay_buffer', False):
-                replay_buffer = self.checkpoint_manager.load_replay_buffer(self.loaded_checkpoint_name)
-                if replay_buffer and hasattr(model, 'replay_buffer'):
-                    model.replay_buffer = replay_buffer
-                    self.logger.info("已加载经验回放缓冲区")
-                else:
-                    self.logger.warning("无法加载经验回放缓冲区，将使用空缓冲区开始训练")
+                try:
+                    replay_buffer = self.checkpoint_manager.load_replay_buffer(self.loaded_checkpoint_name)
+                    if replay_buffer and hasattr(model, 'replay_buffer'):
+                        model.replay_buffer = replay_buffer
+                        self.logger.info("✓ 成功加载经验回放缓冲区")
+                    else:
+                        self.logger.warning("无法加载经验回放缓冲区，将使用空缓冲区开始训练")
+                except Exception as e:
+                    self.logger.warning(f"加载经验回放缓冲区失败: {e}")
 
-            # 设置训练步数（可选，通常不需要继续之前的步数计数）
+            # 修复：设置正确的训练步数
             original_timesteps = self.checkpoint_data.get('training_timesteps', 0)
-            self.logger.info(f"Checkpoint原始训练步数: {original_timesteps}")
+            if original_timesteps > 0:
+                model.num_timesteps = original_timesteps
+                self.logger.info(f"✓ 设置训练步数为: {original_timesteps}")
+
+            # 验证加载是否成功 - 添加一些基本检查
+            self._verify_checkpoint_loading()
+
+            self.logger.info("🎉 Checkpoint应用完成！")
 
         except Exception as e:
             self.logger.error(f"应用checkpoint到训练器失败: {e}")
+            self.logger.error(traceback.format_exc())
             raise ValueError(f"Failed to apply checkpoint to trainer: {e}")
+
+    def _verify_checkpoint_loading(self) -> None:
+        """
+        验证checkpoint是否正确加载 - 新增方法
+        """
+        try:
+            if self.trainer and self.trainer.model:
+                model = self.trainer.model
+                policy = model.policy
+
+                # 检查网络参数是否存在
+                actor_params = sum(p.numel() for p in policy.actor.parameters())
+                critic_params = sum(p.numel() for p in policy.critic.parameters())
+
+                self.logger.info(f"验证：Actor网络参数数量: {actor_params}")
+                self.logger.info(f"验证：Critic网络参数数量: {critic_params}")
+                self.logger.info(f"验证：当前训练步数: {model.num_timesteps}")
+
+                if hasattr(policy, 'log_ent_coef'):
+                    self.logger.info(f"验证：温度参数值: {policy.log_ent_coef.item()}")
+
+        except Exception as e:
+            self.logger.warning(f"验证checkpoint加载时出错: {e}")
 
     def _save_results(self) -> None:
         """保存训练结果"""
@@ -415,11 +500,15 @@ class TrainingManager:
                     checkpoint['critic_target_state_dict'] = model.policy.critic_target.state_dict()
 
                 # 保存优化器状态
-                if hasattr(model.policy, 'actor') and hasattr(model.policy.actor, 'optimizer'):
-                    checkpoint['actor_optimizer_state_dict'] = model.policy.actor.optimizer.state_dict()
-
-                if hasattr(model.policy, 'critic') and hasattr(model.policy.critic, 'optimizer'):
-                    checkpoint['critic_optimizer_state_dict'] = model.policy.critic.optimizer.state_dict()
+                try:
+                    optimizers = self.trainer.get_policy_optimizers()
+                    if optimizers and len(optimizers) >= 2:
+                        checkpoint['actor_optimizer_state_dict'] = optimizers[0].state_dict()
+                        checkpoint['critic_optimizer_state_dict'] = optimizers[1].state_dict()
+                        if len(optimizers) >= 3:
+                            checkpoint['ent_coef_optimizer_state_dict'] = optimizers[2].state_dict()
+                except Exception as e:
+                    self.logger.warning(f"保存优化器状态失败: {e}")
 
                 # 保存温度参数α（SAC特有）
                 if hasattr(model.policy, 'log_ent_coef'):
@@ -525,8 +614,14 @@ class TrainingManager:
         merged_config["mesh_name"] = frontend_config.get("mesh_name")
         merged_config["subfolder"] = frontend_config.get("subfolder", "mesh")
 
-        # checkpoint相关参数（可选）
-        merged_config["checkpoint_name"] = frontend_config.get("checkpoint_name")
+        # checkpoint相关参数（可选） - 修复：确保正确传递
+        checkpoint_name = frontend_config.get("checkpoint_name")
+        if checkpoint_name and checkpoint_name.strip():
+            merged_config["checkpoint_name"] = checkpoint_name.strip()
+            self.logger.info(f"配置中包含checkpoint: {checkpoint_name}")
+        else:
+            merged_config["checkpoint_name"] = None
+            self.logger.info("配置中无checkpoint")
 
         # 训练参数：前端优先，然后使用config.yaml的默认值
         merged_config["max_timesteps"] = (
