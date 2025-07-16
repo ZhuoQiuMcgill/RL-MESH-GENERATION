@@ -3,6 +3,7 @@
 
 负责管理强化学习训练会话，包括启动、停止、状态监控等功能。
 提供与前端API的桥接功能。
+支持从checkpoint继续训练。
 """
 
 import os
@@ -16,6 +17,7 @@ from datetime import datetime
 from src.rl.config import load_config
 from src.utils import create_default_importer
 from src.utils.rl_ploter import plot_reward_change
+from src.utils.checkpoint_manager import get_checkpoint_manager
 from src.rl.environment import MeshEnv
 from src.rl.training.sb3_sac_trainer import SB3SACTrainer
 
@@ -29,6 +31,7 @@ class TrainingManager:
     训练管理器
 
     负责管理强化学习训练会话的生命周期，包括启动、停止、状态监控等。
+    支持从checkpoint继续训练。
     """
 
     def __init__(self, config=None):
@@ -50,12 +53,17 @@ class TrainingManager:
         self.trainer = None
         self.env = None
         self.mesh_importer = create_default_importer()
+        self.checkpoint_manager = get_checkpoint_manager()
 
         # 当前训练会话信息
         self.current_training_config = None
         self.training_start_time = None
         self.training_id = None
         self.training_session_dir = None
+
+        # checkpoint相关
+        self.loaded_checkpoint_name = None
+        self.checkpoint_data = None
 
         # 训练统计信息
         self.current_stats = {
@@ -89,6 +97,7 @@ class TrainingManager:
                 - max_timesteps: 最大训练时间步数（前端参数，优先级最高）
                 - max_steps: 每episode最大步数（前端参数，优先级最高）
                 - description: 训练描述
+                - checkpoint_name: checkpoint名称（可选，用于继续训练）
 
         Returns:
             Dict[str, Any]: 启动结果
@@ -107,10 +116,19 @@ class TrainingManager:
             # 验证配置
             self._validate_config(merged_config)
 
+            # 处理checkpoint
+            checkpoint_name = merged_config.get("checkpoint_name")
+            if checkpoint_name:
+                self._load_checkpoint(checkpoint_name)
+
             # 生成训练ID
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             mesh_name = merged_config.get("mesh_name", "default")
-            self.training_id = f"sac_{timestamp}_{mesh_name}"
+
+            if checkpoint_name:
+                self.training_id = f"continue_{checkpoint_name}_{timestamp}_{mesh_name}"
+            else:
+                self.training_id = f"sac_{timestamp}_{mesh_name}"
 
             # 创建训练会话目录
             self.training_session_dir = os.path.join(HISTORY_DIR, self.training_id)
@@ -125,6 +143,10 @@ class TrainingManager:
 
             # 创建训练器
             self._create_trainer(merged_config)
+
+            # 如果有checkpoint，加载到训练器中
+            if checkpoint_name and self.checkpoint_data:
+                self._apply_checkpoint_to_trainer()
 
             # 保存配置
             self.current_training_config = merged_config.copy()
@@ -141,13 +163,18 @@ class TrainingManager:
 
             self._is_running = True
 
-            self.logger.info(f"训练已启动，ID: {self.training_id}")
+            log_msg = f"训练已启动，ID: {self.training_id}"
+            if checkpoint_name:
+                log_msg += f"，使用checkpoint: {checkpoint_name}"
+            self.logger.info(log_msg)
 
             return {
                 "message": "training_started",
                 "success": True,
                 "config": merged_config,
-                "training_id": self.training_id
+                "training_id": self.training_id,
+                "from_checkpoint": checkpoint_name is not None,
+                "checkpoint_name": checkpoint_name
             }
 
         except Exception as e:
@@ -249,6 +276,101 @@ class TrainingManager:
         """
         return self.training_id if self._is_running else None
 
+    def _load_checkpoint(self, checkpoint_name: str) -> None:
+        """
+        加载checkpoint数据
+
+        Args:
+            checkpoint_name: checkpoint名称
+
+        Raises:
+            ValueError: 当checkpoint无效时
+        """
+        # 验证checkpoint
+        if not self.checkpoint_manager.validate_checkpoint(checkpoint_name):
+            raise ValueError(f"Invalid checkpoint: {checkpoint_name}")
+
+        # 加载checkpoint数据
+        self.checkpoint_data = self.checkpoint_manager.load_checkpoint(checkpoint_name)
+        if not self.checkpoint_data:
+            raise ValueError(f"Failed to load checkpoint: {checkpoint_name}")
+
+        self.loaded_checkpoint_name = checkpoint_name
+        self.logger.info(f"成功加载checkpoint: {checkpoint_name}")
+
+    def _apply_checkpoint_to_trainer(self) -> None:
+        """
+        将checkpoint数据应用到训练器中
+        """
+        if not self.checkpoint_data or not self.trainer:
+            return
+
+        try:
+            model = self.trainer.model
+
+            # 加载Actor网络参数
+            if 'actor_state_dict' in self.checkpoint_data:
+                model.policy.actor.load_state_dict(self.checkpoint_data['actor_state_dict'])
+                self.logger.info("已加载Actor网络参数")
+
+            # 加载Critic网络参数
+            if 'critic_state_dict' in self.checkpoint_data:
+                model.policy.critic.load_state_dict(self.checkpoint_data['critic_state_dict'])
+                self.logger.info("已加载Critic网络参数")
+
+            # 加载Target Critic网络参数
+            if 'critic_target_state_dict' in self.checkpoint_data:
+                model.policy.critic_target.load_state_dict(self.checkpoint_data['critic_target_state_dict'])
+                self.logger.info("已加载Target Critic网络参数")
+
+            # 加载温度参数α
+            if 'log_ent_coef' in self.checkpoint_data:
+                model.policy.log_ent_coef.data = self.checkpoint_data['log_ent_coef']
+                self.logger.info("已加载温度参数α")
+            elif 'ent_coef' in self.checkpoint_data:
+                if hasattr(model.policy, 'ent_coef'):
+                    model.policy.ent_coef = self.checkpoint_data['ent_coef']
+
+            # 加载优化器状态（可选）
+            if 'actor_optimizer_state_dict' in self.checkpoint_data and hasattr(model.policy.actor, 'optimizer'):
+                try:
+                    model.policy.actor.optimizer.load_state_dict(self.checkpoint_data['actor_optimizer_state_dict'])
+                    self.logger.info("已加载Actor优化器状态")
+                except Exception as e:
+                    self.logger.warning(f"加载Actor优化器状态失败: {e}")
+
+            if 'critic_optimizer_state_dict' in self.checkpoint_data and hasattr(model.policy.critic, 'optimizer'):
+                try:
+                    model.policy.critic.optimizer.load_state_dict(self.checkpoint_data['critic_optimizer_state_dict'])
+                    self.logger.info("已加载Critic优化器状态")
+                except Exception as e:
+                    self.logger.warning(f"加载Critic优化器状态失败: {e}")
+
+            if 'ent_coef_optimizer_state_dict' in self.checkpoint_data and hasattr(model.policy, 'ent_coef_optimizer'):
+                try:
+                    model.policy.ent_coef_optimizer.load_state_dict(
+                        self.checkpoint_data['ent_coef_optimizer_state_dict'])
+                    self.logger.info("已加载温度参数优化器状态")
+                except Exception as e:
+                    self.logger.warning(f"加载温度参数优化器状态失败: {e}")
+
+            # 尝试加载经验回放缓冲区
+            if self.checkpoint_data.get('has_replay_buffer', False):
+                replay_buffer = self.checkpoint_manager.load_replay_buffer(self.loaded_checkpoint_name)
+                if replay_buffer and hasattr(model, 'replay_buffer'):
+                    model.replay_buffer = replay_buffer
+                    self.logger.info("已加载经验回放缓冲区")
+                else:
+                    self.logger.warning("无法加载经验回放缓冲区，将使用空缓冲区开始训练")
+
+            # 设置训练步数（可选，通常不需要继续之前的步数计数）
+            original_timesteps = self.checkpoint_data.get('training_timesteps', 0)
+            self.logger.info(f"Checkpoint原始训练步数: {original_timesteps}")
+
+        except Exception as e:
+            self.logger.error(f"应用checkpoint到训练器失败: {e}")
+            raise ValueError(f"Failed to apply checkpoint to trainer: {e}")
+
     def _save_results(self) -> None:
         """保存训练结果"""
         if not self.training_session_dir or not self.trainer:
@@ -274,6 +396,13 @@ class TrainingManager:
                     'gamma': model.gamma,
                     'tau': model.tau,
                 }
+
+                # 添加原始checkpoint信息（如果是继续训练）
+                if self.loaded_checkpoint_name:
+                    checkpoint['original_checkpoint'] = self.loaded_checkpoint_name
+                    checkpoint['is_continued_training'] = True
+                else:
+                    checkpoint['is_continued_training'] = False
 
                 # 保存策略网络的所有参数
                 if hasattr(model.policy, 'actor'):
@@ -357,7 +486,9 @@ class TrainingManager:
                     "gradient_steps": getattr(model, 'gradient_steps', None),
                     "training_config": self.current_training_config,
                     "sb3_config": self.config.get("sb3_sac", {}),
-                    "environment_config": self.config.get("environment", {})
+                    "environment_config": self.config.get("environment", {}),
+                    "from_checkpoint": self.loaded_checkpoint_name is not None,
+                    "original_checkpoint": self.loaded_checkpoint_name
                 }
                 with open(config_path, 'w', encoding='utf-8') as f:
                     json.dump(model_config, f, indent=2, default=str)
@@ -394,6 +525,9 @@ class TrainingManager:
         merged_config["mesh_name"] = frontend_config.get("mesh_name")
         merged_config["subfolder"] = frontend_config.get("subfolder", "mesh")
 
+        # checkpoint相关参数（可选）
+        merged_config["checkpoint_name"] = frontend_config.get("checkpoint_name")
+
         # 训练参数：前端优先，然后使用config.yaml的默认值
         merged_config["max_timesteps"] = (
                 frontend_config.get("max_timesteps") or
@@ -416,8 +550,10 @@ class TrainingManager:
             "history_save_frequency": training_config.get("history_save_frequency", 10000)
         })
 
-        self.logger.info(
-            f"配置合并完成: max_timesteps={merged_config['max_timesteps']}, max_steps={merged_config['max_steps']}")
+        log_msg = f"配置合并完成: max_timesteps={merged_config['max_timesteps']}, max_steps={merged_config['max_steps']}"
+        if merged_config.get("checkpoint_name"):
+            log_msg += f", checkpoint={merged_config['checkpoint_name']}"
+        self.logger.info(log_msg)
 
         return merged_config
 
@@ -444,6 +580,12 @@ class TrainingManager:
                 raise ValueError(f"Mesh文件不存在: {mesh_name}")
         except Exception as e:
             raise ValueError(f"无法验证mesh文件: {str(e)}")
+
+        # 验证checkpoint（如果提供）
+        checkpoint_name = config.get("checkpoint_name")
+        if checkpoint_name:
+            if not self.checkpoint_manager.validate_checkpoint(checkpoint_name):
+                raise ValueError(f"Checkpoint无效或不存在: {checkpoint_name}")
 
         # 验证数值参数
         max_timesteps = config.get("max_timesteps")
@@ -479,7 +621,10 @@ class TrainingManager:
             config=self.config
         )
 
-        self.logger.info(f"环境已创建，使用mesh: {mesh_name}, max_steps: {max_steps}")
+        log_msg = f"环境已创建，使用mesh: {mesh_name}, max_steps: {max_steps}"
+        if config.get("checkpoint_name"):
+            log_msg += f", 将使用checkpoint: {config['checkpoint_name']}"
+        self.logger.info(log_msg)
 
     def _create_trainer(self, config: Dict[str, Any]) -> None:
         """
@@ -513,7 +658,10 @@ class TrainingManager:
         try:
             max_timesteps = config.get("max_timesteps")
 
-            self.logger.info(f"开始训练，最大时间步数: {max_timesteps}")
+            log_msg = f"开始训练，最大时间步数: {max_timesteps}"
+            if config.get("checkpoint_name"):
+                log_msg += f"，继续训练自checkpoint: {config['checkpoint_name']}"
+            self.logger.info(log_msg)
 
             # 开始训练
             self.trainer.train(total_timesteps=max_timesteps)
@@ -585,6 +733,8 @@ class TrainingManager:
             "service": "training-api",
             "manager_running": self._is_running,
             "current_training_id": self.training_id,
+            "from_checkpoint": self.loaded_checkpoint_name is not None,
+            "checkpoint_name": self.loaded_checkpoint_name,
             "timestamp": time.time()
         }
 
@@ -601,6 +751,8 @@ class TrainingManager:
         self.training_start_time = None
         self.training_id = None
         self.training_session_dir = None
+        self.loaded_checkpoint_name = None
+        self.checkpoint_data = None
 
         self.logger.info("训练管理器资源已清理")
 

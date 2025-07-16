@@ -12,6 +12,7 @@ export class UIController {
         this.meshData = null;
         this.boundaryData = null;
         this.refPointInfo = null;
+        this.checkpoints = []; // 存储checkpoint列表
     }
 
     /**
@@ -26,7 +27,9 @@ export class UIController {
             'update-interval', 'description', 'current-episode', 'total-steps', 'avg-reward',
             'buffer-size', 'episode-reward', 'episode-length', 'ref-point',
             'click-coordinates', 'display-episode', 'display-total-steps', 'boundary-vertices',
-            'log-container', 'loading-overlay'
+            'log-container', 'loading-overlay',
+            // 新增的checkpoint相关元素
+            'checkpoint-mode', 'checkpoint-select', 'checkpoint-info', 'checkpoint-details'
         ];
 
         const elements = {};
@@ -161,7 +164,10 @@ export class UIController {
             'max-timesteps': !isTraining,
             'max-steps': !isTraining,
             'update-interval': !isTraining,
-            'description': !isTraining
+            'description': !isTraining,
+            // 新增的checkpoint相关控件
+            'checkpoint-mode': !isTraining,
+            'checkpoint-select': !isTraining
         };
 
         Object.entries(buttonStates).forEach(([elementId, enabled]) => {
@@ -214,6 +220,44 @@ export class UIController {
     }
 
     /**
+     * 填充Checkpoint选择列表
+     * @param {Array} checkpoints - checkpoint列表
+     */
+    populateCheckpointList(checkpoints) {
+        const select = this.elements['checkpoint-select'];
+        if (!select) return;
+
+        this.checkpoints = checkpoints || [];
+
+        // 清空现有选项
+        select.innerHTML = '<option value="">选择一个Checkpoint</option>';
+
+        if (Array.isArray(checkpoints) && checkpoints.length > 0) {
+            checkpoints.forEach(checkpoint => {
+                const option = document.createElement('option');
+                option.value = checkpoint.name;
+
+                // 显示checkpoint名称和相关信息
+                const displayText = `${checkpoint.name} (${checkpoint.modified_datetime}, ${checkpoint.file_size_mb}MB)`;
+                option.textContent = displayText;
+
+                // 如果checkpoint无效，禁用该选项
+                if (!checkpoint.is_valid) {
+                    option.disabled = true;
+                    option.textContent += ' [无效]';
+                }
+
+                select.appendChild(option);
+            });
+        } else {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = '未找到可用的Checkpoint文件';
+            select.appendChild(option);
+        }
+    }
+
+    /**
      * 显示Mesh信息
      * @param {Object} info - mesh信息
      */
@@ -236,6 +280,61 @@ export class UIController {
         const infoDiv = this.elements['mesh-info'];
         if (infoDiv) {
             infoDiv.classList.add('hidden');
+        }
+    }
+
+    /**
+     * 显示Checkpoint信息
+     * @param {Object} info - checkpoint信息
+     */
+    showCheckpointInfo(info) {
+        if (!info) return;
+
+        const infoDiv = this.elements['checkpoint-info'];
+        const detailsDiv = this.elements['checkpoint-details'];
+
+        if (infoDiv) {
+            infoDiv.classList.remove('hidden');
+        }
+
+        if (detailsDiv) {
+            detailsDiv.innerHTML = `
+                <div class="text-xs text-gray-600 space-y-1">
+                    <div>训练步数: ${info.training_timesteps.toLocaleString()}</div>
+                    <div>学习率: ${info.learning_rate}</div>
+                    <div>文件大小: ${info.file_size_mb} MB</div>
+                    <div>修改时间: ${info.modified_datetime}</div>
+                    <div>有效性: ${info.is_valid ? '✓ 有效' : '✗ 无效'}</div>
+                    ${info.has_replay_buffer ? '<div>包含经验回放缓冲区</div>' : ''}
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * 隐藏Checkpoint信息
+     */
+    hideCheckpointInfo() {
+        const infoDiv = this.elements['checkpoint-info'];
+        if (infoDiv) {
+            infoDiv.classList.add('hidden');
+        }
+    }
+
+    /**
+     * 控制Checkpoint选择区域的显示/隐藏
+     * @param {boolean} show - 是否显示
+     */
+    showCheckpointSelection(show) {
+        const checkpointSelect = this.elements['checkpoint-select'];
+        const checkpointInfo = this.elements['checkpoint-info'];
+
+        if (checkpointSelect) {
+            checkpointSelect.style.display = show ? 'block' : 'none';
+        }
+
+        if (!show && checkpointInfo) {
+            checkpointInfo.classList.add('hidden');
         }
     }
 
@@ -290,7 +389,7 @@ export class UIController {
     }
 
     /**
-     * 获取训练配置 - 基于timestep控制
+     * 获取训练配置 - 基于timestep控制，支持checkpoint
      * @returns {Object} 训练配置
      */
     getTrainingConfig() {
@@ -298,6 +397,11 @@ export class UIController {
         const maxTimestepsValue = this.getElementValue('max-timesteps');
         const maxStepsValue = this.getElementValue('max-steps');
         const descriptionValue = this.getElementValue('description');
+
+        // 获取checkpoint相关配置
+        const checkpointModeElement = this.elements['checkpoint-mode'];
+        const useCheckpoint = checkpointModeElement && checkpointModeElement.checked;
+        const checkpointName = useCheckpoint ? this.getElementValue('checkpoint-select') : null;
 
         let maxTimesteps = null;
         let maxSteps = null;
@@ -318,12 +422,19 @@ export class UIController {
             }
         }
 
-        return {
+        const config = {
             mesh_name: this.getElementValue('mesh-select'),
             max_timesteps: maxTimesteps,
             max_steps: maxSteps,
             description: descriptionValue && descriptionValue.trim() !== '' ? descriptionValue.trim() : null
         };
+
+        // 如果使用checkpoint，添加checkpoint配置
+        if (useCheckpoint && checkpointName) {
+            config.checkpoint_name = checkpointName;
+        }
+
+        return config;
     }
 
     /**
@@ -336,7 +447,7 @@ export class UIController {
     }
 
     /**
-     * 验证训练配置 - 基于timestep控制
+     * 验证训练配置 - 基于timestep控制，支持checkpoint
      * @returns {Object} 验证结果 {valid: boolean, message: string}
      */
     validateTrainingConfig() {
@@ -347,6 +458,28 @@ export class UIController {
                 valid: false,
                 message: '请先选择一个Mesh文件'
             };
+        }
+
+        // 验证checkpoint（如果选择了使用checkpoint）
+        const checkpointModeElement = this.elements['checkpoint-mode'];
+        const useCheckpoint = checkpointModeElement && checkpointModeElement.checked;
+
+        if (useCheckpoint) {
+            if (!config.checkpoint_name) {
+                return {
+                    valid: false,
+                    message: '启用checkpoint模式时必须选择一个checkpoint'
+                };
+            }
+
+            // 检查选中的checkpoint是否有效
+            const selectedCheckpoint = this.checkpoints.find(cp => cp.name === config.checkpoint_name);
+            if (!selectedCheckpoint || !selectedCheckpoint.is_valid) {
+                return {
+                    valid: false,
+                    message: '选择的checkpoint无效'
+                };
+            }
         }
 
         // 主要验证：max_timesteps
@@ -453,11 +586,13 @@ export class UIController {
         this.meshData = null;
         this.boundaryData = null;
         this.refPointInfo = null;
+        this.checkpoints = [];
 
         this.updateStatusIndicator(STATUS.IDLE);
         this.updateButtonStates(false);
         this.showLoading(false);
         this.clearLogs();
         this.updateClickCoordinates(null);
+        this.hideCheckpointInfo();
     }
 }
