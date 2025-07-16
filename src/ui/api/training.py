@@ -44,7 +44,9 @@ def start_training():
             "subfolder": data.get("subfolder", "mesh"),
             "max_timesteps": data.get("max_timesteps"),
             "max_steps": data.get("max_steps"),
-            "description": data.get("description")
+            "description": data.get("description"),
+            "checkpoint_name": data.get("checkpoint_name"),
+            "from_checkpoint": data.get("from_checkpoint")
         }
 
         # 过滤None值

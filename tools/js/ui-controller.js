@@ -437,7 +437,7 @@ export class UIController {
         };
 
         // 如果使用checkpoint，添加checkpoint配置
-        if (checkpointName) {
+        if (useCheckpoint && checkpointName) {
             config.checkpoint_name = checkpointName;
             config.from_checkpoint = !!useCheckpoint;
         }
