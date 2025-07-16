@@ -15,12 +15,13 @@ from datetime import datetime
 
 from src.rl.config import load_config
 from src.utils import create_default_importer
+from src.utils.rl_ploter import plot_reward_change
 from src.rl.environment import MeshEnv
 from src.rl.training.sb3_sac_trainer import SB3SACTrainer
 
-
 BASE_DIR = os.getcwd()
 HISTORY_DIR = os.path.join(BASE_DIR, "data", "history")
+CHECKPOINT_DIR = os.path.join(BASE_DIR, 'data', 'checkpoints')
 
 
 class TrainingManager:
@@ -54,6 +55,7 @@ class TrainingManager:
         self.current_training_config = None
         self.training_start_time = None
         self.training_id = None
+        self.training_session_dir = None
 
         # 训练统计信息
         self.current_stats = {
@@ -108,7 +110,12 @@ class TrainingManager:
             # 生成训练ID
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             mesh_name = merged_config.get("mesh_name", "default")
-            self.training_id = f"train_{timestamp}_{mesh_name}"
+            self.training_id = f"sac_{timestamp}_{mesh_name}"
+
+            # 创建训练会话目录
+            self.training_session_dir = os.path.join(HISTORY_DIR, self.training_id)
+            os.makedirs(os.path.join(self.training_session_dir, "plot"), exist_ok=True)
+            os.makedirs(os.path.join(self.training_session_dir, "model"), exist_ok=True)
 
             # 更新统计信息中的training_id
             self.current_stats["training_id"] = self.training_id
@@ -168,6 +175,9 @@ class TrainingManager:
             # 等待训练线程结束
             if self._training_thread and self._training_thread.is_alive():
                 self._training_thread.join(timeout=5.0)
+
+            # 保存训练结果
+            self._save_results()
 
             self._is_running = False
 
@@ -238,6 +248,130 @@ class TrainingManager:
             Optional[str]: 训练会话ID，如果没有运行的训练则返回None
         """
         return self.training_id if self._is_running else None
+
+    def _save_results(self) -> None:
+        """保存训练结果"""
+        if not self.training_session_dir or not self.trainer:
+            return
+
+        try:
+            model_dir = os.path.join(self.training_session_dir, "model")
+
+            # 保存SB3模型（zip格式，用于完整恢复）
+            sb3_model_path = os.path.join(model_dir, f"{self.training_id}_sb3_model")
+            self.trainer.save(sb3_model_path)
+            self.logger.info(f"SB3模型已保存: {sb3_model_path}")
+
+            # 保存PyTorch模型参数（用于迁移学习）
+            import torch
+            if hasattr(self.trainer, 'model') and self.trainer.model:
+                model = self.trainer.model
+
+                # 创建完整的checkpoint字典
+                checkpoint = {
+                    'training_timesteps': model.num_timesteps,
+                    'learning_rate': model.learning_rate,
+                    'gamma': model.gamma,
+                    'tau': model.tau,
+                }
+
+                # 保存策略网络的所有参数
+                if hasattr(model.policy, 'actor'):
+                    checkpoint['actor_state_dict'] = model.policy.actor.state_dict()
+
+                if hasattr(model.policy, 'critic'):
+                    checkpoint['critic_state_dict'] = model.policy.critic.state_dict()
+
+                if hasattr(model.policy, 'critic_target'):
+                    checkpoint['critic_target_state_dict'] = model.policy.critic_target.state_dict()
+
+                # 保存优化器状态
+                if hasattr(model.policy, 'actor') and hasattr(model.policy.actor, 'optimizer'):
+                    checkpoint['actor_optimizer_state_dict'] = model.policy.actor.optimizer.state_dict()
+
+                if hasattr(model.policy, 'critic') and hasattr(model.policy.critic, 'optimizer'):
+                    checkpoint['critic_optimizer_state_dict'] = model.policy.critic.optimizer.state_dict()
+
+                # 保存温度参数α（SAC特有）
+                if hasattr(model.policy, 'log_ent_coef'):
+                    checkpoint['log_ent_coef'] = model.policy.log_ent_coef.data.clone()
+                    if hasattr(model.policy, 'ent_coef_optimizer'):
+                        checkpoint['ent_coef_optimizer_state_dict'] = model.policy.ent_coef_optimizer.state_dict()
+                elif hasattr(model.policy, 'ent_coef'):
+                    checkpoint['ent_coef'] = model.policy.ent_coef
+
+                # 保存经验回放缓冲区（如果需要真正的继续训练）
+                if hasattr(model, 'replay_buffer') and model.replay_buffer is not None:
+                    buffer_path = os.path.join(model_dir, f"{self.training_id}_replay_buffer.pkl")
+                    import pickle
+                    with open(buffer_path, 'wb') as f:
+                        pickle.dump(model.replay_buffer, f)
+                    self.logger.info(f"经验回放缓冲区已保存: {buffer_path}")
+                    checkpoint['has_replay_buffer'] = True
+                else:
+                    checkpoint['has_replay_buffer'] = False
+
+                # 保存完整的checkpoint
+                checkpoint_path = os.path.join(model_dir, f"{self.training_id}_checkpoint.pth")
+                torch.save(checkpoint, checkpoint_path)
+                self.logger.info(f"完整checkpoint已保存: {checkpoint_path}")
+
+                # 单独保存各个组件（方便选择性加载）
+                if 'actor_state_dict' in checkpoint:
+                    actor_path = os.path.join(model_dir, f"{self.training_id}_actor.pth")
+                    torch.save(checkpoint['actor_state_dict'], actor_path)
+                    self.logger.info(f"Actor网络已保存: {actor_path}")
+
+                if 'critic_state_dict' in checkpoint:
+                    critic_path = os.path.join(model_dir, f"{self.training_id}_critic.pth")
+                    torch.save(checkpoint['critic_state_dict'], critic_path)
+                    self.logger.info(f"Critic网络已保存: {critic_path}")
+
+                if 'critic_target_state_dict' in checkpoint:
+                    critic_target_path = os.path.join(model_dir, f"{self.training_id}_critic_target.pth")
+                    torch.save(checkpoint['critic_target_state_dict'], critic_target_path)
+                    self.logger.info(f"Target Critic网络已保存: {critic_target_path}")
+
+                # 保存模型配置信息
+                config_path = os.path.join(model_dir, f"{self.training_id}_model_config.json")
+                import json
+                model_config = {
+                    "observation_space": {
+                        "shape": list(self.env.observation_space.shape),
+                        "dtype": str(self.env.observation_space.dtype)
+                    },
+                    "action_space": {
+                        "shape": list(self.env.action_space.shape),
+                        "dtype": str(self.env.action_space.dtype),
+                        "low": self.env.action_space.low.tolist(),
+                        "high": self.env.action_space.high.tolist()
+                    },
+                    "policy_class": str(type(self.trainer.model.policy)),
+                    "learning_rate": float(model.learning_rate),
+                    "gamma": float(model.gamma),
+                    "tau": float(model.tau),
+                    "batch_size": getattr(model, 'batch_size', None),
+                    "buffer_size": getattr(model, 'buffer_size', None),
+                    "learning_starts": getattr(model, 'learning_starts', None),
+                    "train_freq": getattr(model, 'train_freq', None),
+                    "gradient_steps": getattr(model, 'gradient_steps', None),
+                    "training_config": self.current_training_config,
+                    "sb3_config": self.config.get("sb3_sac", {}),
+                    "environment_config": self.config.get("environment", {})
+                }
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(model_config, f, indent=2, default=str)
+                self.logger.info(f"模型配置已保存: {config_path}")
+
+            # 保存奖励图表
+            if hasattr(self.trainer, '_cb') and self.trainer._cb.rewards and len(self.trainer._cb.rewards) >= 2:
+                plot_path = os.path.join(self.training_session_dir, "plot", f"{self.training_id}_rewards.png")
+                plot_reward_change(self.trainer._cb.rewards, plot_path)
+                self.logger.info(f"奖励图表已保存: {plot_path}")
+
+        except Exception as e:
+            self.logger.error(f"保存训练结果失败: {e}")
+            self.logger.error(traceback.format_exc())
 
     def _merge_config(self, frontend_config: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -390,6 +524,8 @@ class TrainingManager:
             self.logger.error(f"训练过程中发生错误: {e}")
             self.logger.error(traceback.format_exc())
         finally:
+            # 训练结束时保存结果
+            self._save_results()
             self._is_running = False
             self._stop_event.set()
 
@@ -419,10 +555,10 @@ class TrainingManager:
             boundary_vertices = trainer_status.get("latest_boundary")
             ref_info = trainer_status.get("latest_ref_point")
 
-            self.current_stats["boundary_vertices"] = len(boundary_vertices)
+            self.current_stats["boundary_vertices"] = len(boundary_vertices) if boundary_vertices else 0
             self.current_stats["mesh_data"] = mesh_data if mesh_data else {}
             self.current_stats["boundary_vertices_data"] = boundary_vertices if boundary_vertices else []
-            self.current_stats["reference_point_info"] = ref_info if ref_info else (0.0, 0.0)
+            self.current_stats["reference_point_info"] = ref_info if ref_info else None
 
             # 获取缓冲区大小
             if hasattr(self.trainer, 'model') and hasattr(self.trainer.model, 'replay_buffer'):
@@ -464,6 +600,7 @@ class TrainingManager:
         self.current_training_config = None
         self.training_start_time = None
         self.training_id = None
+        self.training_session_dir = None
 
         self.logger.info("训练管理器资源已清理")
 
