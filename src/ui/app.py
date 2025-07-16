@@ -28,10 +28,11 @@ def create_app() -> Flask:
     # 设置Flask应用的日志级别
     app.logger.setLevel(logging.DEBUG)
 
-    # 配置CORS，允许前端跨域访问
+    # 配置CORS，允许前端跨域访问 - 修复：添加checkpoint路径
     CORS(app, resources={
         r"/training/*": {"origins": "*"},
-        r"/mesh/*": {"origins": "*"}
+        r"/mesh/*": {"origins": "*"},
+        r"/checkpoint/*": {"origins": "*"}
     })
 
     # 注册API蓝图
