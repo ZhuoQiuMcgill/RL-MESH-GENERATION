@@ -12,7 +12,15 @@ from src.utils.rl_ploter import plot_reward_change
 class _EpisodeCallback(BaseCallback):
     def __init__(self):
         super().__init__()
+        self._current_episodes = 0
+        self._current_timesteps = 0
         self.details = []
+        self.data = {"r": [],
+                     "l": [],
+                     "mesh_data": [],
+                     "boundary_vertices_data": [],
+                     "last_ref_point": [],
+                     "is_completed": []}
 
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
@@ -21,7 +29,16 @@ class _EpisodeCallback(BaseCallback):
         for done, info in zip(dones, infos):
             if not done:
                 continue
-            self.details.append(info.get("detail", {}))
+            detail = info.get("detail", {})
+            self._current_episodes += 1
+            self._current_timesteps += detail['l']
+            self.details.append(detail)
+            self.data['r'].append(detail['r'])
+            self.data['l'].append(detail['l'])
+            self.data['mesh_data'].append(detail['mesh_data'])
+            self.data['boundary_vertices_data'].append(detail['boundary_vertices_data'])
+            self.data['last_ref_point'].append(detail['last_ref_point'])
+            self.data['last_ref_point'].append(detail['last_ref_point'])
 
         return True
 
@@ -35,10 +52,10 @@ class _EpisodeCallback(BaseCallback):
         return [d.get(key) for d in self.details]
 
     def current_episodes(self):
-        return len(self.details)
+        return self._current_episodes
 
     def current_timesteps(self):
-        return sum(self.get_data('l'))
+        return self._current_timesteps
 
     def avg_reward_100(self):
         rewards = self.get_data('r')
@@ -204,3 +221,10 @@ class SB3SACTrainer:
 
     def plot_reward(self, path):
         plot_reward_change(self._cb.get_data('r'), self._cb.get_data('l'), path)
+
+    def best_mesh(self):
+        """
+        TODO: RETURN ONLY THE MESH DATA WITH THE BEST REWARD
+        :return:
+        """
+
