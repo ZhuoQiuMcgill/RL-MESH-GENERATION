@@ -20,6 +20,11 @@ export class HistoryManager {
         this.currentEpisodeIndex = null;
         this.currentEpisodeData = null;
 
+        // 防止重复请求的状态管理
+        this.isLoadingHistory = false;
+        this.isLoadingTraining = false;
+        this.isLoadingEpisode = false;
+
         // DOM元素引用
         this.elements = this.initializeElements();
 
@@ -36,7 +41,7 @@ export class HistoryManager {
             'episode-index-input', 'current-episode-display', 'episode-meta-info',
             'episode-reward-display', 'episode-length-display', 'episode-status-display',
             'actual-episode-number-display', 'boundary-vertices-count', 'mesh-vertices-count', 'ref-point-display',
-            'click-coordinates-display', 'episode-data-container', 'mesh-data-container',
+            'click-coordinates-display', 'episode-data-container',
             'history-log-container', 'history-loading-overlay',
             // 按钮
             'refresh-history-btn', 'health-check-btn', 'goto-episode-btn',
@@ -175,7 +180,12 @@ export class HistoryManager {
      * 加载训练历史记录列表
      */
     async loadTrainingHistory() {
+        if (this.isLoadingHistory) {
+            this.logMessage('正在加载训练历史记录，请稍候...', LOG_TYPES.WARNING);
+            return;
+        }
         try {
+            this.isLoadingHistory = true;
             this.showLoading(true);
 
             const response = await this.apiClient.getTrainingHistoryList();
@@ -195,6 +205,7 @@ export class HistoryManager {
             this.showError('加载训练历史失败: ' + error.message);
         } finally {
             this.showLoading(false);
+            this.isLoadingHistory = false;
         }
     }
 
@@ -202,6 +213,10 @@ export class HistoryManager {
      * 刷新训练历史记录
      */
     async refreshTrainingHistory() {
+        if (this.isLoadingHistory) {
+            this.logMessage('正在刷新中，请稍候...', LOG_TYPES.WARNING);
+            return;
+        }
         this.logMessage('正在刷新训练历史记录...', LOG_TYPES.INFO);
         await this.loadTrainingHistory();
     }
@@ -492,30 +507,6 @@ export class HistoryManager {
             `;
         }
 
-        // 更新网格数据容器
-        const meshContainer = this.elements['mesh-data-container'];
-        if (meshContainer) {
-            const meshData = this.currentEpisodeData.mesh_data || {};
-
-            if (Object.keys(meshData).length === 0) {
-                meshContainer.innerHTML = '<div class="text-gray-500">暂无网格数据</div>';
-            } else {
-                const meshHTML = Object.entries(meshData).slice(0, 10).map(([vertex, neighbors]) => {
-                    const neighborCount = Array.isArray(neighbors) ? neighbors.length : 0;
-                    return `
-                        <div class="mesh-vertex">
-                            <span class="mesh-vertex-key">${vertex}</span>
-                            <span class="mesh-vertex-neighbors">(${neighborCount} 邻居)</span>
-                        </div>
-                    `;
-                }).join('');
-
-                const remainingCount = Math.max(0, Object.keys(meshData).length - 10);
-                const moreInfo = remainingCount > 0 ? `<div class="text-xs text-gray-500 mt-2">... 还有 ${remainingCount} 个顶点</div>` : '';
-
-                meshContainer.innerHTML = meshHTML + moreInfo;
-            }
-        }
     }
 
     /**
