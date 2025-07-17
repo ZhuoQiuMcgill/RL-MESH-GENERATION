@@ -84,6 +84,12 @@
     box-sizing: border-box;
 }
 
+/* 训练会话列表容器，可独立滚动 */
+.training-list-container {
+    flex: 1;
+    overflow-y: auto;
+}
+
 /* 训练会话列表项 */
 .training-item {
     background: white;

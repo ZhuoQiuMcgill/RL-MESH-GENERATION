@@ -34,7 +34,7 @@
         </div>
 
         <!-- 控制区域 -->
-        <div class="flex-1 p-6 overflow-y-auto custom-scrollbar">
+        <div class="flex-1 p-6 flex flex-col overflow-hidden">
             <!-- 操作按钮 -->
             <div class="mb-6 space-y-3">
                 <button id="refresh-history-btn"
@@ -48,7 +48,7 @@
             </div>
 
             <!-- 训练会话列表 -->
-            <div class="mb-6">
+            <div class="mb-6 flex-1 overflow-y-auto custom-scrollbar training-list-container">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">训练会话列表</h3>
                 <div id="training-list" class="space-y-2">
                     <div class="text-center text-gray-500 py-4">
