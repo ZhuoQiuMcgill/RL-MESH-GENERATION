@@ -17,7 +17,7 @@ export class HistoryApiClient extends ApiClient {
      * @returns {Promise<Object>} 训练历史列表响应
      */
     async getTrainingHistoryList() {
-        try {
+        const fetchList = async () => {
             const response = await this.request(`${this.historyBasePath}/list`);
             return {
                 success: response.success || false,
@@ -25,7 +25,25 @@ export class HistoryApiClient extends ApiClient {
                 count: response.count || 0,
                 error: response.error || null
             };
+        };
+
+        try {
+            return await fetchList();
         } catch (error) {
+            if (error.message && error.message.toLowerCase().includes('timed out')) {
+                try {
+                    // Retry once if the first request timed out
+                    return await fetchList();
+                } catch (secondError) {
+                    return {
+                        success: false,
+                        training_ids: [],
+                        count: 0,
+                        error: secondError.message
+                    };
+                }
+            }
+
             return {
                 success: false,
                 training_ids: [],
