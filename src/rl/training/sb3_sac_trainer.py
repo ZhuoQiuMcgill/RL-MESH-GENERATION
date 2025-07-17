@@ -34,7 +34,7 @@ class _EpisodeCallback(BaseCallback):
             if not done:
                 continue
             detail = info.get("detail", {})
-
+            detail["episode_number"] = self._current_episode
             self.details.append(detail)
             self.data['r'].append(detail['r'])
             self.data['l'].append(detail['l'])
@@ -75,6 +75,13 @@ class _EpisodeCallback(BaseCallback):
 
     def current_best_episode(self):
         return self._best_episode
+
+    def get_non_zero_step_details(self):
+        non_zero_step_details = []
+        for detail in self.details:
+            if detail["l"] != 0:
+                non_zero_step_details.append(detail)
+        return non_zero_step_details
 
 
 class SB3SACTrainer:
@@ -237,6 +244,6 @@ class SB3SACTrainer:
 
     def save_history(self, path):
         save_episode_details(
-            self._cb.get_details(),
+            self._cb.get_non_zero_step_details(),
             self._cb.current_best_episode(),
             path)

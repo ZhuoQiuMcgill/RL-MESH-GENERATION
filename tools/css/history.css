@@ -1,0 +1,416 @@
+/* 历史记录页面专用样式 */
+
+/* 主容器布局 */
+.history-main-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* 左侧面板 */
+.history-left-panel {
+    width: 350px;
+    min-width: 300px;
+    max-width: 450px;
+    flex-shrink: 0;
+    background: white;
+    border-right: 1px solid #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 右侧内容区域 */
+.history-right-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* 顶部信息栏 */
+.history-top-info-bar {
+    flex-shrink: 0;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 1rem;
+}
+
+/* 可视化区域 */
+.history-visualization-area {
+    flex: 1;
+    padding: 1.5rem;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 底部信息区域 */
+.history-bottom-info-area {
+    flex-shrink: 0;
+    background: white;
+    border-top: 1px solid #e5e7eb;
+    padding: 1rem;
+    height: 12rem;
+    min-height: 8rem;
+    max-height: 16rem;
+}
+
+/* Canvas样式 */
+#history-canvas {
+    cursor: crosshair;
+    background: linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc),
+    linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+    display: block;
+    margin: 0 auto;
+    border-radius: inherit;
+}
+
+/* Canvas容器 */
+.canvas-container {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    box-sizing: border-box;
+}
+
+/* 训练会话列表项 */
+.training-item {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.training-item:hover {
+    border-color: #3B82F6;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+}
+
+.training-item.active {
+    border-color: #3B82F6;
+    background: #EFF6FF;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.training-item .training-name {
+    font-weight: 600;
+    color: #1f2937;
+    font-size: 0.875rem;
+    word-break: break-all;
+    margin-bottom: 4px;
+}
+
+.training-item .training-meta {
+    font-size: 0.75rem;
+    color: #6b7280;
+    line-height: 1.2;
+}
+
+/* 状态指示器 */
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+
+.status-healthy {
+    background-color: #10B981;
+}
+
+.status-unhealthy {
+    background-color: #EF4444;
+}
+
+.status-loading {
+    background-color: #F59E0B;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 数据显示容器 */
+.data-container {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: #f9fafb;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.data-container pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Episode数据项 */
+.episode-data-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.episode-data-item:last-child {
+    border-bottom: none;
+}
+
+.episode-data-key {
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.episode-data-value {
+    color: #1f2937;
+    font-weight: 600;
+}
+
+/* 网格数据预览 */
+.mesh-vertex {
+    background: #f3f4f6;
+    border-radius: 4px;
+    padding: 4px 6px;
+    margin: 2px;
+    font-size: 0.7rem;
+    display: inline-block;
+}
+
+.mesh-vertex-key {
+    color: #374151;
+    font-weight: 600;
+}
+
+.mesh-vertex-neighbors {
+    color: #6b7280;
+    margin-left: 4px;
+}
+
+/* 日志项样式 */
+.log-entry {
+    padding: 2px 0;
+    line-height: 1.4;
+}
+
+.log-entry.log-success {
+    color: #059669;
+}
+
+.log-entry.log-error {
+    color: #DC2626;
+}
+
+.log-entry.log-warning {
+    color: #D97706;
+}
+
+.log-entry.log-info {
+    color: #6B7280;
+}
+
+/* 按钮悬停效果增强 */
+button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+button:disabled {
+    transform: none;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 滚动条样式 */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* 动画 */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* 响应式设计 */
+@media (max-width: 1280px) {
+    .history-left-panel {
+        width: 320px;
+        min-width: 280px;
+    }
+
+    .history-top-info-bar {
+        padding: 0.75rem;
+    }
+
+    .history-visualization-area {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 1024px) {
+    .history-main-container {
+        flex-direction: column;
+        height: 100vh;
+    }
+
+    .history-left-panel {
+        width: 100%;
+        max-width: none;
+        height: auto;
+        max-height: 50vh;
+        min-height: 300px;
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+        overflow-y: auto;
+    }
+
+    .history-right-content {
+        flex: 1;
+        height: 50vh;
+        min-height: 400px;
+    }
+
+    .history-visualization-area {
+        padding: 0.75rem;
+    }
+
+    .history-bottom-info-area {
+        padding: 0.75rem;
+        height: 8rem;
+    }
+
+    .history-bottom-info-area .grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .history-left-panel {
+        max-height: 60vh;
+        min-height: 250px;
+    }
+
+    .history-right-content {
+        height: 40vh;
+        min-height: 300px;
+    }
+
+    .history-top-info-bar {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .history-visualization-area {
+        padding: 0.5rem;
+    }
+
+    .history-bottom-info-area {
+        padding: 0.5rem;
+        height: 6rem;
+    }
+
+    /* 调整字体大小 */
+    .training-item .training-name {
+        font-size: 0.75rem;
+    }
+
+    .training-item .training-meta {
+        font-size: 0.7rem;
+    }
+
+    /* 按钮和输入框在小屏幕上的调整 */
+    button, input {
+        font-size: 0.875rem;
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* 确保在所有缩放级别下文本可读性 */
+* {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* 防止布局在缩放时破裂 */
+.flex {
+    min-width: 0;
+    min-height: 0;
+}
+
+/* 特殊效果 */
+.highlight-episode {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 4px 0;
+}
+
+.error-state {
+    color: #DC2626;
+    background-color: #FEF2F2;
+    border: 1px solid #FECACA;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+}
+
+.success-state {
+    color: #065F46;
+    background-color: #ECFDF5;
+    border: 1px solid #A7F3D0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.875rem;
+}

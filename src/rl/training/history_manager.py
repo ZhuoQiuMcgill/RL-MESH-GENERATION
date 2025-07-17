@@ -23,10 +23,13 @@ def save_episode_details(details, best_episode, path):
     # 确保目录存在
     os.makedirs(path, exist_ok=True)
 
+    non_zero_step_episodes = [d.get("episode_number") for d in details]
+
     # 构建保存的数据结构
     data = {
         "size": len(details),
         "best_episode": best_episode,
+        "non_zero_step_episodes_index": non_zero_step_episodes,
         "details": details
     }
 
@@ -44,6 +47,7 @@ class HistoryManager:
         self.size = 0
         self.history_dir = DATA_DIR
         self.focused = False
+        self.non_zero_step_episodes = []
         self.logger = logging.getLogger(__name__)
 
     def focus_on(self, training_id):
