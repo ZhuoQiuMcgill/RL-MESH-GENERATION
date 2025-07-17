@@ -49,6 +49,8 @@ class _EpisodeCallback(BaseCallback):
 
             self._current_episode += 1
             self._current_timesteps += detail['l']
+            if not detail['is_completed']:
+                self._current_timesteps += 1
 
         return True
 

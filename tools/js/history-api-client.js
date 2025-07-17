@@ -427,36 +427,80 @@ export class HistoryApiClient extends ApiClient {
         let timestamp = '';
         let mesh = '';
 
-        if (parts.length >= 4) {
-            if (parts[0] === 'continue') {
-                algorithm = 'Continue';
-                timestamp = parts.length >= 5 ? `${parts[2]}_${parts[3]}` : '';
-                mesh = parts.slice(4).join('_');
+        try {
+            if (parts.length >= 4) {
+                if (parts[0] === 'continue') {
+                    // Continue格式: continue_checkpointName_date_time_meshName
+                    algorithm = 'Continue';
+                    if (parts.length >= 5) {
+                        // 找到日期时间部分（8位数字_6位数字的模式）
+                        let dateTimeFound = false;
+                        for (let i = 1; i < parts.length - 1; i++) {
+                            if (parts[i].length === 8 && /^\d{8}$/.test(parts[i]) &&
+                                i + 1 < parts.length && parts[i + 1].length === 6 && /^\d{6}$/.test(parts[i + 1])) {
+                                // 找到了日期时间部分
+                                timestamp = `${parts[i]}_${parts[i + 1]}`;
+                                // mesh名称是剩余的部分
+                                const beforeDateTime = parts.slice(1, i);
+                                const afterDateTime = parts.slice(i + 2);
+                                mesh = [...afterDateTime, ...beforeDateTime].join('_');
+                                dateTimeFound = true;
+                                break;
+                            }
+                        }
+
+                        if (!dateTimeFound) {
+                            // 回退到旧逻辑
+                            timestamp = parts.length >= 4 ? `${parts[2]}_${parts[3]}` : '';
+                            mesh = parts.slice(4).join('_');
+                        }
+                    } else {
+                        // 不够5个部分，直接用剩余的作为mesh名
+                        mesh = parts.slice(1).join('_');
+                        timestamp = '';
+                    }
+                } else {
+                    // 普通格式: algorithm_date_time_meshName
+                    algorithm = parts[0].toUpperCase();
+                    if (parts.length >= 3 && parts[1].length === 8 && /^\d{8}$/.test(parts[1]) &&
+                        parts[2].length === 6 && /^\d{6}$/.test(parts[2])) {
+                        timestamp = `${parts[1]}_${parts[2]}`;
+                        mesh = parts.slice(3).join('_');
+                    } else {
+                        // 回退处理
+                        timestamp = parts.slice(1, 3).join('_');
+                        mesh = parts.slice(3).join('_');
+                    }
+                }
             } else {
-                algorithm = parts[0].toUpperCase();
-                timestamp = `${parts[1]}_${parts[2]}`;
-                mesh = parts.slice(3).join('_');
+                // 少于4个部分，无法正确解析
+                algorithm = 'Unknown';
+                timestamp = '';
+                mesh = trainingId;
             }
-        } else {
+        } catch (error) {
+            // 解析出错，使用原始值
+            console.warn('训练ID解析失败:', trainingId, error);
             algorithm = 'Unknown';
-            timestamp = trainingId;
-            mesh = 'Unknown';
+            timestamp = '';
+            mesh = trainingId;
         }
 
-        // 格式化时间戳
-        if (timestamp.includes('_')) {
+        // 格式化时间戳显示
+        let formattedTimestamp = timestamp;
+        if (timestamp && timestamp.includes('_')) {
             const [date, time] = timestamp.split('_');
             if (date.length === 8 && time.length === 6) {
                 const formattedDate = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
                 const formattedTime = `${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}`;
-                timestamp = `${formattedDate} ${formattedTime}`;
+                formattedTimestamp = `${formattedDate} ${formattedTime}`;
             }
         }
 
         return {
-            name: `${algorithm} - ${mesh}`,
-            timestamp: timestamp,
-            mesh: mesh,
+            name: `${algorithm} - ${mesh || 'Unknown'}`,
+            timestamp: formattedTimestamp,
+            mesh: mesh || 'Unknown',
             algorithm: algorithm
         };
     }
@@ -519,7 +563,7 @@ export class HistoryApiClient extends ApiClient {
             return csvRows.join('\n');
 
         } catch (error) {
-            throw new Error(`Export failed: ${error.message}`);
+            throw new Error(`导出CSV失败: ${error.message}`);
         }
     }
 }
