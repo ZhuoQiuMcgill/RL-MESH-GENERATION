@@ -41,7 +41,7 @@ export class HistoryManager {
             'episode-index-input', 'current-episode-display', 'episode-meta-info',
             'episode-reward-display', 'episode-length-display', 'episode-status-display',
             'actual-episode-number-display', 'boundary-vertices-count', 'mesh-vertices-count', 'ref-point-display',
-            'click-coordinates-display', 'episode-data-container', 'mesh-data-container',
+            'click-coordinates-display', 'episode-data-container',
             'history-log-container', 'history-loading-overlay',
             // 按钮
             'refresh-history-btn', 'health-check-btn', 'goto-episode-btn',
@@ -507,30 +507,6 @@ export class HistoryManager {
             `;
         }
 
-        // 更新网格数据容器
-        const meshContainer = this.elements['mesh-data-container'];
-        if (meshContainer) {
-            const meshData = this.currentEpisodeData.mesh_data || {};
-
-            if (Object.keys(meshData).length === 0) {
-                meshContainer.innerHTML = '<div class="text-gray-500">暂无网格数据</div>';
-            } else {
-                const meshHTML = Object.entries(meshData).slice(0, 10).map(([vertex, neighbors]) => {
-                    const neighborCount = Array.isArray(neighbors) ? neighbors.length : 0;
-                    return `
-                        <div class="mesh-vertex">
-                            <span class="mesh-vertex-key">${vertex}</span>
-                            <span class="mesh-vertex-neighbors">(${neighborCount} 邻居)</span>
-                        </div>
-                    `;
-                }).join('');
-
-                const remainingCount = Math.max(0, Object.keys(meshData).length - 10);
-                const moreInfo = remainingCount > 0 ? `<div class="text-xs text-gray-500 mt-2">... 还有 ${remainingCount} 个顶点</div>` : '';
-
-                meshContainer.innerHTML = meshHTML + moreInfo;
-            }
-        }
     }
 
     /**
