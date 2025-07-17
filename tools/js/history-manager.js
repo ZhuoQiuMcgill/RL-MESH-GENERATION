@@ -20,6 +20,11 @@ export class HistoryManager {
         this.currentEpisodeIndex = null;
         this.currentEpisodeData = null;
 
+        // 防止重复请求的状态管理
+        this.isLoadingHistory = false;
+        this.isLoadingTraining = false;
+        this.isLoadingEpisode = false;
+
         // DOM元素引用
         this.elements = this.initializeElements();
 
@@ -175,7 +180,12 @@ export class HistoryManager {
      * 加载训练历史记录列表
      */
     async loadTrainingHistory() {
+        if (this.isLoadingHistory) {
+            this.logMessage('正在加载训练历史记录，请稍候...', LOG_TYPES.WARNING);
+            return;
+        }
         try {
+            this.isLoadingHistory = true;
             this.showLoading(true);
 
             const response = await this.apiClient.getTrainingHistoryList();
@@ -195,6 +205,7 @@ export class HistoryManager {
             this.showError('加载训练历史失败: ' + error.message);
         } finally {
             this.showLoading(false);
+            this.isLoadingHistory = false;
         }
     }
 
@@ -202,6 +213,10 @@ export class HistoryManager {
      * 刷新训练历史记录
      */
     async refreshTrainingHistory() {
+        if (this.isLoadingHistory) {
+            this.logMessage('正在刷新中，请稍候...', LOG_TYPES.WARNING);
+            return;
+        }
         this.logMessage('正在刷新训练历史记录...', LOG_TYPES.INFO);
         await this.loadTrainingHistory();
     }
