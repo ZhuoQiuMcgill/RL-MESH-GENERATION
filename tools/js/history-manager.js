@@ -281,14 +281,14 @@ export class HistoryManager {
 
         container.innerHTML = itemsHTML;
 
-        // 绑定点击事件
-        container.addEventListener('click', (e) => {
+        // 绑定点击事件，确保不会重复绑定导致多次请求
+        container.onclick = (e) => {
             const trainingItem = e.target.closest('.training-item');
             if (trainingItem) {
                 const trainingId = trainingItem.dataset.trainingId;
                 this.selectTraining(trainingId);
             }
-        });
+        };
     }
 
     /**
@@ -303,8 +303,13 @@ export class HistoryManager {
      */
     async selectTraining(trainingId) {
         if (trainingId === this.currentTrainingId) return;
+        if (this.isLoadingTraining) {
+            this.logMessage('Training is loading, please wait...', LOG_TYPES.WARNING);
+            return;
+        }
 
         try {
+            this.isLoadingTraining = true;
             this.showLoading(true);
             this.logMessage(`正在加载训练: ${trainingId}`, LOG_TYPES.INFO);
 
@@ -337,6 +342,7 @@ export class HistoryManager {
             this.showError('Failed to select training: ' + error.message);
         } finally {
             this.showLoading(false);
+            this.isLoadingTraining = false;
         }
     }
 
