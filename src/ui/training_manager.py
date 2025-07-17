@@ -11,7 +11,7 @@ import threading
 import time
 import logging
 import traceback
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from datetime import datetime
 
 from src.rl.config import load_config
@@ -137,6 +137,7 @@ class TrainingManager:
             self.training_session_dir = os.path.join(HISTORY_DIR, self.training_id)
             os.makedirs(os.path.join(self.training_session_dir, "plot"), exist_ok=True)
             os.makedirs(os.path.join(self.training_session_dir, "model"), exist_ok=True)
+            os.makedirs(os.path.join(self.training_session_dir, "history"), exist_ok=True)
 
             # 更新统计信息中的training_id
             self.current_stats["training_id"] = self.training_id
@@ -588,6 +589,10 @@ class TrainingManager:
             self.trainer.plot_reward(plot_path)
             self.logger.info(f"奖励图表已保存: {plot_path}")
 
+            history_path = os.path.join(self.training_session_dir, "history")
+            self.trainer.save_history(history_path)
+            self.logger.info(f"训练历史已保存: {history_path}")
+
         except Exception as e:
             self.logger.error(f"保存训练结果失败: {e}")
             self.logger.error(traceback.format_exc())
@@ -731,7 +736,7 @@ class TrainingManager:
             raise RuntimeError("环境未创建")
 
         # 确定设备
-        device = "cuda"  # TODO: 可以从config中获取
+        device = "cuda"
 
         # 创建SB3 SAC训练器，传入完整的config以确保所有训练参数都能被读取
         self.trainer = SB3SACTrainer(

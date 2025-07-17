@@ -1,5 +1,6 @@
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict
+from math import inf
 
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
@@ -7,12 +8,13 @@ from stable_baselines3.common.callbacks import BaseCallback
 from src.rl.agent.sb3_sac_agent import SB3SACAgent
 from src.rl.config import load_config
 from src.utils.rl_ploter import plot_reward_change
+from src.rl.training.history_manager import save_episode_details
 
 
 class _EpisodeCallback(BaseCallback):
     def __init__(self):
         super().__init__()
-        self._current_episodes = 0
+        self._current_episode = 0
         self._current_timesteps = 0
         self.details = []
         self.data = {"r": [],
@@ -21,6 +23,8 @@ class _EpisodeCallback(BaseCallback):
                      "boundary_vertices_data": [],
                      "last_ref_point": [],
                      "is_completed": []}
+        self._best_reward = -inf
+        self._best_episode = 0
 
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
@@ -30,8 +34,7 @@ class _EpisodeCallback(BaseCallback):
             if not done:
                 continue
             detail = info.get("detail", {})
-            self._current_episodes += 1
-            self._current_timesteps += detail['l']
+
             self.details.append(detail)
             self.data['r'].append(detail['r'])
             self.data['l'].append(detail['l'])
@@ -39,6 +42,13 @@ class _EpisodeCallback(BaseCallback):
             self.data['boundary_vertices_data'].append(detail['boundary_vertices_data'])
             self.data['last_ref_point'].append(detail['last_ref_point'])
             self.data['last_ref_point'].append(detail['last_ref_point'])
+
+            if detail['r'] > self._best_reward:
+                self._best_reward = detail['r']
+                self._best_episode = self._current_episode
+
+            self._current_episode += 1
+            self._current_timesteps += detail['l']
 
         return True
 
@@ -49,10 +59,10 @@ class _EpisodeCallback(BaseCallback):
         return self.details
 
     def get_data(self, key):
-        return [d.get(key) for d in self.details]
+        return self.data.get(key, [])
 
     def current_episodes(self):
-        return self._current_episodes
+        return self._current_episode
 
     def current_timesteps(self):
         return self._current_timesteps
@@ -62,6 +72,9 @@ class _EpisodeCallback(BaseCallback):
         if not rewards:
             return 0.0
         return float(np.mean(rewards[-100:]))
+
+    def current_best_episode(self):
+        return self._best_episode
 
 
 class SB3SACTrainer:
@@ -222,9 +235,8 @@ class SB3SACTrainer:
     def plot_reward(self, path):
         plot_reward_change(self._cb.get_data('r'), self._cb.get_data('l'), path)
 
-    def best_mesh(self):
-        """
-        TODO: RETURN ONLY THE MESH DATA WITH THE BEST REWARD
-        :return:
-        """
-
+    def save_history(self, path):
+        save_episode_details(
+            self._cb.get_details(),
+            self._cb.current_best_episode(),
+            path)
