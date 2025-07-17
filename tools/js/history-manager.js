@@ -70,13 +70,13 @@ export class HistoryManager {
             if (isConnected) {
                 await this.loadTrainingHistory();
             } else {
-                this.logMessage('无法连接到历史记录API服务器', LOG_TYPES.ERROR);
+                this.logMessage('Cannot connect to history API server', LOG_TYPES.ERROR);
             }
 
-            this.logMessage('历史记录查看器初始化完成', LOG_TYPES.INFO);
+            this.logMessage('History viewer initialized', LOG_TYPES.INFO);
         } catch (error) {
-            console.error('初始化失败:', error);
-            this.showError('系统初始化失败: ' + error.message);
+            console.error('Initialization failed:', error);
+            this.showError('System initialization failed: ' + error.message);
         }
     }
 
@@ -88,7 +88,7 @@ export class HistoryManager {
         if (canvas) {
             this.canvasRenderer = new CanvasRenderer(canvas);
         } else {
-            console.error('未找到Canvas元素');
+            console.error('Canvas element not found');
         }
     }
 
@@ -164,14 +164,14 @@ export class HistoryManager {
         try {
             const response = await this.apiClient.checkHistoryHealth();
             if (response.success && response.status === 'healthy') {
-                this.logMessage('历史记录API连接正常', LOG_TYPES.SUCCESS);
+                this.logMessage('History API connection successful', LOG_TYPES.SUCCESS);
                 return true;
             } else {
-                this.logMessage('历史记录API状态异常: ' + (response.error || '未知错误'), LOG_TYPES.WARNING);
+                this.logMessage('History API status abnormal: ' + (response.error || 'Unknown error'), LOG_TYPES.WARNING);
                 return false;
             }
         } catch (error) {
-            this.logMessage('历史记录API连接失败: ' + error.message, LOG_TYPES.ERROR);
+            this.logMessage('History API connection failed: ' + error.message, LOG_TYPES.ERROR);
             return false;
         }
     }
@@ -181,7 +181,7 @@ export class HistoryManager {
      */
     async loadTrainingHistory() {
         if (this.isLoadingHistory) {
-            this.logMessage('正在加载训练历史记录，请稍候...', LOG_TYPES.WARNING);
+            this.logMessage('Loading training history, please wait...', LOG_TYPES.WARNING);
             return;
         }
         try {
@@ -193,16 +193,16 @@ export class HistoryManager {
             if (response.success && response.training_ids) {
                 this.trainingList = response.training_ids;
                 this.updateTrainingList();
-                this.logMessage(`成功加载 ${response.count} 个训练历史记录`, LOG_TYPES.SUCCESS);
+                this.logMessage(`Loaded ${response.count} training history entries`, LOG_TYPES.SUCCESS);
             } else {
-                this.logMessage('未找到训练历史记录: ' + (response.error || '未知错误'), LOG_TYPES.WARNING);
+                this.logMessage('No training history found: ' + (response.error || 'Unknown error'), LOG_TYPES.WARNING);
                 this.trainingList = [];
                 this.updateTrainingList();
             }
 
         } catch (error) {
-            console.error('加载训练历史失败:', error);
-            this.showError('加载训练历史失败: ' + error.message);
+            console.error('Failed to load training history:', error);
+            this.showError('Failed to load training history: ' + error.message);
         } finally {
             this.showLoading(false);
             this.isLoadingHistory = false;
@@ -214,10 +214,10 @@ export class HistoryManager {
      */
     async refreshTrainingHistory() {
         if (this.isLoadingHistory) {
-            this.logMessage('正在刷新中，请稍候...', LOG_TYPES.WARNING);
+            this.logMessage('Refreshing, please wait...', LOG_TYPES.WARNING);
             return;
         }
-        this.logMessage('正在刷新训练历史记录...', LOG_TYPES.INFO);
+        this.logMessage('Refreshing training history...', LOG_TYPES.INFO);
         await this.loadTrainingHistory();
     }
 
@@ -230,12 +230,12 @@ export class HistoryManager {
             const response = await this.apiClient.checkHistoryHealth();
 
             if (response.success && response.status === 'healthy') {
-                this.logMessage(`服务健康检查通过 - 可用训练: ${response.available_trainings}`, LOG_TYPES.SUCCESS);
+                this.logMessage(`Health check passed - available trainings: ${response.available_trainings}`, LOG_TYPES.SUCCESS);
                 if (response.current_focus) {
-                    this.logMessage(`当前聚焦: ${response.current_focus}`, LOG_TYPES.INFO);
+                    this.logMessage(`Current focus: ${response.current_focus}`, LOG_TYPES.INFO);
                 }
             } else {
-                this.logMessage(`服务状态异常: ${response.error || '未知错误'}`, LOG_TYPES.ERROR);
+                this.logMessage(`Service status abnormal: ${response.error || 'Unknown error'}`, LOG_TYPES.ERROR);
             }
         } catch (error) {
             this.logMessage(`健康检查失败: ${error.message}`, LOG_TYPES.ERROR);
@@ -327,14 +327,14 @@ export class HistoryManager {
                 // 默认加载最佳Episode
                 await this.loadEpisode(this.currentTrainingInfo.best_episode);
 
-                this.logMessage(`训练加载成功: ${response.detail_length} episodes`, LOG_TYPES.SUCCESS);
+                this.logMessage(`Training loaded successfully: ${response.detail_length} episodes`, LOG_TYPES.SUCCESS);
             } else {
-                this.showError('加载训练信息失败: ' + response.error);
+                this.showError('Failed to load training info: ' + response.error);
             }
 
         } catch (error) {
-            console.error('选择训练失败:', error);
-            this.showError('选择训练失败: ' + error.message);
+            console.error('Failed to select training:', error);
+            this.showError('Failed to select training: ' + error.message);
         } finally {
             this.showLoading(false);
         }
@@ -388,12 +388,12 @@ export class HistoryManager {
      */
     async loadEpisode(episodeIndex) {
         if (!this.currentTrainingId || !this.currentTrainingInfo) {
-            this.showError('请先选择一个训练会话');
+            this.showError('Please select a training session first');
             return;
         }
 
         if (episodeIndex < 0 || episodeIndex >= this.currentTrainingInfo.detail_length) {
-            this.showError(`Episode索引超出范围: ${episodeIndex}`);
+            this.showError(`Episode index out of range: ${episodeIndex}`);
             return;
         }
 
@@ -418,14 +418,14 @@ export class HistoryManager {
                     episodeInput.value = episodeIndex;
                 }
 
-                this.logMessage(`Episode ${episodeIndex} 加载成功`, LOG_TYPES.SUCCESS);
+                this.logMessage(`Episode ${episodeIndex} loaded successfully`, LOG_TYPES.SUCCESS);
             } else {
-                this.showError('加载Episode失败: ' + response.error);
+                this.showError('Failed to load episode: ' + response.error);
             }
 
         } catch (error) {
-            console.error('加载Episode失败:', error);
-            this.showError('加载Episode失败: ' + error.message);
+            console.error('Failed to load episode:', error);
+            this.showError('Failed to load episode: ' + error.message);
         } finally {
             this.showLoading(false);
         }
@@ -443,7 +443,7 @@ export class HistoryManager {
         this.updateElement('actual-episode-number-display', episode_number || 'N/A');
         this.updateElement('episode-reward-display', formatNumber(reward));
         this.updateElement('episode-length-display', length);
-        this.updateElement('episode-status-display', is_completed ? '完成' : '未完成');
+        this.updateElement('episode-status-display', is_completed ? 'Completed' : 'Incomplete');
 
         // 显示元信息
         const metaInfo = this.elements['episode-meta-info'];
@@ -499,9 +499,9 @@ export class HistoryManager {
                     <span class="episode-data-value">${length}</span>
                 </div>
                 <div class="episode-data-item">
-                    <span class="episode-data-key">状态:</span>
+                    <span class="episode-data-key">Status:</span>
                     <span class="episode-data-value ${is_completed ? 'text-green-600' : 'text-orange-600'}">
-                        ${is_completed ? '完成' : '未完成'}
+                        ${is_completed ? 'Completed' : 'Incomplete'}
                     </span>
                 </div>
             `;
@@ -531,7 +531,7 @@ export class HistoryManager {
 
         const episodeIndex = parseInt(episodeInput.value);
         if (isNaN(episodeIndex)) {
-            this.showError('请输入有效的Episode索引');
+            this.showError('Please enter a valid episode index');
             return;
         }
 
@@ -567,7 +567,7 @@ export class HistoryManager {
 
         const transform = this.canvasRenderer.getCurrentTransform();
         if (!transform) {
-            this.updateElement('click-coordinates-display', '无变换数据');
+            this.updateElement('click-coordinates-display', 'No transform data');
             return;
         }
 
@@ -642,7 +642,7 @@ export class HistoryManager {
     clearLogs() {
         const container = this.elements['history-log-container'];
         if (container) {
-            container.innerHTML = '<div class="text-gray-500">日志已清除</div>';
+            container.innerHTML = '<div class="text-gray-500">Logs cleared</div>';
         }
     }
 
@@ -653,7 +653,7 @@ export class HistoryManager {
         if (this.canvasRenderer) {
             this.canvasRenderer.onResize();
         }
-        this.logMessage('窗口大小已调整', LOG_TYPES.INFO);
+        this.logMessage('Window resized', LOG_TYPES.INFO);
     }
 
     /**
@@ -677,6 +677,6 @@ export class HistoryManager {
         this.currentEpisodeIndex = null;
         this.currentEpisodeData = null;
 
-        console.log('HistoryManager已销毁');
+        console.log('HistoryManager destroyed');
     }
 }

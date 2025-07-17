@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>强化学习网格生成训练管理</title>
+    <title>RL Mesh Generation Training Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/train.css">
     <script>
@@ -29,8 +29,8 @@
     <div class="left-panel shadow-lg">
         <!-- 头部 -->
         <div class="p-6 border-b border-gray-200">
-            <h1 class="text-2xl font-bold text-gray-800">训练管理</h1>
-            <p class="text-sm text-gray-600 mt-1">强化学习网格生成系统</p>
+            <h1 class="text-2xl font-bold text-gray-800">Training Manager</h1>
+            <p class="text-sm text-gray-600 mt-1">Reinforcement Learning Mesh Generation</p>
         </div>
 
         <!-- 控制区域 -->
@@ -38,10 +38,10 @@
             <!-- 状态指示器 -->
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-700">训练状态</span>
+                    <span class="text-sm font-medium text-gray-700">Training Status</span>
                     <div id="status-indicator" class="flex items-center">
                         <div class="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
-                        <span id="status-text" class="text-sm text-gray-600">未启动</span>
+                        <span id="status-text" class="text-sm text-gray-600">Idle</span>
                     </div>
                 </div>
             </div>
@@ -52,16 +52,16 @@
                     <input id="checkpoint-mode" type="checkbox"
                            class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
                     <label for="checkpoint-mode" class="ml-2 text-sm font-medium text-gray-700">
-                        从Checkpoint继续训练
+                        Continue from Checkpoint
                     </label>
                 </div>
 
                 <!-- Checkpoint选择 -->
                 <div id="checkpoint-selection" style="display: none;">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">选择Checkpoint</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Checkpoint</label>
                     <select id="checkpoint-select"
                             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                        <option value="">加载中...</option>
+                        <option value="">Loading...</option>
                     </select>
 
                     <!-- Checkpoint信息显示 -->
@@ -75,47 +75,47 @@
 
             <!-- Mesh选择 -->
             <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">选择初始Mesh</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Select Initial Mesh</label>
                 <select id="mesh-select"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <option value="">加载中...</option>
+                    <option value="">Loading...</option>
                 </select>
                 <div id="mesh-info" class="mt-2 text-xs text-gray-500 hidden">
-                    <div>顶点数: <span id="mesh-vertices">0</span></div>
-                    <div>文件大小: <span id="mesh-size">0</span> bytes</div>
+                    <div>Vertices: <span id="mesh-vertices">0</span></div>
+                    <div>File size: <span id="mesh-size">0</span> bytes</div>
                 </div>
             </div>
 
             <!-- 训练参数 -->
             <div class="mb-6">
-                <h3 class="text-sm font-medium text-gray-700 mb-3">训练参数</h3>
+                <h3 class="text-sm font-medium text-gray-700 mb-3">Training Parameters</h3>
 
                 <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">最大训练步数 (Timesteps)</label>
+                    <label class="block text-xs text-gray-600 mb-1">Max Training Steps (Timesteps)</label>
                     <input id="max-timesteps" type="number" value="1000000" min="1000"
                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">控制参数：总的训练步数</p>
+                    <p class="text-xs text-gray-500 mt-1">Control parameter: total training steps</p>
                 </div>
 
                 <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">每Episode最大步数</label>
+                    <label class="block text-xs text-gray-600 mb-1">Max Steps per Episode</label>
                     <input id="max-steps" type="number" value="1000" min="1"
                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">单个episode的步数限制</p>
+                    <p class="text-xs text-gray-500 mt-1">Step limit for a single episode</p>
                 </div>
 
                 <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">更新间隔 (秒)</label>
+                    <label class="block text-xs text-gray-600 mb-1">Update Interval (s)</label>
                     <input id="update-interval" type="number" value="10" min="1"
                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">前端状态更新频率</p>
+                    <p class="text-xs text-gray-500 mt-1">Frontend status update frequency</p>
                 </div>
 
                 <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">训练描述 (可选)</label>
-                    <input id="description" type="text" placeholder="例如：测试新的奖励函数"
+                    <label class="block text-xs text-gray-600 mb-1">Training Description (optional)</label>
+                    <input id="description" type="text" placeholder="e.g., test new reward function"
                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">描述本次训练的目的或特点</p>
+                    <p class="text-xs text-gray-500 mt-1">Describe this training purpose or features</p>
                 </div>
             </div>
 
@@ -123,37 +123,37 @@
             <div class="space-y-3">
                 <button id="start-btn"
                         class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200">
-                    开始训练
+                    Start Training
                 </button>
                 <button id="stop-btn"
                         class="w-full bg-danger hover:bg-red-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled>
-                    停止训练
+                    Stop Training
                 </button>
                 <button id="refresh-btn"
                         class="w-full bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
-                    刷新状态
+                    Refresh Status
                 </button>
             </div>
 
             <!-- 训练统计 -->
             <div class="mt-6 pt-6 border-t border-gray-200">
-                <h3 class="text-sm font-medium text-gray-700 mb-3">训练统计</h3>
+                <h3 class="text-sm font-medium text-gray-700 mb-3">Training Stats</h3>
                 <div class="space-y-2 text-xs">
                     <div class="flex justify-between">
-                        <span class="text-gray-600">当前Episode:</span>
+                        <span class="text-gray-600">Current Episode:</span>
                         <span id="current-episode" class="font-medium">0</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-gray-600">总步数 (Timesteps):</span>
+                        <span class="text-gray-600">Total Steps (Timesteps):</span>
                         <span id="total-steps" class="font-medium">0</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-gray-600">平均奖励:</span>
+                        <span class="text-gray-600">Average Reward:</span>
                         <span id="avg-reward" class="font-medium">0.000</span>
                     </div>
                     <div class="flex justify-between">
-                        <span class="text-gray-600">缓冲区大小:</span>
+                        <span class="text-gray-600">Buffer Size:</span>
                         <span id="buffer-size" class="font-medium">0</span>
                     </div>
                 </div>
@@ -167,27 +167,27 @@
         <div class="top-info-bar shadow-sm">
             <div class="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-800">网格可视化</h2>
+                    <h2 class="text-lg font-semibold text-gray-800">Mesh Visualization</h2>
                     <p class="text-sm text-gray-600">Episode <span id="display-episode">0</span> -
-                        边界顶点: <span id="boundary-vertices">0</span> -
-                        总步数: <span id="display-total-steps">0</span></p>
+                        Boundary Vertices: <span id="boundary-vertices">0</span> -
+                        Total Steps: <span id="display-total-steps">0</span></p>
                 </div>
                 <div class="flex items-center space-x-4 flex-wrap">
                     <div class="text-sm">
-                        <span class="text-gray-600">Episode长度:</span>
+                        <span class="text-gray-600">Episode Length:</span>
                         <span id="episode-length" class="font-semibold text-gray-800">0</span>
                     </div>
                     <div class="text-sm">
-                        <span class="text-gray-600">Episode奖励:</span>
+                        <span class="text-gray-600">Episode Reward:</span>
                         <span id="episode-reward" class="font-semibold text-gray-800">0.000</span>
                     </div>
                     <div class="text-sm">
-                        <span class="text-gray-600">参考点:</span>
+                        <span class="text-gray-600">Reference Point:</span>
                         <span id="ref-point" class="font-semibold text-gray-800">N/A</span>
                     </div>
                     <div class="text-sm">
-                        <span class="text-gray-600">点击坐标:</span>
-                        <span id="click-coordinates" class="font-semibold text-blue-600">未点击</span>
+                        <span class="text-gray-600">Click Coordinates:</span>
+                        <span id="click-coordinates" class="font-semibold text-blue-600">Not clicked</span>
                     </div>
                 </div>
             </div>
@@ -205,12 +205,12 @@
         <!-- 底部日志区域 - 添加响应式类 -->
         <div class="bottom-log-area">
             <div class="flex items-center justify-between mb-2">
-                <h3 class="text-sm font-medium text-gray-700">训练日志</h3>
-                <button id="clear-log-btn" class="text-xs text-gray-500 hover:text-gray-700">清除</button>
+                <h3 class="text-sm font-medium text-gray-700">Training Log</h3>
+                <button id="clear-log-btn" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
             </div>
             <div id="log-container"
                  class="h-20 overflow-y-auto bg-gray-50 rounded px-3 py-2 text-xs font-mono custom-scrollbar">
-                <div class="text-gray-500">等待训练开始...</div>
+                <div class="text-gray-500">Waiting for training to start...</div>
             </div>
         </div>
     </div>
@@ -220,7 +220,7 @@
 <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
         <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-        <span class="text-gray-700">处理中...</span>
+        <span class="text-gray-700">Processing...</span>
     </div>
 </div>
 

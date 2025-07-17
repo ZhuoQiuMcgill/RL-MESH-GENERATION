@@ -15,13 +15,13 @@ export function withErrorHandling(apiMethod) {
         try {
             return await apiMethod.apply(this, args);
         } catch (error) {
-            console.error(`API调用失败:`, error);
+            console.error(`API call failed:`, error);
 
             // 根据错误类型返回不同的错误信息
             if (error.message.includes('timeout') || error.message.includes('超时')) {
-                throw new Error('请求超时，请检查网络连接');
+                throw new Error('Request timed out, please check network connection');
             } else if (error.message.includes('Failed to fetch')) {
-                throw new Error('网络连接失败，请检查服务器状态');
+                throw new Error('Network connection failed, please check server status');
             } else {
                 throw error;
             }
@@ -100,7 +100,7 @@ export class ApiClient {
             return await response.json();
         } catch (error) {
             if (error.name === 'AbortError') {
-                throw new Error(`请求超时（${timeout / 1000}秒），请检查网络连接`);
+                throw new Error(`Request timed out (${timeout / 1000}s), please check network connection`);
             }
             throw error;
         }
@@ -115,7 +115,7 @@ export class ApiClient {
             await this.request('/training/health');
             return true;
         } catch (error) {
-            console.error('后端连接失败:', error);
+            console.error('Backend connection failed:', error);
             return false;
         }
     }

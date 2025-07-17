@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>交互式画板</title>
+    <title>Interactive Canvas</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,7 +40,7 @@
 <div class="w-full max-w-6xl h-full flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden">
     <!-- Header / Controls -->
     <header class="flex flex-wrap items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-        <h1 class="text-xl md:text-2xl font-bold text-gray-800">交互式画板</h1>
+        <h1 class="text-xl md:text-2xl font-bold text-gray-800">Interactive Canvas</h1>
         <div class="flex items-center space-x-2 md:space-x-4">
             <div class="flex items-center space-x-2 bg-indigo-100 text-indigo-800 text-sm font-semibold px-3 py-1.5 rounded-full">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -48,12 +48,12 @@
                     <circle cx="12" cy="12" r="10"></circle>
                     <circle cx="12" cy="12" r="3"></circle>
                 </svg>
-                <span>点数量: <span id="point-counter">0</span></span>
+                <span>Points: <span id="point-counter">0</span></span>
             </div>
-            <button id="finish-btn" class="btn btn-success">完成绘制</button>
-            <button id="export-btn" class="btn btn-secondary" disabled>导出.txt</button>
-            <button id="import-btn" class="btn">导入.txt</button>
-            <button id="reset-btn" class="btn btn-danger">重置</button>
+            <button id="finish-btn" class="btn btn-success">Finish Drawing</button>
+            <button id="export-btn" class="btn btn-secondary" disabled>Export .txt</button>
+            <button id="import-btn" class="btn">Import .txt</button>
+            <button id="reset-btn" class="btn btn-danger">Reset</button>
         </div>
     </header>
 
@@ -62,12 +62,12 @@
         <canvas id="main-canvas"></canvas>
         <div id="instructions"
              class="absolute top-4 left-4 bg-white/80 backdrop-blur-sm p-3 rounded-lg text-gray-600 text-sm shadow-md pointer-events-none">
-            <p> - 在画板上点击以添加点。</p>
-            <p> - 按 <kbd
+            <p> - Click on the canvas to add a point.</p>
+            <p> - Press <kbd
                     class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Ctrl</kbd>
                 +
                 <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Z</kbd>
-                撤销上一个点。</p>
+                undo the last point.</p>
         </div>
         <div id="message-box"
              class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-xl">
@@ -212,7 +212,7 @@
         importFileInput.value = ''; // Clear file input
         updateUI();
         draw();
-        showMessage("画板已重置", 1500);
+        showMessage("Canvas reset", 1500);
     }
 
     // --- Event Handlers ---
@@ -222,7 +222,7 @@
      */
     function handleCanvasClick(event) {
         if (isFinished) {
-            showMessage("已完成绘制，请先重置再开始新的绘制。", 2500);
+            showMessage("Drawing finished. Please reset before starting a new one.", 2500);
             return;
         }
         const rect = canvas.getBoundingClientRect();
@@ -241,7 +241,7 @@
      */
     function handleFinish() {
         if (points.length < 3) {
-            showMessage("请至少绘制3个点才能完成。", 2000);
+            showMessage("Please draw at least 3 points to finish.", 2000);
             return;
         }
         isFinished = true;
@@ -302,20 +302,20 @@
                     .filter(line => line.length > 0 && !line.startsWith('#'));
 
                 if (lines.length === 0) {
-                    throw new Error("文件内容为空或只包含注释。");
+                    throw new Error("File is empty or only contains comments.");
                 }
 
                 const importedPoints = lines.map(line => {
                     const parts = line.split(/\s+/);
-                    if (parts.length !== 2) throw new Error("文件格式错误：每一行应包含两个由空格分隔的数字。");
+                    if (parts.length !== 2) throw new Error("File format error: each line must contain two numbers separated by space.");
                     const x = parseFloat(parts[0]);
                     const y = parseFloat(parts[1]);
-                    if (isNaN(x) || isNaN(y)) throw new Error("文件内容错误：坐标必须是数字。");
+                    if (isNaN(x) || isNaN(y)) throw new Error("File content error: coordinates must be numbers.");
                     return {x, y};
                 });
 
                 if (importedPoints.length < 2) {
-                    throw new Error("导入失败：文件至少需要包含2个点。");
+                    throw new Error("Import failed: file must contain at least 2 points.");
                 }
 
                 // --- Auto-zoom and Center Logic ---
@@ -348,7 +348,7 @@
 
                 updateUI();
                 draw();
-                showMessage("文件导入成功！", 2000);
+                showMessage("File imported successfully!", 2000);
 
             } catch (error) {
                 resetState(); // Reset if import fails
@@ -361,7 +361,7 @@
         };
 
         reader.onerror = function () {
-            showMessage("读取文件时发生错误。", 3000);
+            showMessage("An error occurred while reading the file.", 3000);
         };
 
         reader.readAsText(file);
