@@ -23,11 +23,11 @@ export const VERSION = '1.0.0';
 
 // 模块信息
 export const MODULES = {
-    utils: '工具函数模块',
-    apiClient: 'API客户端模块',
-    canvasRenderer: 'Canvas渲染模块',
-    uiController: 'UI控制器模块',
-    trainingManager: '训练管理器主模块'
+    utils: 'Utility module',
+    apiClient: 'API client module',
+    canvasRenderer: 'Canvas renderer module',
+    uiController: 'UI controller module',
+    trainingManager: 'Training manager module'
 };
 
 // 检查所有模块是否正确加载
@@ -40,6 +40,6 @@ export function checkModules() {
         trainingManager: typeof TrainingManager !== 'undefined'
     };
 
-    console.log('模块加载状态:', results);
+    console.log('Module load status:', results);
     return results;
 }

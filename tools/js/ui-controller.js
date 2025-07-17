@@ -54,12 +54,12 @@ export class UIController {
         indicator.className = 'w-2 h-2 rounded-full mr-2';
 
         const statusConfig = {
-            [STATUS.RUNNING]: {class: 'status-running', text: '训练中'},
-            [STATUS.STOPPED]: {class: 'status-stopped', text: '已停止'},
-            [STATUS.COMPLETED]: {class: 'status-success', text: '已完成'},
-            [STATUS.STOPPING]: {class: 'status-loading', text: '停止中'},
-            [STATUS.ERROR]: {class: 'status-stopped', text: '出错'},
-            [STATUS.IDLE]: {class: 'status-idle', text: '未启动'}
+            [STATUS.RUNNING]: {class: 'status-running', text: 'Running'},
+            [STATUS.STOPPED]: {class: 'status-stopped', text: 'Stopped'},
+            [STATUS.COMPLETED]: {class: 'status-success', text: 'Completed'},
+            [STATUS.STOPPING]: {class: 'status-loading', text: 'Stopping'},
+            [STATUS.ERROR]: {class: 'status-stopped', text: 'Error'},
+            [STATUS.IDLE]: {class: 'status-idle', text: 'Idle'}
         };
 
         const config = statusConfig[status] || statusConfig[STATUS.IDLE];
@@ -202,7 +202,7 @@ export class UIController {
         if (!select) return;
 
         // 清空现有选项
-        select.innerHTML = '<option value="">选择一个Mesh</option>';
+        select.innerHTML = '<option value="">Select a Mesh</option>';
 
         if (Array.isArray(meshes) && meshes.length > 0) {
             meshes.forEach(mesh => {
@@ -214,7 +214,7 @@ export class UIController {
         } else {
             const option = document.createElement('option');
             option.value = '';
-            option.textContent = '未找到可用的Mesh文件';
+            option.textContent = 'No mesh files found';
             select.appendChild(option);
         }
     }
@@ -230,7 +230,7 @@ export class UIController {
         this.checkpoints = checkpoints || [];
 
         // 清空现有选项
-        select.innerHTML = '<option value="">选择一个Checkpoint</option>';
+        select.innerHTML = '<option value="">Select a Checkpoint</option>';
 
         if (Array.isArray(checkpoints) && checkpoints.length > 0) {
             checkpoints.forEach(checkpoint => {
@@ -244,7 +244,7 @@ export class UIController {
                 // 如果checkpoint无效，禁用该选项
                 if (!checkpoint.is_valid) {
                     option.disabled = true;
-                    option.textContent += ' [无效]';
+                    option.textContent += ' [Invalid]';
                 }
 
                 select.appendChild(option);
@@ -252,7 +252,7 @@ export class UIController {
         } else {
             const option = document.createElement('option');
             option.value = '';
-            option.textContent = '未找到可用的Checkpoint文件';
+            option.textContent = 'No checkpoint files found';
             select.appendChild(option);
         }
     }
@@ -300,12 +300,12 @@ export class UIController {
         if (detailsDiv) {
             detailsDiv.innerHTML = `
                 <div class="text-xs text-gray-600 space-y-1">
-                    <div>训练步数: ${info.training_timesteps.toLocaleString()}</div>
-                    <div>学习率: ${info.learning_rate}</div>
-                    <div>文件大小: ${info.file_size_mb} MB</div>
-                    <div>修改时间: ${info.modified_datetime}</div>
-                    <div>有效性: ${info.is_valid ? '✓ 有效' : '✗ 无效'}</div>
-                    ${info.has_replay_buffer ? '<div>包含经验回放缓冲区</div>' : ''}
+                    <div>Training steps: ${info.training_timesteps.toLocaleString()}</div>
+                    <div>Learning rate: ${info.learning_rate}</div>
+                    <div>File size: ${info.file_size_mb} MB</div>
+                    <div>Modified: ${info.modified_datetime}</div>
+                    <div>Valid: ${info.is_valid ? '✓ Valid' : '✗ Invalid'}</div>
+                    ${info.has_replay_buffer ? '<div>Contains replay buffer</div>' : ''}
                 </div>
             `;
         }
@@ -370,7 +370,7 @@ export class UIController {
     clearLogs() {
         const container = this.elements['log-container'];
         if (container) {
-            container.innerHTML = '<div class="text-gray-500">日志已清除</div>';
+            container.innerHTML = '<div class="text-gray-500">Logs cleared</div>';
         }
     }
 
@@ -380,7 +380,7 @@ export class UIController {
      */
     updateClickCoordinates(coords) {
         if (!coords || !Array.isArray(coords) || coords.length !== 2) {
-            this.updateElement('click-coordinates', '无变换数据');
+            this.updateElement('click-coordinates', 'No transform data');
             return;
         }
 
@@ -464,7 +464,7 @@ export class UIController {
         if (!config.mesh_name) {
             return {
                 valid: false,
-                message: '请先选择一个Mesh文件'
+                message: 'Please select a mesh file first'
             };
         }
 
@@ -476,7 +476,7 @@ export class UIController {
             if (!config.checkpoint_name) {
                 return {
                     valid: false,
-                    message: '启用checkpoint模式时必须选择一个checkpoint'
+                    message: 'A checkpoint must be selected when checkpoint mode is enabled'
                 };
             }
 
@@ -485,7 +485,7 @@ export class UIController {
             if (!selectedCheckpoint || !selectedCheckpoint.is_valid) {
                 return {
                     valid: false,
-                    message: '选择的checkpoint无效'
+                    message: 'Selected checkpoint is invalid'
                 };
             }
         }
@@ -494,21 +494,21 @@ export class UIController {
         if (!config.max_timesteps) {
             return {
                 valid: false,
-                message: '请指定最大训练步数'
+                message: 'Please specify max training steps'
             };
         }
 
         if (config.max_timesteps && config.max_timesteps < 1000) {
             return {
                 valid: false,
-                message: '最大训练步数应至少为1000'
+                message: 'Max training steps should be at least 1000'
             };
         }
 
         if (config.max_steps && config.max_steps < 1) {
             return {
                 valid: false,
-                message: '每Episode最大步数必须大于0'
+                message: 'Max steps per episode must be greater than 0'
             };
         }
 

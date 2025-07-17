@@ -40,14 +40,14 @@ export class TrainingManager {
                 await this.loadMeshList();
                 await this.loadCheckpointList(); // 新增：加载checkpoint列表
             } else {
-                this.uiController.logMessage('无法连接到后端服务器，请确保Flask应用正在运行在 http://localhost:5000', LOG_TYPES.ERROR);
+                this.uiController.logMessage('Cannot connect to backend server. Ensure the Flask app is running at http://localhost:5000', LOG_TYPES.ERROR);
             }
 
             this.uiController.updateButtonStates(false);
-            this.uiController.logMessage('系统初始化完成', LOG_TYPES.INFO);
+            this.uiController.logMessage('System initialization completed', LOG_TYPES.INFO);
         } catch (error) {
-            console.error('初始化失败:', error);
-            this.uiController.showError('系统初始化失败: ' + error.message);
+            console.error('Initialization failed:', error);
+            this.uiController.showError('System initialization failed: ' + error.message);
         }
     }
 
@@ -59,7 +59,7 @@ export class TrainingManager {
         if (canvas) {
             this.canvasRenderer = new CanvasRenderer(canvas);
         } else {
-            console.error('未找到Canvas元素');
+            console.error('Canvas element not found');
         }
     }
 
@@ -124,11 +124,11 @@ export class TrainingManager {
         try {
             const connected = await this.apiClient.checkConnection();
             if (connected) {
-                this.uiController.logMessage('后端连接正常', LOG_TYPES.SUCCESS);
+                this.uiController.logMessage('Backend connection successful', LOG_TYPES.SUCCESS);
             }
             return connected;
         } catch (error) {
-            this.uiController.logMessage('后端连接失败: ' + error.message, LOG_TYPES.ERROR);
+            this.uiController.logMessage('Backend connection failed: ' + error.message, LOG_TYPES.ERROR);
             return false;
         }
     }
@@ -145,14 +145,14 @@ export class TrainingManager {
             this.uiController.populateMeshList(data.meshes || []);
 
             if (data.meshes && data.meshes.length > 0) {
-                this.uiController.logMessage(`成功加载 ${data.meshes.length} 个Mesh文件`, LOG_TYPES.SUCCESS);
+                this.uiController.logMessage(`Loaded ${data.meshes.length} mesh files`, LOG_TYPES.SUCCESS);
             } else {
-                this.uiController.logMessage('未找到可用的Mesh文件', LOG_TYPES.WARNING);
+                this.uiController.logMessage('No mesh files found', LOG_TYPES.WARNING);
             }
 
         } catch (error) {
-            console.error('加载Mesh列表失败:', error);
-            this.uiController.showError('加载Mesh列表失败: ' + error.message);
+            console.error('Failed to load mesh list:', error);
+            this.uiController.showError('Failed to load mesh list: ' + error.message);
         } finally {
             this.uiController.showLoading(false);
         }
@@ -168,14 +168,14 @@ export class TrainingManager {
             this.uiController.populateCheckpointList(data.checkpoints || []);
 
             if (data.checkpoints && data.checkpoints.length > 0) {
-                this.uiController.logMessage(`成功加载 ${data.checkpoints.length} 个Checkpoint文件`, LOG_TYPES.SUCCESS);
+                this.uiController.logMessage(`Loaded ${data.checkpoints.length} checkpoint files`, LOG_TYPES.SUCCESS);
             } else {
-                this.uiController.logMessage('未找到可用的Checkpoint文件', LOG_TYPES.INFO);
+                this.uiController.logMessage('No checkpoint files found', LOG_TYPES.INFO);
             }
 
         } catch (error) {
-            console.error('加载Checkpoint列表失败:', error);
-            this.uiController.logMessage('加载Checkpoint列表失败: ' + error.message, LOG_TYPES.WARNING);
+            console.error('Failed to load checkpoint list:', error);
+            this.uiController.logMessage('Failed to load checkpoint list: ' + error.message, LOG_TYPES.WARNING);
         }
     }
 
@@ -204,7 +204,7 @@ export class TrainingManager {
 
             // 更新UI信息
             this.uiController.showMeshInfo(info);
-            this.uiController.logMessage(`选择了Mesh: ${meshName}`, LOG_TYPES.INFO);
+            this.uiController.logMessage(`Selected mesh: ${meshName}`, LOG_TYPES.INFO);
 
             // 在canvas中渲染边界预览
             if (this.canvasRenderer && boundaryData.success) {
@@ -213,19 +213,19 @@ export class TrainingManager {
                     meshName
                 );
                 this.uiController.logMessage(
-                    `已加载边界预览: ${boundaryData.vertex_count} 个顶点`,
+                    `Loaded boundary preview: ${boundaryData.vertex_count} vertices`,
                     LOG_TYPES.SUCCESS
                 );
             } else if (!boundaryData.success) {
                 this.uiController.logMessage(
-                    `无法加载边界数据: ${boundaryData.error}`,
+                    `Failed to load boundary data: ${boundaryData.error}`,
                     LOG_TYPES.WARNING
                 );
             }
 
         } catch (error) {
-            console.error('获取Mesh信息失败:', error);
-            this.uiController.showError('获取Mesh信息失败: ' + error.message);
+            console.error('Failed to get mesh info:', error);
+            this.uiController.showError('Failed to get mesh info: ' + error.message);
             this.uiController.hideMeshInfo();
 
             // 清空canvas
@@ -245,9 +245,9 @@ export class TrainingManager {
         this.uiController.showCheckpointSelection(useCheckpoint);
 
         if (useCheckpoint) {
-            this.uiController.logMessage('已启用Checkpoint模式', LOG_TYPES.INFO);
+            this.uiController.logMessage('Checkpoint mode enabled', LOG_TYPES.INFO);
         } else {
-            this.uiController.logMessage('已禁用Checkpoint模式', LOG_TYPES.INFO);
+            this.uiController.logMessage('Checkpoint mode disabled', LOG_TYPES.INFO);
             this.uiController.hideCheckpointInfo();
         }
     }
@@ -270,14 +270,14 @@ export class TrainingManager {
 
             if (response.success && response.checkpoint_info) {
                 this.uiController.showCheckpointInfo(response.checkpoint_info);
-                this.uiController.logMessage(`选择了Checkpoint: ${checkpointName}`, LOG_TYPES.INFO);
+                this.uiController.logMessage(`Selected checkpoint: ${checkpointName}`, LOG_TYPES.INFO);
             } else {
-                this.uiController.showError('获取Checkpoint信息失败');
+                this.uiController.showError('Failed to get checkpoint info');
             }
 
         } catch (error) {
-            console.error('获取Checkpoint信息失败:', error);
-            this.uiController.showError('获取Checkpoint信息失败: ' + error.message);
+            console.error('Failed to get checkpoint info:', error);
+            this.uiController.showError('Failed to get checkpoint info: ' + error.message);
             this.uiController.hideCheckpointInfo();
         } finally {
             this.uiController.showLoading(false);
@@ -310,7 +310,7 @@ export class TrainingManager {
 
         // 记录到日志
         const coordText = `(${worldCoords[0].toFixed(3)}, ${worldCoords[1].toFixed(3)})`;
-        this.uiController.logMessage(`点击坐标: ${coordText}`, LOG_TYPES.INFO);
+        this.uiController.logMessage(`Click coordinates: ${coordText}`, LOG_TYPES.INFO);
     }
 
     /**
@@ -337,9 +337,9 @@ export class TrainingManager {
 
             const result = await this.apiClient.startTraining(config);
 
-            let successMessage = '训练已启动: ' + result.message;
+            let successMessage = 'Training started: ' + result.message;
             if (result.from_checkpoint && result.checkpoint_name) {
-                successMessage += ` (继续训练自checkpoint: ${result.checkpoint_name})`;
+                successMessage += ` (continued from checkpoint: ${result.checkpoint_name})`;
             }
 
             this.uiController.logMessage(successMessage, LOG_TYPES.SUCCESS);
@@ -352,8 +352,8 @@ export class TrainingManager {
             this.scheduleImmediateUpdate();
 
         } catch (error) {
-            console.error('启动训练失败:', error);
-            this.uiController.showError('启动训练失败: ' + error.message);
+            console.error('Failed to start training:', error);
+            this.uiController.showError('Failed to start training: ' + error.message);
         } finally {
             this.uiController.showLoading(false);
         }
@@ -375,7 +375,7 @@ export class TrainingManager {
             setTimeout(async () => {
                 if (this.isTraining) {
                     await this.updateTrainingStatus();
-                    this.uiController.logMessage(`获取训练状态更新 #${index + 1}`, LOG_TYPES.INFO);
+                    this.uiController.logMessage(`Training status update #${index + 1}`, LOG_TYPES.INFO);
                 }
             }, delay);
         });
@@ -400,11 +400,11 @@ export class TrainingManager {
             this.uiController.showLoading(true);
 
             const result = await this.apiClient.stopTraining();
-            this.uiController.logMessage('训练停止请求已发送: ' + result.message, LOG_TYPES.INFO);
+            this.uiController.logMessage('Training stop request sent: ' + result.message, LOG_TYPES.INFO);
 
         } catch (error) {
-            console.error('停止训练失败:', error);
-            this.uiController.showError('停止训练失败: ' + error.message);
+            console.error('Failed to stop training:', error);
+            this.uiController.showError('Failed to stop training: ' + error.message);
         } finally {
             this.uiController.showLoading(false);
         }
@@ -458,8 +458,8 @@ export class TrainingManager {
             const status = await this.apiClient.getTrainingStatus();
             this.handleStatusUpdate(status);
         } catch (error) {
-            console.error('获取训练状态失败:', error);
-            this.uiController.logMessage('获取训练状态失败: ' + error.message, LOG_TYPES.ERROR);
+            console.error('Failed to get training status:', error);
+            this.uiController.logMessage('Failed to get training status: ' + error.message, LOG_TYPES.ERROR);
         }
     }
 
@@ -527,7 +527,7 @@ export class TrainingManager {
         if (this.canvasRenderer) {
             this.canvasRenderer.onResize();
         }
-        this.uiController.logMessage('窗口大小已调整', LOG_TYPES.INFO);
+        this.uiController.logMessage('Window resized', LOG_TYPES.INFO);
     }
 
     /**
@@ -562,6 +562,6 @@ export class TrainingManager {
 
         this.uiController.reset();
 
-        console.log('TrainingManager已销毁');
+        console.log('TrainingManager destroyed');
     }
 }

@@ -191,7 +191,7 @@ export class CanvasRenderer {
         this.ctx.font = '16px sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.fillText(
-            '选择Mesh文件预览边界形状...',
+            'Select a mesh file to preview boundary...',
             displayWidth / 2,
             displayHeight / 2
         );
@@ -246,7 +246,7 @@ export class CanvasRenderer {
         this.ctx.font = 'bold 14px sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.fillText(
-            `${meshName} (${vertexCount} 个顶点)`,
+            `${meshName} (${vertexCount} vertices)`,
             displayWidth / 2,
             30
         );
@@ -328,7 +328,7 @@ export class CanvasRenderer {
                         allVertices.push(...adjacentVertices.filter(isValidCoordinate));
                     }
                 } catch (e) {
-                    console.warn('解析顶点数据失败:', vertexStr);
+                    console.warn('Failed to parse vertex data:', vertexStr);
                 }
             });
         }
@@ -391,7 +391,7 @@ export class CanvasRenderer {
                     });
                 }
             } catch (e) {
-                console.warn('渲染网格边失败:', vertexStr);
+                console.warn('Failed to render mesh edge:', vertexStr);
             }
         });
 
@@ -437,7 +437,7 @@ export class CanvasRenderer {
                     });
                 }
             } catch (e) {
-                console.warn('绘制网格顶点失败:', vertexStr);
+                console.warn('Failed to draw mesh vertex:', vertexStr);
             }
         });
     }

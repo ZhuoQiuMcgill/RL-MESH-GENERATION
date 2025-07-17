@@ -152,7 +152,7 @@ export function parseBackendData(data) {
         try {
             return JSON.parse(data);
         } catch (e) {
-            console.error('解析数据失败:', e);
+            console.error('Failed to parse data:', e);
             return null;
         }
     }
@@ -213,7 +213,7 @@ export function safeGetElement(id) {
     try {
         return document.getElementById(id);
     } catch (error) {
-        console.warn(`无法获取元素 ${id}:`, error);
+        console.warn(`Failed to get element ${id}:`, error);
         return null;
     }
 }
