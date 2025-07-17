@@ -35,7 +35,7 @@ export class HistoryManager {
             'training-id-display', 'detail-length-display', 'best-episode-display',
             'episode-index-input', 'current-episode-display', 'episode-meta-info',
             'episode-reward-display', 'episode-length-display', 'episode-status-display',
-            'boundary-vertices-count', 'mesh-vertices-count', 'ref-point-display',
+            'actual-episode-number-display', 'boundary-vertices-count', 'mesh-vertices-count', 'ref-point-display',
             'click-coordinates-display', 'episode-data-container', 'mesh-data-container',
             'history-log-container', 'history-loading-overlay',
             // 按钮
@@ -422,9 +422,10 @@ export class HistoryManager {
     updateEpisodeInfo() {
         if (!this.currentEpisodeData) return;
 
-        const {r: reward, l: length, is_completed} = this.currentEpisodeData;
+        const {r: reward, l: length, is_completed, episode_number} = this.currentEpisodeData;
 
         this.updateElement('current-episode-display', `Episode ${this.currentEpisodeIndex}`);
+        this.updateElement('actual-episode-number-display', episode_number || 'N/A');
         this.updateElement('episode-reward-display', formatNumber(reward));
         this.updateElement('episode-length-display', length);
         this.updateElement('episode-status-display', is_completed ? '完成' : '未完成');
@@ -463,7 +464,17 @@ export class HistoryManager {
         if (episodeContainer) {
             const {r: reward, l: length, is_completed} = this.currentEpisodeData;
 
+            const episode_number = this.currentEpisodeData.episode_number;
+
             episodeContainer.innerHTML = `
+                <div class="episode-data-item">
+                    <span class="episode-data-key">索引:</span>
+                    <span class="episode-data-value">${this.currentEpisodeIndex}</span>
+                </div>
+                <div class="episode-data-item">
+                    <span class="episode-data-key">实际Episode:</span>
+                    <span class="episode-data-value">${episode_number || 'N/A'}</span>
+                </div>
                 <div class="episode-data-item">
                     <span class="episode-data-key">奖励值:</span>
                     <span class="episode-data-value">${formatNumber(reward)}</span>
@@ -475,16 +486,8 @@ export class HistoryManager {
                 <div class="episode-data-item">
                     <span class="episode-data-key">状态:</span>
                     <span class="episode-data-value ${is_completed ? 'text-green-600' : 'text-orange-600'}">
-                        ${is_completed ? '✓ 完成' : '○ 未完成'}
+                        ${is_completed ? '完成' : '未完成'}
                     </span>
-                </div>
-                <div class="episode-data-item">
-                    <span class="episode-data-key">边界顶点:</span>
-                    <span class="episode-data-value">${(this.currentEpisodeData.boundary_vertices_data || []).length}</span>
-                </div>
-                <div class="episode-data-item">
-                    <span class="episode-data-key">网格顶点:</span>
-                    <span class="episode-data-value">${Object.keys(this.currentEpisodeData.mesh_data || {}).length}</span>
                 </div>
             `;
         }

@@ -243,7 +243,11 @@ class SB3SACTrainer:
         plot_reward_change(self._cb.get_data('r'), self._cb.get_data('l'), path)
 
     def save_history(self, path):
-        save_episode_details(
-            self._cb.get_non_zero_step_details(),
-            self._cb.current_best_episode(),
-            path)
+        details = self._cb.get_non_zero_step_details()
+        best_episode_number = self._cb.current_best_episode()
+        best_episode_index = 0
+        for i, detail in enumerate(details):
+            if detail.get("episode_number") == best_episode_number:
+                best_episode_index = i
+                break
+        save_episode_details(details, best_episode_index, path)
