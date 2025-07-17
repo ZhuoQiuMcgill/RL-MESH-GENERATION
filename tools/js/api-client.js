@@ -36,7 +36,7 @@ export function withErrorHandling(apiMethod) {
  * @param {number} retryDelay - 重试延迟时间（毫秒）
  * @returns {Promise<any>} API响应
  */
-export async function withRetry(apiCall, maxRetries = 3, retryDelay = 1000) {
+export async function withRetry(apiCall, maxRetries = 1, retryDelay = 3000) {
     let lastError;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {

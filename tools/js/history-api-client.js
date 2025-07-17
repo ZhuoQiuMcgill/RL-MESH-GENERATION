@@ -4,6 +4,7 @@
  */
 
 import {ApiClient} from './api-client.js';
+import {CONSTANTS} from './utils.js';
 
 export class HistoryApiClient extends ApiClient {
     constructor() {
@@ -43,7 +44,7 @@ export class HistoryApiClient extends ApiClient {
         try {
             const response = await this.request(`${this.historyBasePath}/info/${trainingId}`, {
                 method: 'POST'
-            });
+            }, CONSTANTS.HISTORY_CONNECTION_TIMEOUT);
 
             return {
                 success: response.success || false,
@@ -73,7 +74,10 @@ export class HistoryApiClient extends ApiClient {
         try {
             const response = await this.request(
                 `${this.historyBasePath}/episode/${trainingId}/${episodeIndex}`,
-                {method: 'POST'}
+                {
+                    method: 'POST'
+                },
+                CONSTANTS.HISTORY_CONNECTION_TIMEOUT
             );
 
             return {
