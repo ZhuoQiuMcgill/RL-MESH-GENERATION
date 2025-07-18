@@ -61,6 +61,7 @@ class SB3SACAgent:
         gradient_steps = sb3_config.get("gradient_steps", 1)
         verbose = sb3_config.get("verbose", 0)
         seed = sb3_config.get("seed", 998)
+        ent_coef = sb3_config.get("ent_coef", "auto")
 
         # 记录使用的参数
         print(f"SAC Agent配置:")
@@ -91,6 +92,7 @@ class SB3SACAgent:
             policy_kwargs=policy_kwargs,
             verbose=verbose,
             seed=seed,
+            ent_coef=ent_coef,
             device=device
         )
 

@@ -60,17 +60,26 @@ def plot_reward_change(episode_rewards: List[float],
     ax.set_facecolor(bg_color)
     fig.subplots_adjust(right=0.75)  # 留 25% 空间给外部图例和文本
 
-    # 主曲线
+    # 主曲线（减小线条粗细）
     ax.plot(x_data, rewards,
-            color=primary_color, linewidth=2.5,
+            color=primary_color, linewidth=1.5,
             alpha=0.9, label='Episode Reward', zorder=3)
-    # 移动平均
+
+    # 移动平均（减小线条粗细）
     if len(rewards) > 10:
         window = min(20, len(rewards) // 5)
         ma = np.convolve(rewards, np.ones(window) / window, mode='valid')
         ax.plot(x_data[window - 1:], ma,
-                color=secondary_color, linewidth=3,
+                color=secondary_color, linewidth=2,
                 alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
+
+    # 100窗口移动平均线（新增）
+    if len(rewards) > 100:
+        ma_100 = np.convolve(rewards, np.ones(100) / 100, mode='valid')
+        ax.plot(x_data[99:], ma_100,
+                color='#4fc3f7', linewidth=1.8,
+                alpha=0.9, label='Moving Avg (100)', zorder=4)
+
     # 少量点时加散点
     if len(x_data) <= 100:
         ax.scatter(x_data, rewards,
@@ -103,7 +112,7 @@ def plot_reward_change(episode_rewards: List[float],
     ax.tick_params(axis='x', length=6, width=1.5, color=grid_color)
     ax.tick_params(axis='y', length=6, width=1.5, color=grid_color)
 
-    # 图例：放在右侧外部
+    # 图例：放在右侧外部（修复位置对齐）
     legend = ax.legend(loc='upper left',
                        bbox_to_anchor=(1.02, 1.0),
                        borderaxespad=0, fancybox=True, fontsize=11)
@@ -114,7 +123,7 @@ def plot_reward_change(episode_rewards: List[float],
     for txt in legend.get_texts():
         txt.set_color(text_color)
 
-    # 统计信息：放在右侧外部
+    # 统计信息：放在右侧外部（修复位置对齐）
     total_ts = int(lengths.sum())
     stats = (
         f"Episodes:     {len(rewards):,}\n"
@@ -125,14 +134,15 @@ def plot_reward_change(episode_rewards: List[float],
         f"Final Reward: {rewards[-1]:.3f}\n"
         f"Mean Reward:  {rewards.mean():.3f}"
     )
-    fig.text(0.78, 0.50, stats,
+    fig.text(1.02, 0.55, stats,
              fontsize=10, color=text_color,
              fontfamily='monospace',
              bbox=dict(boxstyle='round,pad=0.6',
                        facecolor=card_bg,
                        edgecolor=primary_color,
                        alpha=0.95,
-                       linewidth=1.5))
+                       linewidth=1.5),
+             transform=ax.transAxes)
 
     # 保存 & 关闭
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
