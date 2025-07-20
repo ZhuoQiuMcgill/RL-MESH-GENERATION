@@ -9,26 +9,26 @@ class ActionType(ABC):
     QUALITY_THRESHOLD = 0.08
 
     @abstractmethod
-    def execute(self, mesh, boundary, **kwargs):
+    def execute(self, mesh, boundary, reference_vertex_idx, *coords):
         """
         执行具体的几何操作来修改网格和边界。
-        返回更新后的 (mesh, boundary, generated_element)。
+        返回生成的元素。
         """
         pass
 
     @abstractmethod
-    def is_valid(self, boundary, **kwargs):
+    def is_valid(self, boundary, reference_vertex_idx, *coords):
         """
         检查动作在当前边界下是否有效。
         """
         pass
 
     @abstractmethod
-    def get_element(self, boundary, **kwargs):
+    def get_element(self, boundary, reference_vertex_idx, *coords):
         pass
 
     @abstractmethod
-    def get_generated_angle(self, boundary, **kwargs):
+    def get_generated_angle(self, boundary, reference_vertex_idx, *coords):
         pass
 
     @staticmethod
@@ -50,9 +50,9 @@ class ActionType(ABC):
         return max(0.0, min(1.0, q))
 
     @abstractmethod
-    def get_element_quality(self, boundary, **kwargs):
+    def get_element_quality(self, boundary, reference_vertex_idx, *coords):
         pass
 
     @abstractmethod
-    def get_boundary_quality(self, boundary, **kwargs):
+    def get_boundary_quality(self, boundary, reference_vertex_idx, *coords, M_angle):
         pass

@@ -93,6 +93,35 @@ environment:
   # 最大内角阈值（度）
   M_angle: 60.0
 
+  # 动作配置 - 控制训练中可用的动作类型
+  actions:
+    # 启用的动作类型列表
+    # 可选值: "type0_left", "type0_right", "type1", "type2"
+    enabled: [ "type0_right", "type1" ]
+    
+    # 动作类型映射配置
+    # 当启用的动作类型少于4个时，会重新映射action_type值
+    # auto_remap: true时自动重新映射，false时保持原始映射
+    auto_remap: true
+    
+    # 动作描述（用于日志和调试）
+    descriptions:
+      type0_left: "Type 0 Left - Connect left boundary vertices to form quadrilateral"
+      type0_right: "Type 0 Right - Connect right boundary vertices to form quadrilateral"
+      type1: "Type 1 - Add one new vertex to form quadrilateral"
+      type2: "Type 2 - Add two new vertices to form quadrilateral"
+    
+    # 配置示例：
+    # 仅使用简单动作（不生成新顶点）:
+    # enabled: ["type0_left", "type0_right"]
+    
+    # 仅使用复杂动作（生成新顶点）:
+    # enabled: ["type1", "type2"]
+    
+    # 保持原始4个动作映射（不重新映射）:
+    # enabled: ["type0_left", "type1", "type2"]
+    # auto_remap: false
+
 # 训练配置
 training:
   # 最大训练步数 - 前端可以修改此参数

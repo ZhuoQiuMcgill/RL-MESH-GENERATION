@@ -9,21 +9,21 @@ class ActionType0Right(ActionType):
     对应论文中的 Figure 5(a)。
     """
 
-    def get_element(self, boundary, reference_vertex_V0_idx):
-        v0 = boundary.get_vertex_by_index(reference_vertex_V0_idx)
-        v1 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 1)
-        v2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
-        v3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
+    def get_element(self, boundary, reference_vertex_idx, *coords):
+        v0 = boundary.get_vertex_by_index(reference_vertex_idx)
+        v1 = boundary.get_vertex_by_index(reference_vertex_idx + 1)
+        v2 = boundary.get_vertex_by_index(reference_vertex_idx + 2)
+        v3 = boundary.get_vertex_by_index(reference_vertex_idx - 1)
         return [v0, v1, v2, v3]
 
-    def get_generated_angle(self, boundary, reference_vertex_V0_idx):
-        v2 = boundary.get_vertex_by_index(reference_vertex_V0_idx + 2)
-        v3 = boundary.get_vertex_by_index(reference_vertex_V0_idx - 1)
-        angle_1 = [v3, v2, boundary.get_vertex_by_index(reference_vertex_V0_idx + 3)]
-        angle_2 = [boundary.get_vertex_by_index(reference_vertex_V0_idx - 2), v3, v2]
+    def get_generated_angle(self, boundary, reference_vertex_idx, *coords):
+        v2 = boundary.get_vertex_by_index(reference_vertex_idx + 2)
+        v3 = boundary.get_vertex_by_index(reference_vertex_idx - 1)
+        angle_1 = [v3, v2, boundary.get_vertex_by_index(reference_vertex_idx + 3)]
+        angle_2 = [boundary.get_vertex_by_index(reference_vertex_idx - 2), v3, v2]
         return angle_1, angle_2
 
-    def execute(self, mesh, boundary, reference_vertex_V0_idx):
+    def execute(self, mesh, boundary, reference_vertex_idx, *coords):
         """
         执行Type 0动作的逻辑
 
@@ -32,13 +32,13 @@ class ActionType0Right(ActionType):
         Args:
             mesh: 网格对象（会被直接修改）
             boundary: 边界对象（会被直接修改）
-            reference_vertex_V0_idx: 参考顶点V0在边界中的索引
+            reference_vertex_idx: 参考顶点V0在边界中的索引
 
         Returns:
             list: 生成的四边形元素（四个顶点的列表）
         """
 
-        quadrilateral = self.get_element(boundary, reference_vertex_V0_idx)
+        quadrilateral = self.get_element(boundary, reference_vertex_idx)
         v0, v1, v2, v3 = quadrilateral
         try:
             mesh.add_edge(v2, v3)
@@ -52,7 +52,7 @@ class ActionType0Right(ActionType):
 
         return quadrilateral
 
-    def is_valid(self, boundary, reference_vertex_V0_idx):
+    def is_valid(self, boundary, reference_vertex_idx, *coords):
         """
         检查Type 0动作的有效性
         """
@@ -60,7 +60,7 @@ class ActionType0Right(ActionType):
             return False
 
         # 获取构成四边形的四个顶点
-        quadrilateral = self.get_element(boundary, reference_vertex_V0_idx)
+        quadrilateral = self.get_element(boundary, reference_vertex_idx)
 
         if self.element_quality(quadrilateral) < self.QUALITY_THRESHOLD:
             return False
@@ -83,12 +83,12 @@ class ActionType0Right(ActionType):
 
         return True
 
-    def get_element_quality(self, boundary, reference_vertex_V0_idx):
-        quadrilateral = self.get_element(boundary, reference_vertex_V0_idx)
+    def get_element_quality(self, boundary, reference_vertex_idx, *coords):
+        quadrilateral = self.get_element(boundary, reference_vertex_idx)
         return self.element_quality(quadrilateral)
 
-    def get_boundary_quality(self, boundary, reference_vertex_V0_idx, M_angle):
-        a1, a2 = self.get_generated_angle(boundary, reference_vertex_V0_idx)
+    def get_boundary_quality(self, boundary, reference_vertex_idx, *coords, M_angle):
+        a1, a2 = self.get_generated_angle(boundary, reference_vertex_idx)
         angle1 = get_interior_angle(a1[0], a1[1], a1[2])
         angle2 = get_interior_angle(a2[0], a2[1], a2[2])
         q_dist = 1
