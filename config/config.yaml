@@ -97,7 +97,7 @@ environment:
   actions:
     # 启用的动作类型列表
     # 可选值: "type0_left", "type0_right", "type1", "type2"
-    enabled: [ "type0_right", "type1" ]
+    enabled: [ "type0_right", "type0_right", "type1" ]
     
     # 动作类型映射配置
     # 当启用的动作类型少于4个时，会重新映射action_type值

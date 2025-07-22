@@ -263,8 +263,32 @@ export class HistoryManager {
             return;
         }
 
+        // 按时间戳排序训练会话，最新的在前面
+        const sortedTrainingList = [...this.trainingList].sort((a, b) => {
+            const aDisplayName = this.formatTrainingDisplayName(a);
+            const bDisplayName = this.formatTrainingDisplayName(b);
+            
+            // 提取时间戳进行比较
+            const aTimestamp = aDisplayName.timestamp;
+            const bTimestamp = bDisplayName.timestamp;
+            
+            // 如果都有时间戳，按时间戳倒序排列（最新的在前）
+            if (aTimestamp && bTimestamp && aTimestamp.includes('_') && bTimestamp.includes('_')) {
+                const aTime = aTimestamp.replace(/[^0-9]/g, ''); // 移除非数字字符
+                const bTime = bTimestamp.replace(/[^0-9]/g, ''); // 移除非数字字符
+                return bTime.localeCompare(aTime); // 倒序比较
+            }
+            
+            // 如果只有一个有时间戳，有时间戳的排在前面
+            if (aTimestamp && !bTimestamp) return -1;
+            if (!aTimestamp && bTimestamp) return 1;
+            
+            // 都没有时间戳则按ID字符串倒序排列
+            return b.localeCompare(a);
+        });
+
         // 生成训练项目HTML
-        const itemsHTML = this.trainingList.map(trainingId => {
+        const itemsHTML = sortedTrainingList.map(trainingId => {
             const isActive = trainingId === this.currentTrainingId;
             const displayName = this.formatTrainingDisplayName(trainingId);
 
