@@ -9,7 +9,7 @@ from typing import Any
 from src.geometry import Mesh, Boundary
 from src.rl.action.action_manager import ActionManager
 from .config import load_config
-from src.utils import euclidean_distance, calculate_base_length, normalize_coordinates, calculate_polygon_area
+from src.utils import euclidean_distance, normalize_coordinates, calculate_polygon_area
 
 
 class MeshEnv(gym.Env):
@@ -244,7 +244,7 @@ class MeshEnv(gym.Env):
         try:
             fan_points = self.boundary.get_fan_points(
                 reference_idx, self.g,
-                self.beta * calculate_base_length(self.boundary, reference_idx, self.n)
+                self.beta * self.boundary.get_avg_neighbor_length(reference_idx, self.n)
             )
 
             # 将参考顶点加入fan_points列表的开头以便标准化

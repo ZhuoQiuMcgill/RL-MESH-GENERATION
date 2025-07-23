@@ -5,7 +5,7 @@ from .type0_left import ActionType0Left
 from .type0_right import ActionType0Right
 from .type1 import ActionType1
 from .type2 import ActionType2
-from src.utils import euclidean_distance, calculate_base_length
+from src.utils import euclidean_distance
 
 
 class ActionManager:
@@ -161,7 +161,7 @@ class ActionManager:
         new_coords = []
         if action_name in ["type1", "type2"]:  # Only ActionType1 and ActionType2 need new vertices
             # Calculate action space radius
-            base_length = calculate_base_length(boundary, reference_vertex_idx, self.n)
+            base_length = boundary.get_avg_neighbor_length(reference_vertex_idx, self.n)
             radius = self.alpha * base_length
 
             # Map [-1,1] range action to coordinates within fan area

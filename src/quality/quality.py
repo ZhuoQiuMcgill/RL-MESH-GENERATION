@@ -53,17 +53,6 @@ def quality_robust(element: List[Point]) -> float:
     return _clamp(math.sqrt(q_edge * q_angle))
 
 
-def quality_default(element: List[Point]) -> float:
-    if not _validate(element):
-        return 0.0
-    edges = _edge_lengths(element)
-    aspect = max(edges) / min(edges) if min(edges) > 0 else float('inf')
-    angs = _angles(element)
-    max_error = max(abs(a - math.pi / 2) for a in angs)
-    denom = aspect + max_error
-    return _clamp(1.0 / denom) if denom > 0 else 0.0
-
-
 def quality_s_jacobian(element: List[Point]) -> float:
     if not _validate(element):
         return 0.0
@@ -91,7 +80,7 @@ def quality_hybrid(element: List[Point], gamma: float = 1.0) -> float:
     """
     if not _validate(element):
         return 0.0
-        
+
     sj = quality_s_jacobian(element)
     if sj <= 0.0:
         return 0.0  # flipped or collapsed
@@ -107,30 +96,30 @@ class QualityManager:
     def __init__(self):
         self._quality_methods: Dict[str, Callable] = {}
         self._discover_quality_methods()
-    
+
     def _discover_quality_methods(self):
         current_module = inspect.getmodule(self)
         for name, func in inspect.getmembers(current_module, inspect.isfunction):
             if name.startswith('quality_') and not name.startswith('_'):
                 method_name = name.replace('quality_', '')
                 self._quality_methods[method_name] = func
-    
+
     def get_available_methods(self) -> List[str]:
         return list(self._quality_methods.keys())
-    
+
     def calculate_quality(self, method_name: str, vertices: List[Point], **kwargs) -> float:
         if method_name not in self._quality_methods:
             raise ValueError(f"Quality method '{method_name}' not found")
-        
+
         # Handle methods with additional parameters (like gamma for hybrid)
         func = self._quality_methods[method_name]
         sig = inspect.signature(func)
-        
+
         # Filter kwargs to only include parameters the function accepts
         valid_kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
-        
+
         return func(vertices, **valid_kwargs)
-    
+
     def get_method_info(self) -> Dict[str, Dict[str, str]]:
         info = {}
         for method_name, func in self._quality_methods.items():

@@ -3,7 +3,7 @@ from typing import List, Tuple
 from math import inf
 
 # 只导入具体需要的函数，避免循环导入
-from src.utils.angle import get_interior_angle, is_angle_in_slice
+from src.utils.angle import get_interior_angle, is_angle_in_slice, euclidean_distance
 from src.utils.segment import (
     ray_segment_intersection,
     orientation,
@@ -97,6 +97,71 @@ class Boundary:
             if distance < min_distance:
                 min_distance = distance
         return min_distance
+
+    def get_closest_vertex_distance(self, vertex, ignore_vertices):
+        """
+        Return the shortest distance from *vertex* to any boundary vertex, skipping
+        vertices listed in *ignore_vertices*.
+        """
+
+        def to_tuple(pt):
+            """Convert array-like point to plain (x, y) tuple of floats."""
+            if isinstance(pt, np.ndarray):
+                return tuple(float(x) for x in pt)
+            return tuple(pt)
+
+        # Normalize ignore_vertices to tuples for consistent comparison
+        normalized_ignore = {to_tuple(v) for v in ignore_vertices}
+
+        min_distance = inf
+        vertex_array = np.asarray(vertex, dtype=float)
+        
+        for boundary_vertex in self.get_vertices():
+            if to_tuple(boundary_vertex) in normalized_ignore:
+                continue
+            boundary_vertex_array = np.asarray(boundary_vertex, dtype=float)
+            distance = float(np.linalg.norm(vertex_array - boundary_vertex_array))
+            if distance < min_distance:
+                min_distance = distance
+        return min_distance
+
+    def get_avg_neighbor_length(self, v: int, n: int) -> float:
+        """
+        Calculate the average edge length of n neighbor edges from the center vertex v.
+        
+        Args:
+            v: The index of the target vertex (center)
+            n: The number of neighbor edges on each side
+            
+        Returns:
+            float: The average length of 2n edges centered around vertex v
+            
+        Example:
+            If n=2, calculates average length of edges: (v-2,v-1), (v-1,v0), (v0,v1), (v1,v2)
+        """
+        if not isinstance(v, int):
+            raise TypeError("vertex index v must be int")
+        if not isinstance(n, int) or n <= 0:
+            raise ValueError("n must be a positive integer")
+        
+        boundary_size = self.size()
+        if boundary_size < 2 * n:
+            raise ValueError(f"Boundary has only {boundary_size} vertices, need at least {2 * n} for n={n}")
+        
+        total_length = 0.0
+        edge_count = 2 * n
+        
+        # Calculate lengths of edges from (v-n) to (v+n)
+        for i in range(-n, n):
+            # Get current vertex and next vertex using existing boundary methods
+            current_vertex = self.get_vertex_by_index(v + i)
+            next_vertex = self.get_vertex_by_index(v + i + 1)
+            
+            # Calculate edge length using existing euclidean_distance function
+            edge_length = euclidean_distance(current_vertex, next_vertex)
+            total_length += edge_length
+        
+        return total_length / edge_count
 
     def size(self) -> int:
         """
