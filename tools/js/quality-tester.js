@@ -156,6 +156,12 @@ export class QualityTester {
             option.textContent = methodInfo[method]?.full_name || `quality_${method}`;
             select.appendChild(option);
         });
+        
+        // Set hybrid as default if available
+        if (this.qualityMethods.includes('hybrid')) {
+            select.value = 'hybrid';
+            this.selectQualityMethod('hybrid');
+        }
     }
     
     selectQualityMethod(method) {
@@ -228,12 +234,19 @@ export class QualityTester {
         if (loadingOverlay) loadingOverlay.classList.remove('hidden');
         
         const wrappedRequest = withErrorHandling(async () => {
+            const requestBody = {
+                vertices: this.vertices,
+                method: this.currentMethod
+            };
+            
+            // Add gamma parameter for hybrid method
+            if (this.currentMethod === 'hybrid') {
+                requestBody.gamma = 1.0; // Default gamma value used in RL action
+            }
+            
             return await this.apiClient.request('/quality/calculate', {
                 method: 'POST',
-                body: JSON.stringify({
-                    vertices: this.vertices,
-                    method: this.currentMethod
-                })
+                body: JSON.stringify(requestBody)
             });
         });
         

@@ -80,6 +80,29 @@ def quality_s_jacobian(element: List[Point]) -> float:
     return _clamp(q if q > 0 else 0.0)
 
 
+def quality_hybrid(element: List[Point], gamma: float = 1.0) -> float:
+    """
+    Hybrid quality = robust * (clamped Scaled-Jacobian)**gamma
+    This is the default quality method used in the RL action module.
+    
+    :param element: iterable of 4 vertices
+    :param gamma: Jacobian penalty exponent (>=1 makes penalty steeper)
+    :return: quality in [0, 1]
+    """
+    if not _validate(element):
+        return 0.0
+        
+    sj = quality_s_jacobian(element)
+    if sj <= 0.0:
+        return 0.0  # flipped or collapsed
+
+    sj = min(1.0, sj)  # clamp to [0,1]
+    robust = quality_robust(element)
+
+    q = robust * (sj ** gamma)  # smooth hybrid metric
+    return _clamp(q)
+
+
 class QualityManager:
     def __init__(self):
         self._quality_methods: Dict[str, Callable] = {}
@@ -95,10 +118,18 @@ class QualityManager:
     def get_available_methods(self) -> List[str]:
         return list(self._quality_methods.keys())
     
-    def calculate_quality(self, method_name: str, vertices: List[Point]) -> float:
+    def calculate_quality(self, method_name: str, vertices: List[Point], **kwargs) -> float:
         if method_name not in self._quality_methods:
             raise ValueError(f"Quality method '{method_name}' not found")
-        return self._quality_methods[method_name](vertices)
+        
+        # Handle methods with additional parameters (like gamma for hybrid)
+        func = self._quality_methods[method_name]
+        sig = inspect.signature(func)
+        
+        # Filter kwargs to only include parameters the function accepts
+        valid_kwargs = {k: v for k, v in kwargs.items() if k in sig.parameters}
+        
+        return func(vertices, **valid_kwargs)
     
     def get_method_info(self) -> Dict[str, Dict[str, str]]:
         info = {}

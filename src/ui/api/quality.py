@@ -91,7 +91,10 @@ def calculate_quality():
                 
         vertices_tuples = [(float(v[0]), float(v[1])) for v in vertices]
         
-        quality_score = quality_manager.calculate_quality(method, vertices_tuples)
+        # Handle optional parameters (like gamma for hybrid method)
+        gamma = data.get("gamma", 1.0)  # Default gamma for hybrid method
+        
+        quality_score = quality_manager.calculate_quality(method, vertices_tuples, gamma=gamma)
         
         return jsonify({
             "quality_score": quality_score,
