@@ -1,0 +1,246 @@
+/* Quality Test Specific Styles */
+
+/* Quality score display */
+.quality-score-display {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.quality-score-number {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #3b82f6;
+    text-shadow: 0 1px 3px rgba(59, 130, 246, 0.2);
+}
+
+/* Quality bar animations */
+.quality-bar {
+    height: 8px;
+    border-radius: 4px;
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.quality-bar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    animation: shine 2s infinite;
+}
+
+@keyframes shine {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Quality method selection */
+.method-selector {
+    position: relative;
+}
+
+.method-selector select {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 8px center;
+    background-repeat: no-repeat;
+    background-size: 16px;
+    padding-right: 32px;
+}
+
+/* Canvas specific styles */
+#quality-canvas {
+    cursor: crosshair;
+    background: linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc),
+                linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+    display: block;
+    margin: 0 auto;
+    border-radius: inherit;
+    transition: opacity 0.3s ease;
+}
+
+#quality-canvas:hover {
+    opacity: 0.95;
+}
+
+/* Vertex display styling */
+.vertex-list {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.vertex-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.vertex-item:last-child {
+    border-bottom: none;
+}
+
+.vertex-coordinates {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+/* Example buttons styling */
+.example-btn {
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+    border: 1px solid #d1d5db;
+    transition: all 0.2s ease;
+}
+
+.example-btn:hover {
+    background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+    border-color: #9ca3af;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+}
+
+.example-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+}
+
+/* Instructions section styling */
+.instructions {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.instruction-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.instruction-item:last-child {
+    margin-bottom: 0;
+}
+
+.instruction-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    color: #3b82f6;
+}
+
+/* Loading overlay for quality calculation */
+.quality-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: inherit;
+}
+
+.quality-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #e5e7eb;
+    border-top: 3px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Mouse coordinates display */
+.mouse-coords {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    color: #374151;
+    background: #f3f4f6;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+/* Canvas size display */
+.canvas-size-display {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+/* Activity log styling */
+.activity-log {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    line-height: 1.4;
+}
+
+.log-entry {
+    margin-bottom: 4px;
+    word-wrap: break-word;
+}
+
+.log-entry:last-child {
+    margin-bottom: 0;
+}
+
+/* Status icons in log */
+.log-icon {
+    display: inline-block;
+    width: 12px;
+    text-align: center;
+    margin-right: 4px;
+}
+
+/* Responsive adjustments for quality test */
+@media (max-width: 768px) {
+    .quality-score-number {
+        font-size: 1.25rem;
+    }
+    
+    .vertex-list {
+        max-height: 80px;
+    }
+    
+    .mouse-coords {
+        font-size: 0.75rem;
+    }
+}
+
+/* Custom scrollbar for quality test */
+.quality-scrollbar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.quality-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+}
+
+.quality-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.quality-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}

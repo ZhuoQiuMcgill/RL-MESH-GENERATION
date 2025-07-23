@@ -1,6 +1,7 @@
 from src.utils.angle import euclidean_distance, get_interior_angle
 import math
-from typing import List, Tuple
+import inspect
+from typing import List, Tuple, Dict, Callable
 
 Point = Tuple[float, float]
 
@@ -77,3 +78,34 @@ def quality_s_jacobian(element: List[Point]) -> float:
     j3 = _cross(l2, l3) / (_norm(l2) * _norm(l3) or 1.0)
     q = min(j0, j1, j2, j3)
     return _clamp(q if q > 0 else 0.0)
+
+
+class QualityManager:
+    def __init__(self):
+        self._quality_methods: Dict[str, Callable] = {}
+        self._discover_quality_methods()
+    
+    def _discover_quality_methods(self):
+        current_module = inspect.getmodule(self)
+        for name, func in inspect.getmembers(current_module, inspect.isfunction):
+            if name.startswith('quality_') and not name.startswith('_'):
+                method_name = name.replace('quality_', '')
+                self._quality_methods[method_name] = func
+    
+    def get_available_methods(self) -> List[str]:
+        return list(self._quality_methods.keys())
+    
+    def calculate_quality(self, method_name: str, vertices: List[Point]) -> float:
+        if method_name not in self._quality_methods:
+            raise ValueError(f"Quality method '{method_name}' not found")
+        return self._quality_methods[method_name](vertices)
+    
+    def get_method_info(self) -> Dict[str, Dict[str, str]]:
+        info = {}
+        for method_name, func in self._quality_methods.items():
+            doc = func.__doc__ or "No description available"
+            info[method_name] = {
+                'description': doc.strip().split('\n')[0] if doc else "Quality measurement method",
+                'full_name': f'quality_{method_name}'
+            }
+        return info

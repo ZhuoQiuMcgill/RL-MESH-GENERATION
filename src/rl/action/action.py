@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
-import math
-from src.utils import euclidean_distance, get_interior_angle
-from src.rl.quality import *
+from src.quality import *
 
 
 class ActionType(ABC):
