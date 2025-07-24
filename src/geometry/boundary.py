@@ -43,6 +43,12 @@ class Boundary:
         """
         return [tuple(v) for v in self._verts]
 
+    def get_neighbors(self, ref_index, n):
+        vertices = []
+        for i in range(-n, n + 1):
+            vertices.append(self.get_vertex_by_index(ref_index + i))
+        return vertices
+
     def get_vertex_index(self, v: Tuple[float, float]):
         for i, vert in enumerate(self._verts):
             if abs(vert[0] - v[0]) < 1e-8 and abs(vert[1] - v[1]) < 1e-8:

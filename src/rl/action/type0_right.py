@@ -84,8 +84,11 @@ class ActionType0Right(ActionType):
         # locate the two boundary vertices that form the new edge
         v2 = boundary.get_vertex_by_index(reference_vertex_idx + 2)
         v3 = boundary.get_vertex_by_index(reference_vertex_idx - 1)
-        angle_1 = [v3, v2, boundary.get_vertex_by_index(reference_vertex_idx + 3)]
-        angle_2 = [boundary.get_vertex_by_index(reference_vertex_idx - 2), v3, v2]
+
+        # angle-quality term (saturated by M_angle)
+        angle_1 = get_interior_angle(v3, v2, boundary.get_vertex_by_index(reference_vertex_idx + 3))
+        angle_2 = get_interior_angle(boundary.get_vertex_by_index(reference_vertex_idx - 2), v3, v2)
+        angle_quality = self.calculate_angle_quality(angle_1, angle_2, M_angle)
 
         target_len = euclidean_distance(v2, v3)
         edge_lengths = target_len
@@ -97,11 +100,6 @@ class ActionType0Right(ActionType):
             edge_lengths += euclidean_distance(left_v1, left_v2)
             edge_lengths += euclidean_distance(right_v1, right_v2)
         mean_dist = edge_lengths / 5.0
-
-        # angle-quality term (saturated by M_angle)
-        a1 = get_interior_angle(*angle_1)
-        a2 = get_interior_angle(*angle_2)
-        angle_quality = self.calculate_angle_quality(a1, a2, M_angle)
 
         # smoothness term
         smoothness = (

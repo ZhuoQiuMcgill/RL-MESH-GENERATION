@@ -38,27 +38,10 @@ def is_angle_in_slice(angle: float, start_angle: float, end_angle: float) -> boo
 
 
 def normalize_coordinates(vertices, reference_vertex_idx, boundary, n):
-    """
-    按照论文方法将坐标标准化为以参考点为中心的坐标系统
-
-    Args:
-        vertices: 顶点列表
-        reference_vertex_idx: 参考顶点索引
-        boundary: 边界对象
-        n: 邻居数量参数
-
-    Returns:
-        list: 标准化后的坐标列表 [(r, theta), ...]
-    """
-    if len(vertices) <= reference_vertex_idx:
-        return []
-
-    reference_vertex = vertices[reference_vertex_idx]
-    boundary_size = len(vertices)
+    reference_vertex = boundary.get_vertex_by_index(reference_vertex_idx)
 
     # 获取参考方向：V0 -> Vr,1 (右侧第一个邻居)
-    right_neighbor_idx = (reference_vertex_idx + 1) % boundary_size
-    right_neighbor = vertices[right_neighbor_idx]
+    right_neighbor = boundary.get_vertex_by_index(reference_vertex_idx - 1)
 
     # 计算参考方向向量
     ref_direction = np.array([

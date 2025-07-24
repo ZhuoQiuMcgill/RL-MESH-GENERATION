@@ -135,10 +135,11 @@ class MeshEnv(gym.Env):
 
         def invalid_penalty() -> float:
             # Negative reward for invalid action
-            punish = (self.generated_elements - 100)
-            if self.generated_elements == 0:
-                return punish
-            return punish / self.generated_elements
+            # punish = (self.generated_elements - 100)
+            # if self.generated_elements == 0:
+            #     return punish
+            # return punish / self.generated_elements
+            return -100
 
         # Process action using ActionManager
         action_result = self.action_manager.process_action(
@@ -223,8 +224,7 @@ class MeshEnv(gym.Env):
         reference_idx = self.boundary.get_ref_vertex()
 
         ref_vertex_coords = self.boundary.get_vertex_by_index(reference_idx)
-        local_env_coords = [self.boundary.get_vertex_by_index(reference_idx + i) for i in
-                            range(-self.n, self.n + 1)]
+        local_env_coords = self.boundary.get_neighbors(reference_idx, self.n)
 
         self.last_reference_info = {
             "ref_vertex": tuple(ref_vertex_coords),
@@ -234,7 +234,7 @@ class MeshEnv(gym.Env):
         state_components = []
 
         # 按论文方法标准化邻居顶点坐标
-        normalized_neighbors = normalize_coordinates(local_env_coords, self.n, self.boundary, self.n)  # 参考点在中间位置
+        normalized_neighbors = normalize_coordinates(local_env_coords, reference_idx, self.boundary, self.n)
 
         # 添加邻居顶点的标准化坐标到状态
         for r, theta in normalized_neighbors:
@@ -323,7 +323,7 @@ class MeshEnv(gym.Env):
         Returns:
             bool: 是否终止
         """
-        return self.boundary.size() <= 5
+        return self.boundary.size() <= 4
 
     def render(self):
         """可视化当前状态（可选实现）"""

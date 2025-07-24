@@ -143,7 +143,7 @@ class ActionType1(ActionType):
         # distance from the new point to the closest *other* boundary vertex
         v_ref = boundary.get_vertex_by_index(reference_vertex_idx)  # original vertex being split
         closest_dist = boundary.get_closest_vertex_distance(
-            v2, ignore_vertices={v1, v_ref, v3}
+            v2, ignore_vertices={}
         )
 
         half_neighbour_span = 0.5 * (left_edge_1 + right_edge_1)

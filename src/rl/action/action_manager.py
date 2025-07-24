@@ -259,7 +259,7 @@ class ActionManager:
             return action_instance.get_boundary_quality(boundary, reference_vertex_idx, new_coords[0], new_coords[1],
                                                         M_angle=M_angle)
         else:
-            return -0.1
+            return -1
 
     def execute_action(self, mesh, boundary, reference_vertex_idx, action_instance, action_name, new_coords):
         """
