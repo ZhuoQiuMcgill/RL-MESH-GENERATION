@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>角度质量函数可视化（完全可调参数）</title>
+    <!-- 引入 Tailwind CSS 以便快速美化页面 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Chart.js 用于绘图 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 引入 Chart.js Annotation 插件用于绘制标注线 -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        /* 使用自定义字体以获得更好的视觉效果 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* 自定义滑块样式 */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3B82F6; /* blue-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            margin-top: -6px;
+            transition: background-color 0.2s ease-in-out;
+        }
+
+        input[type=range]:hover::-webkit-slider-thumb {
+            background: #2563EB; /* blue-600 */
+        }
+
+        input[type=range]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3B82F6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex items-center justify-center min-h-screen p-4">
+
+<div class="w-full max-w-4xl bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 md:p-8">
+    <div class="text-center mb-6">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">角度质量函数可视化</h1>
+        <p class="text-gray-600 dark:text-gray-400 mt-2">拖动滑块以调整参数并观察曲线变化</p>
+    </div>
+
+    <!-- 图表容器 -->
+    <div class="relative h-64 md:h-96">
+        <canvas id="qualityChart"></canvas>
+    </div>
+
+    <!-- 滑动条控制区域 -->
+    <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-6">
+        <div>
+            <label for="pivotSlider" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                pivot_ratio: <span id="pivotValue" class="font-bold text-blue-600 dark:text-blue-400">0.50</span>
+            </label>
+            <input id="pivotSlider" type="range" min="0.01" max="0.99" value="0.5" step="0.01"
+                   class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer mt-2">
+        </div>
+        <div>
+            <label for="alphaSlider" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                alpha (α): <span id="alphaValue" class="font-bold text-green-600 dark:text-green-400">2.00</span>
+            </label>
+            <input id="alphaSlider" type="range" min="0.1" max="10.0" value="2.0" step="0.1"
+                   class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer mt-2">
+        </div>
+        <div>
+            <label for="betaSlider" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                beta (β): <span id="betaValue" class="font-bold text-red-600 dark:text-red-400">2.00</span>
+            </label>
+            <input id="betaSlider" type="range" min="0.1" max="10.0" value="2.0" step="0.1"
+                   class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer mt-2">
+        </div>
+    </div>
+
+    <!-- 参数显示区域 -->
+    <div class="mt-8 text-center">
+        <div class="inline-block bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">M_angle (固定)</p>
+            <p class="text-lg font-semibold text-gray-900 dark:text-white">60°</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    /**
+     * Angle-quality curve function translated to JavaScript.
+     * @param {number} theta - The input angle, expected to be between 0 and M_angle.
+     * @param {number} M_angle - The maximum angle threshold.
+     * @param {number} pivot_ratio - The ratio to determine the pivot point.
+     * @param {number} alpha - Controls the steepness of the curve before the pivot.
+     * @param {number} beta - Controls the flatness of the curve after the pivot.
+     * @returns {number} The calculated quality score between 0.0 and 1.0.
+     */
+    function calculateAngleQuality(theta, M_angle, pivot_ratio, alpha, beta) {
+        if (M_angle <= 0) return 0.0;
+        if (theta <= 0) return 0.0;
+        if (pivot_ratio >= 1.0) pivot_ratio = 0.99;
+        if (pivot_ratio <= 0) pivot_ratio = 0.01;
+
+        const xp = pivot_ratio;
+        const x = theta / M_angle;
+
+        let quality;
+        if (x < xp) {
+            quality = 0.5 * Math.pow(x / xp, alpha);
+        } else {
+            quality = 1.0 - 0.5 * Math.pow((1.0 - x) / (1.0 - xp), beta);
+        }
+        return Math.max(0.0, Math.min(1.0, quality));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const pivotSlider = document.getElementById('pivotSlider');
+        const pivotValueSpan = document.getElementById('pivotValue');
+        const alphaSlider = document.getElementById('alphaSlider');
+        const alphaValueSpan = document.getElementById('alphaValue');
+        const betaSlider = document.getElementById('betaSlider');
+        const betaValueSpan = document.getElementById('betaValue');
+        const ctx = document.getElementById('qualityChart').getContext('2d');
+
+        let chart;
+        const M_angle = 60;
+
+        /**
+         * Generates the data points for the chart.
+         * @param {number} pivot_ratio
+         * @param {number} alpha
+         * @param {number} beta
+         * @returns {Array<Object>} Array of {x, y} points.
+         */
+        function generateData(pivot_ratio, alpha, beta) {
+            const data = [];
+            for (let theta = 0; theta <= M_angle; theta += 0.5) {
+                data.push({
+                    x: theta,
+                    y: calculateAngleQuality(theta, M_angle, pivot_ratio, alpha, beta)
+                });
+            }
+            return data;
+        }
+
+        /**
+         * Updates the chart based on the current slider values.
+         */
+        function updateChart() {
+            const pivot_ratio = parseFloat(pivotSlider.value);
+            const alpha = parseFloat(alphaSlider.value);
+            const beta = parseFloat(betaSlider.value);
+
+            pivotValueSpan.textContent = pivot_ratio.toFixed(2);
+            alphaValueSpan.textContent = alpha.toFixed(2);
+            betaValueSpan.textContent = beta.toFixed(2);
+
+            const dataPoints = generateData(pivot_ratio, alpha, beta);
+            const pivot_angle = M_angle * pivot_ratio;
+
+            if (chart) {
+                chart.data.datasets[0].data = dataPoints;
+                chart.options.plugins.annotation.annotations.pivotLine.xMin = pivot_angle;
+                chart.options.plugins.annotation.annotations.pivotLine.xMax = pivot_angle;
+                chart.options.plugins.annotation.annotations.pivotLine.label.content = `Pivot = ${pivot_angle.toFixed(1)}°`;
+                chart.update('none');
+            } else {
+                initializeChart(dataPoints, pivot_angle);
+            }
+        }
+
+        /**
+         * Initializes the chart for the first time.
+         */
+        function initializeChart(initialData, initialPivotAngle) {
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Quality',
+                        data: initialData,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: gradient,
+                        borderWidth: 2.5,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        pointHoverBackgroundColor: 'rgb(59, 130, 246)',
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {duration: 0},
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1.0,
+                            title: {display: true, text: 'Quality', font: {size: 14}},
+                            grid: {color: 'rgba(200, 200, 200, 0.2)'}
+                        },
+                        // FIX: Specify x-axis type as 'linear' to treat it as a numerical scale
+                        x: {
+                            type: 'linear',
+                            title: {display: true, text: 'Theta (角度)', font: {size: 14}},
+                            grid: {color: 'rgba(200, 200, 200, 0.2)'}
+                        }
+                    },
+                    plugins: {
+                        legend: {display: false},
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                title: (tooltipItems) => `Theta: ${tooltipItems[0].parsed.x.toFixed(1)}°`,
+                                label: (context) => `Quality: ${context.parsed.y.toFixed(4)}`
+                            }
+                        },
+                        annotation: {
+                            annotations: {
+                                pivotLine: {
+                                    type: 'line',
+                                    xMin: initialPivotAngle,
+                                    xMax: initialPivotAngle,
+                                    borderColor: 'rgb(255, 99, 132)',
+                                    borderWidth: 2,
+                                    borderDash: [6, 6],
+                                    label: {
+                                        content: `Pivot = ${initialPivotAngle.toFixed(1)}°`,
+                                        enabled: true,
+                                        position: 'start',
+                                        backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                                        font: {size: 12}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                }
+            });
+        }
+
+        pivotSlider.addEventListener('input', updateChart);
+        alphaSlider.addEventListener('input', updateChart);
+        betaSlider.addEventListener('input', updateChart);
+
+        updateChart();
+    });
+</script>
+</body>
+</html>

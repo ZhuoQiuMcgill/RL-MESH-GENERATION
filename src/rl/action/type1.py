@@ -113,9 +113,13 @@ class ActionType1(ActionType):
 
         # --- 1. angle‑quality term (q1) -----------------------------------------
         # angles are measured at v1 and v3 – exactly与原作者一致
-        a1 = get_interior_angle(v2, v3, boundary.get_vertex_by_index(reference_vertex_idx + 2))
-        a2 = get_interior_angle(boundary.get_vertex_by_index(reference_vertex_idx - 2), v1, v2)
-        angle_quality = min(a1, a2, M_angle) / M_angle
+        angle_1 = get_interior_angle(v2, v3, boundary.get_vertex_by_index(reference_vertex_idx + 2))
+        angle_2 = get_interior_angle(boundary.get_vertex_by_index(reference_vertex_idx - 2), v1, v2)
+
+        # angle-quality term (saturated by M_angle)
+        a1 = get_interior_angle(*angle_1)
+        a2 = get_interior_angle(*angle_2)
+        angle_quality = self.calculate_angle_quality(a1, a2, M_angle)
 
         # --- 2. smoothness term (q_smooth) --------------------------------------
         # lengths around the new edge: 5 consecutive boundary segments (±2 on each side)
@@ -153,6 +157,3 @@ class ActionType1(ActionType):
         # --- 4. final score -----------------------------------------------------
         quality = (angle_quality * smoothness * q_gap) ** (1.0 / 3.0)
         return quality
-
-
-

@@ -39,7 +39,7 @@ def _angles(element: List[Point]) -> List[float]:
 
 def quality_aspect_ratio(
         element: List[Point],
-        pivot: float = 2.0,
+        pivot: float = 3.0,
         sharpness: float = 4.0) -> float:
     if not _validate(element):
         return 0.0

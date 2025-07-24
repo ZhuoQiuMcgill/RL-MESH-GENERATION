@@ -103,7 +103,7 @@ class ActionType0Left(ActionType):
         # angle-quality term (saturated by M_angle)
         a1 = get_interior_angle(*angle_1)
         a2 = get_interior_angle(*angle_2)
-        angle_quality = min(a1, a2, M_angle) / M_angle
+        angle_quality = self.calculate_angle_quality(a1, a2, M_angle)
 
         # smoothness term
         smoothness = (
