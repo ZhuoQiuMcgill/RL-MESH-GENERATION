@@ -33,7 +33,8 @@ def create_app() -> Flask:
         r"/training/*": {"origins": "*"},
         r"/mesh/*": {"origins": "*"},
         r"/checkpoint/*": {"origins": "*"},
-        r"/quality/*": {"origins": "*"}
+        r"/quality/*": {"origins": "*"},
+        r"/geometry/*": {"origins": "*"}
     })
 
     # 注册API蓝图
