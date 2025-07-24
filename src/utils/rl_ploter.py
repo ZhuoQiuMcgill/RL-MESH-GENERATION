@@ -152,3 +152,184 @@ def plot_reward_change(episode_rewards: List[float],
     plt.close(fig)
 
     return save_path
+
+
+def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_dir: str):
+    """
+    绘制训练过程中的actor loss, critic loss和alpha变化曲线
+    
+    Args:
+        actor_losses: actor loss数据列表
+        critic_losses: critic loss数据列表  
+        alphas: alpha数据列表
+        timesteps: 对应的时间步数列表
+        save_dir: 保存目录路径
+        
+    Returns:
+        dict: 包含生成的图片路径
+    """
+    import os
+    
+    # 确保保存目录存在
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # 配色方案
+    bg_color = '#1a1a1a'
+    primary_color = '#ff6b35'
+    secondary_color = '#ffa726'  
+    accent_color = '#4fc3f7'
+    text_color = '#e8e8e8'
+    grid_color = '#333333'
+    
+    plt.style.use('default')
+    saved_plots = {}
+    
+    # 绘制Actor Loss
+    if actor_losses and len(actor_losses) > 0:
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor=bg_color)
+        ax.set_facecolor(bg_color)
+        
+        # 确保数据长度一致
+        plot_timesteps = timesteps[:len(actor_losses)]
+        
+        ax.plot(plot_timesteps, actor_losses, 
+                color=primary_color, linewidth=1.5, alpha=0.9, 
+                label='Actor Loss', zorder=3)
+        
+        # 添加移动平均
+        if len(actor_losses) > 10:
+            window = min(50, len(actor_losses) // 5)
+            ma = np.convolve(actor_losses, np.ones(window) / window, mode='valid')
+            ma_timesteps = plot_timesteps[window-1:len(ma)+window-1]
+            ax.plot(ma_timesteps, ma,
+                    color=secondary_color, linewidth=2,
+                    alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
+        
+        ax.set_xlabel('Timesteps', fontsize=12, color=text_color, fontweight='500')
+        ax.set_ylabel('Actor Loss', fontsize=12, color=text_color, fontweight='500')
+        ax.set_title('Actor Loss During Training', 
+                     fontsize=14, color=text_color, fontweight='600', pad=15)
+        
+        # 设置网格和样式
+        ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
+        ax.set_axisbelow(True)
+        for spine in ['top', 'right']:
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color(grid_color)
+        ax.spines['bottom'].set_color(grid_color)
+        ax.tick_params(colors=text_color, labelsize=10)
+        
+        # 图例
+        legend = ax.legend(loc='upper right', fontsize=10)
+        legend.get_frame().set_facecolor('#2a2a2a')
+        legend.get_frame().set_edgecolor(grid_color)
+        legend.get_frame().set_alpha(0.95)
+        for txt in legend.get_texts():
+            txt.set_color(text_color)
+        
+        plt.tight_layout()
+        actor_loss_path = os.path.join(save_dir, 'actor_loss.png')
+        plt.savefig(actor_loss_path, dpi=300, facecolor=bg_color, edgecolor='none')
+        plt.close(fig)
+        saved_plots['actor_loss'] = actor_loss_path
+        logger.info(f"Actor loss图表已保存: {actor_loss_path}")
+    
+    # 绘制Critic Loss
+    if critic_losses and len(critic_losses) > 0:
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor=bg_color)
+        ax.set_facecolor(bg_color)
+        
+        plot_timesteps = timesteps[:len(critic_losses)]
+        
+        ax.plot(plot_timesteps, critic_losses,
+                color=accent_color, linewidth=1.5, alpha=0.9,
+                label='Critic Loss', zorder=3)
+        
+        # 添加移动平均
+        if len(critic_losses) > 10:
+            window = min(50, len(critic_losses) // 5)
+            ma = np.convolve(critic_losses, np.ones(window) / window, mode='valid')
+            ma_timesteps = plot_timesteps[window-1:len(ma)+window-1]
+            ax.plot(ma_timesteps, ma,
+                    color=secondary_color, linewidth=2,
+                    alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
+        
+        ax.set_xlabel('Timesteps', fontsize=12, color=text_color, fontweight='500')
+        ax.set_ylabel('Critic Loss', fontsize=12, color=text_color, fontweight='500')
+        ax.set_title('Critic Loss During Training',
+                     fontsize=14, color=text_color, fontweight='600', pad=15)
+        
+        # 设置网格和样式
+        ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
+        ax.set_axisbelow(True)
+        for spine in ['top', 'right']:
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color(grid_color)
+        ax.spines['bottom'].set_color(grid_color)
+        ax.tick_params(colors=text_color, labelsize=10)
+        
+        # 图例
+        legend = ax.legend(loc='upper right', fontsize=10)
+        legend.get_frame().set_facecolor('#2a2a2a')
+        legend.get_frame().set_edgecolor(grid_color)
+        legend.get_frame().set_alpha(0.95)
+        for txt in legend.get_texts():
+            txt.set_color(text_color)
+        
+        plt.tight_layout()
+        critic_loss_path = os.path.join(save_dir, 'critic_loss.png')
+        plt.savefig(critic_loss_path, dpi=300, facecolor=bg_color, edgecolor='none')
+        plt.close(fig)
+        saved_plots['critic_loss'] = critic_loss_path
+        logger.info(f"Critic loss图表已保存: {critic_loss_path}")
+    
+    # 绘制Alpha (Entropy Coefficient)
+    if alphas and len(alphas) > 0:
+        fig, ax = plt.subplots(figsize=(10, 6), facecolor=bg_color)
+        ax.set_facecolor(bg_color)
+        
+        plot_timesteps = timesteps[:len(alphas)]
+        
+        ax.plot(plot_timesteps, alphas,
+                color='#ff8f65', linewidth=1.5, alpha=0.9,
+                label='Alpha (Entropy Coefficient)', zorder=3)
+        
+        # 添加移动平均
+        if len(alphas) > 10:
+            window = min(50, len(alphas) // 5)
+            ma = np.convolve(alphas, np.ones(window) / window, mode='valid')
+            ma_timesteps = plot_timesteps[window-1:len(ma)+window-1]
+            ax.plot(ma_timesteps, ma,
+                    color=secondary_color, linewidth=2,
+                    alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
+        
+        ax.set_xlabel('Timesteps', fontsize=12, color=text_color, fontweight='500')
+        ax.set_ylabel('Alpha Value', fontsize=12, color=text_color, fontweight='500')
+        ax.set_title('Alpha (Entropy Coefficient) During Training',
+                     fontsize=14, color=text_color, fontweight='600', pad=15)
+        
+        # 设置网格和样式
+        ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
+        ax.set_axisbelow(True)
+        for spine in ['top', 'right']:
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color(grid_color)
+        ax.spines['bottom'].set_color(grid_color)
+        ax.tick_params(colors=text_color, labelsize=10)
+        
+        # 图例
+        legend = ax.legend(loc='upper right', fontsize=10)
+        legend.get_frame().set_facecolor('#2a2a2a')
+        legend.get_frame().set_edgecolor(grid_color)  
+        legend.get_frame().set_alpha(0.95)
+        for txt in legend.get_texts():
+            txt.set_color(text_color)
+        
+        plt.tight_layout()
+        alpha_path = os.path.join(save_dir, 'alpha.png')
+        plt.savefig(alpha_path, dpi=300, facecolor=bg_color, edgecolor='none')
+        plt.close(fig)
+        saved_plots['alpha'] = alpha_path
+        logger.info(f"Alpha图表已保存: {alpha_path}")
+    
+    return saved_plots

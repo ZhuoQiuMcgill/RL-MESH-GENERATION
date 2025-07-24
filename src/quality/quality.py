@@ -37,6 +37,27 @@ def _angles(element: List[Point]) -> List[float]:
     ]
 
 
+def quality_aspect_ratio(
+        element: List[Point],
+        pivot: float = 2.0,
+        sharpness: float = 4.0) -> float:
+    if not _validate(element):
+        return 0.0
+
+    edges = _edge_lengths(element)
+    max_edge, min_edge = max(edges), min(edges)
+    if min_edge == 0:
+        return 0.0
+
+    ar = max_edge / min_edge
+    if ar <= 1.0:
+        return 1.0
+
+    x = (ar - 1.0) / (pivot - 1.0)
+    q = 1.0 / (1.0 + (x ** sharpness))
+    return _clamp(q)
+
+
 def quality_robust(element: List[Point]) -> float:
     if not _validate(element):
         return 0.0
@@ -67,6 +88,24 @@ def quality_s_jacobian(element: List[Point]) -> float:
     j3 = _cross(l2, l3) / (_norm(l2) * _norm(l3) or 1.0)
     q = min(j0, j1, j2, j3)
     return _clamp(q if q > 0 else 0.0)
+
+
+def quality_hybrid_ar(element: List[Point],
+                      gamma: float = 1.0,
+                      beta: float = 0.5) -> float:
+    """
+    hybrid × (aspect‑ratio penalty)^β
+    β≥1 可以加重对长条的惩罚
+    """
+    if not _validate(element):
+        return 0.0
+    sj = quality_s_jacobian(element)
+    if sj <= 0:
+        return 0.0
+    robust = quality_robust(element)
+    q_ar = quality_aspect_ratio(element)
+    q = robust * (sj ** gamma) * (q_ar ** beta)
+    return _clamp(q)
 
 
 def quality_hybrid(element: List[Point], gamma: float = 1.0) -> float:

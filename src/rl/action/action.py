@@ -4,7 +4,7 @@ from src.quality import *
 
 class ActionType(ABC):
     """动作类型的抽象基类"""
-    QUALITY_THRESHOLD = 0.08
+    QUALITY_THRESHOLD = 0.1
 
     @abstractmethod
     def execute(self, mesh, boundary, reference_vertex_idx, *coords):
@@ -25,27 +25,14 @@ class ActionType(ABC):
     def get_element(self, boundary, reference_vertex_idx, *coords):
         pass
 
-    @abstractmethod
-    def get_generated_angle(self, boundary, reference_vertex_idx, *coords):
-        pass
-
     @staticmethod
-    def element_quality(element, gamma: float = 1.0) -> float:
+    def element_quality(element) -> float:
         """
         Hybrid quality = robust * (clamped Scaled-Jacobian)**gamma
         :param element: iterable of 4 vertices
-        :param gamma: Jacobian penalty exponent (>=1 makes penalty steeper)
         :return: quality in [0, 1]
         """
-        sj = quality_s_jacobian(element)
-        if sj <= 0.0:
-            return 0.0  # flipped or collapsed
-
-        sj = min(1.0, sj)  # clamp to [0,1]
-        robust = quality_robust(element)
-
-        q = robust * (sj ** gamma)  # smooth hybrid metric
-        return max(0.0, min(1.0, q))
+        return quality_hybrid_ar(element)
 
     @abstractmethod
     def get_element_quality(self, boundary, reference_vertex_idx, *coords):

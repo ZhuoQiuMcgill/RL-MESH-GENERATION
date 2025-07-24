@@ -1,6 +1,6 @@
 /**
- * UI控制器模块
- * 负责所有UI更新和用户交互逻辑
+ * UI Controller Module
+ * Handles all UI updates and user interaction logic
  */
 
 import {CONSTANTS, STATUS, LOG_TYPES, formatNumber, getTimestamp, getLogStyle, safeGetElement} from './utils.js';
@@ -12,12 +12,12 @@ export class UIController {
         this.meshData = null;
         this.boundaryData = null;
         this.refPointInfo = null;
-        this.checkpoints = []; // 存储checkpoint列表
+        this.checkpoints = []; // Store checkpoint list
     }
 
     /**
-     * 初始化DOM元素引用
-     * @returns {Object} 元素引用对象
+     * Initialize DOM element references
+     * @returns {Object} Element reference object
      */
     initializeElements() {
         const elementIds = [
@@ -28,8 +28,10 @@ export class UIController {
             'buffer-size', 'episode-reward', 'episode-length', 'ref-point',
             'click-coordinates', 'display-episode', 'display-total-steps', 'boundary-vertices',
             'log-container', 'loading-overlay',
-            // 新增的checkpoint相关元素
-            'checkpoint-mode', 'checkpoint-select', 'checkpoint-info', 'checkpoint-details'
+            // New checkpoint-related elements
+            'checkpoint-mode', 'checkpoint-select', 'checkpoint-info', 'checkpoint-details',
+            // Training metrics elements
+            'actor-loss', 'critic-loss', 'alpha-value'
         ];
 
         const elements = {};
@@ -41,8 +43,8 @@ export class UIController {
     }
 
     /**
-     * 更新状态指示器
-     * @param {string} status - 状态值
+     * Update status indicator
+     * @param {string} status - Status value
      */
     updateStatusIndicator(status) {
         const indicator = this.elements['status-indicator']?.querySelector('div');
@@ -50,7 +52,7 @@ export class UIController {
 
         if (!indicator || !text) return;
 
-        // 移除所有状态类
+        // Remove all status classes
         indicator.className = 'w-2 h-2 rounded-full mr-2';
 
         const statusConfig = {
@@ -68,13 +70,13 @@ export class UIController {
     }
 
     /**
-     * 更新训练统计数据
-     * @param {Object} stats - 统计数据
+     * Update training statistics
+     * @param {Object} stats - Statistics data
      */
     updateTrainingStats(stats) {
         if (!stats) return;
 
-        // 更新基础统计信息
+        // Update basic statistics
         this.updateElement('current-episode', stats.episode || 0);
         this.updateElement('display-episode', stats.episode || 0);
         this.updateElement('total-steps', stats.total_steps || 0);
@@ -85,7 +87,17 @@ export class UIController {
         this.updateElement('episode-length', stats.episode_length || 0);
         this.updateElement('boundary-vertices', stats.boundary_vertices || 0);
 
-        // 更新参考点信息
+        // Update training metrics (new) - simplified for debugging
+        console.log('DEBUG: Raw stats object:', stats);
+        console.log('DEBUG: recent_actor_loss:', stats.recent_actor_loss);
+        console.log('DEBUG: recent_critic_loss:', stats.recent_critic_loss);
+        console.log('DEBUG: current_alpha:', stats.current_alpha);
+        
+        this.updateElement('actor-loss', formatNumber(stats.recent_actor_loss, 4));
+        this.updateElement('critic-loss', formatNumber(stats.recent_critic_loss, 4));
+        this.updateElement('alpha-value', formatNumber(stats.current_alpha, 4));
+
+        // Update reference point information
         if (stats.reference_point_info && stats.reference_point_info.ref_vertex) {
             const [rx, ry] = stats.reference_point_info.ref_vertex;
             this.updateElement('ref-point', `(${formatNumber(rx)}, ${formatNumber(ry)})`);
@@ -94,24 +106,24 @@ export class UIController {
             this.updateElement('ref-point', 'N/A');
         }
 
-        // 更新详细统计信息（如果statsContainer存在）
+        // Update detailed statistics (if statsContainer exists)
         const statsContainer = document.getElementById('stats-container');
         if (statsContainer) {
             statsContainer.innerHTML = `
                 <span>Episode: ${stats.episode || 'N/A'}</span>
-                <span>总步数: ${stats.total_steps || 'N/A'}</span>
-                <span>Episode奖励: ${formatNumber(stats.episode_reward)}</span>
-                <span>平均奖励: ${formatNumber(stats.average_reward)}</span>
-                <span>Episode长度: ${stats.episode_length || 'N/A'}</span>
-                <span>边界顶点: ${stats.boundary_vertices || 'N/A'}</span>
-                <span>Buffer大小: ${stats.buffer_size || 'N/A'}</span>
+                <span>Total Steps: ${stats.total_steps || 'N/A'}</span>
+                <span>Episode Reward: ${formatNumber(stats.episode_reward)}</span>
+                <span>Average Reward: ${formatNumber(stats.average_reward)}</span>
+                <span>Episode Length: ${stats.episode_length || 'N/A'}</span>
+                <span>Boundary Vertices: ${stats.boundary_vertices || 'N/A'}</span>
+                <span>Buffer Size: ${stats.buffer_size || 'N/A'}</span>
                 <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
                 <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
                 <span>Alpha: ${formatNumber(stats.current_alpha)}</span>
             `;
         }
 
-        // 更新mesh和boundary数据
+        // Update mesh and boundary data
         if (stats.mesh_data) {
             this.meshData = stats.mesh_data;
         }
@@ -121,8 +133,8 @@ export class UIController {
     }
 
     /**
-     * 更新进度信息
-     * @param {Object} progress - 进度数据
+     * Update progress information
+     * @param {Object} progress - Progress data
      */
     updateProgressInfo(progress) {
         if (!progress) return;
@@ -151,8 +163,8 @@ export class UIController {
     }
 
     /**
-     * 更新UI按钮状态
-     * @param {boolean} isTraining - 是否正在训练
+     * Update UI button states
+     * @param {boolean} isTraining - Whether training is in progress
      */
     updateButtonStates(isTraining) {
         this.isTraining = isTraining;
@@ -165,7 +177,7 @@ export class UIController {
             'max-steps': !isTraining,
             'update-interval': !isTraining,
             'description': !isTraining,
-            // 新增的checkpoint相关控件
+            // New checkpoint-related controls
             'checkpoint-mode': !isTraining,
             'checkpoint-select': !isTraining
         };
@@ -179,8 +191,8 @@ export class UIController {
     }
 
     /**
-     * 显示/隐藏加载指示器
-     * @param {boolean} show - 是否显示
+     * Show/hide loading indicator
+     * @param {boolean} show - Whether to show
      */
     showLoading(show) {
         const overlay = this.elements['loading-overlay'];
@@ -194,14 +206,14 @@ export class UIController {
     }
 
     /**
-     * 填充Mesh选择列表
-     * @param {Array} meshes - mesh列表
+     * Populate mesh selection list
+     * @param {Array} meshes - Mesh list
      */
     populateMeshList(meshes) {
         const select = this.elements['mesh-select'];
         if (!select) return;
 
-        // 清空现有选项
+        // Clear existing options
         select.innerHTML = '<option value="">Select a Mesh</option>';
 
         if (Array.isArray(meshes) && meshes.length > 0) {
@@ -220,8 +232,8 @@ export class UIController {
     }
 
     /**
-     * 填充Checkpoint选择列表
-     * @param {Array} checkpoints - checkpoint列表
+     * Populate checkpoint selection list
+     * @param {Array} checkpoints - Checkpoint list
      */
     populateCheckpointList(checkpoints) {
         const select = this.elements['checkpoint-select'];
@@ -229,7 +241,7 @@ export class UIController {
 
         this.checkpoints = checkpoints || [];
 
-        // 清空现有选项
+        // Clear existing options
         select.innerHTML = '<option value="">Select a Checkpoint</option>';
 
         if (Array.isArray(checkpoints) && checkpoints.length > 0) {
@@ -237,11 +249,11 @@ export class UIController {
                 const option = document.createElement('option');
                 option.value = checkpoint.name;
 
-                // 显示checkpoint名称和相关信息
+                // Display checkpoint name and related information
                 const displayText = `${checkpoint.name} (${checkpoint.modified_datetime}, ${checkpoint.file_size_mb}MB)`;
                 option.textContent = displayText;
 
-                // 如果checkpoint无效，禁用该选项
+                // If checkpoint is invalid, disable the option
                 if (!checkpoint.is_valid) {
                     option.disabled = true;
                     option.textContent += ' [Invalid]';
@@ -258,8 +270,8 @@ export class UIController {
     }
 
     /**
-     * 显示Mesh信息
-     * @param {Object} info - mesh信息
+     * Show mesh information
+     * @param {Object} info - Mesh information
      */
     showMeshInfo(info) {
         if (!info) return;
@@ -274,7 +286,7 @@ export class UIController {
     }
 
     /**
-     * 隐藏Mesh信息
+     * Hide mesh information
      */
     hideMeshInfo() {
         const infoDiv = this.elements['mesh-info'];
@@ -284,8 +296,8 @@ export class UIController {
     }
 
     /**
-     * 显示Checkpoint信息
-     * @param {Object} info - checkpoint信息
+     * Show checkpoint information
+     * @param {Object} info - Checkpoint information
      */
     showCheckpointInfo(info) {
         if (!info) return;
@@ -312,7 +324,7 @@ export class UIController {
     }
 
     /**
-     * 隐藏Checkpoint信息
+     * Hide checkpoint information
      */
     hideCheckpointInfo() {
         const infoDiv = this.elements['checkpoint-info'];
@@ -322,8 +334,8 @@ export class UIController {
     }
 
     /**
-     * 控制Checkpoint选择区域的显示/隐藏
-     * @param {boolean} show - 是否显示
+     * Control checkpoint selection area visibility
+     * @param {boolean} show - Whether to show
      */
     showCheckpointSelection(show) {
         const checkpointSelect = this.elements['checkpoint-select'];
@@ -339,9 +351,9 @@ export class UIController {
     }
 
     /**
-     * 记录日志消息
-     * @param {string} message - 消息内容
-     * @param {string} type - 消息类型
+     * Log messages
+     * @param {string} message - Message content
+     * @param {string} type - Message type
      */
     logMessage(message, type = LOG_TYPES.INFO) {
         const container = this.elements['log-container'];
@@ -358,14 +370,14 @@ export class UIController {
         container.appendChild(logEntry);
         container.scrollTop = container.scrollHeight;
 
-        // 限制日志条数
+        // Limit log entries
         while (container.children.length > CONSTANTS.MAX_LOGS) {
             container.removeChild(container.firstChild);
         }
     }
 
     /**
-     * 清除日志
+     * Clear logs
      */
     clearLogs() {
         const container = this.elements['log-container'];
@@ -375,8 +387,8 @@ export class UIController {
     }
 
     /**
-     * 更新点击坐标显示
-     * @param {Array} coords - 世界坐标 [x, y]
+     * Update click coordinates display
+     * @param {Array} coords - World coordinates [x, y]
      */
     updateClickCoordinates(coords) {
         if (!coords || !Array.isArray(coords) || coords.length !== 2) {
@@ -389,23 +401,23 @@ export class UIController {
     }
 
     /**
-     * 获取训练配置 - 基于timestep控制，支持checkpoint
-     * @returns {Object} 训练配置
+     * Get training configuration - based on timestep control, supports checkpoint
+     * @returns {Object} Training configuration
      */
     getTrainingConfig() {
-        // 获取所有输入值
+        // Get all input values
         const maxTimestepsValue = this.getElementValue('max-timesteps');
         const maxStepsValue = this.getElementValue('max-steps');
         const descriptionValue = this.getElementValue('description');
 
-        // 获取checkpoint相关配置 - 修复版本
+        // Get checkpoint-related configuration - fixed version
         const checkpointModeElement = document.getElementById('checkpoint-mode');
         const useCheckpoint = checkpointModeElement ? checkpointModeElement.checked : false;
 
         const rawName = this.getElementValue('checkpoint-select').trim();
         const checkpointName = rawName !== '' ? rawName : null;
 
-        // 添加调试日志
+        // Add debug logs
         console.log('Checkpoint mode element:', checkpointModeElement);
         console.log('Use checkpoint:', useCheckpoint);
         console.log('Selected checkpoint:', checkpointName);
@@ -413,7 +425,7 @@ export class UIController {
         let maxTimesteps = null;
         let maxSteps = null;
 
-        // 安全地解析max_timesteps（主要控制参数）
+        // Safely parse max_timesteps (main control parameter)
         if (maxTimestepsValue && maxTimestepsValue.trim() !== '') {
             const parsed = parseInt(maxTimestepsValue.trim());
             if (!isNaN(parsed) && parsed > 0) {
@@ -421,7 +433,7 @@ export class UIController {
             }
         }
 
-        // 安全地解析max_steps
+        // Safely parse max_steps
         if (maxStepsValue && maxStepsValue.trim() !== '') {
             const parsed = parseInt(maxStepsValue.trim());
             if (!isNaN(parsed) && parsed > 0) {
@@ -436,7 +448,7 @@ export class UIController {
             description: descriptionValue && descriptionValue.trim() !== '' ? descriptionValue.trim() : null
         };
 
-        // 如果使用checkpoint，添加checkpoint配置
+        // If using checkpoint, add checkpoint configuration
         if (useCheckpoint && checkpointName) {
             config.checkpoint_name = checkpointName;
             config.from_checkpoint = !!useCheckpoint;
@@ -446,17 +458,17 @@ export class UIController {
     }
 
     /**
-     * 获取更新间隔
-     * @returns {number} 更新间隔（毫秒）
+     * Get update interval
+     * @returns {number} Update interval (milliseconds)
      */
     getUpdateInterval() {
         const interval = parseInt(this.getElementValue('update-interval')) || 10;
-        return interval * 1000; // 转换为毫秒
+        return interval * 1000; // Convert to milliseconds
     }
 
     /**
-     * 验证训练配置 - 基于timestep控制，支持checkpoint
-     * @returns {Object} 验证结果 {valid: boolean, message: string}
+     * Validate training configuration - based on timestep control, supports checkpoint
+     * @returns {Object} Validation result {valid: boolean, message: string}
      */
     validateTrainingConfig() {
         const config = this.getTrainingConfig();
@@ -468,7 +480,7 @@ export class UIController {
             };
         }
 
-        // 验证checkpoint（如果选择了使用checkpoint）
+        // Validate checkpoint (if checkpoint is selected)
         const checkpointModeElement = document.getElementById('checkpoint-mode');
         const useCheckpoint = checkpointModeElement && checkpointModeElement.checked;
 
@@ -480,7 +492,7 @@ export class UIController {
                 };
             }
 
-            // 检查选中的checkpoint是否有效
+            // Check if selected checkpoint is valid
             const selectedCheckpoint = this.checkpoints.find(cp => cp.name === config.checkpoint_name);
             if (!selectedCheckpoint || !selectedCheckpoint.is_valid) {
                 return {
@@ -490,7 +502,7 @@ export class UIController {
             }
         }
 
-        // 主要验证：max_timesteps
+        // Main validation: max_timesteps
         if (!config.max_timesteps) {
             return {
                 valid: false,
@@ -516,8 +528,8 @@ export class UIController {
     }
 
     /**
-     * 获取mesh和boundary数据
-     * @returns {Object} 包含mesh和boundary数据的对象
+     * Get mesh and boundary data
+     * @returns {Object} Object containing mesh and boundary data
      */
     getRenderData() {
         return {
@@ -528,33 +540,37 @@ export class UIController {
     }
 
     /**
-     * 更新单个元素的文本内容
-     * @param {string} elementId - 元素ID
-     * @param {any} value - 值
+     * Update text content of a single element
+     * @param {string} elementId - Element ID
+     * @param {any} value - Value
      */
     updateElement(elementId, value) {
         const element = this.elements[elementId];
+        console.log(`DEBUG updateElement: ${elementId} = ${value}, element found: ${!!element}`);
         if (element) {
             element.textContent = value;
+            console.log(`DEBUG: Updated ${elementId} to "${value}"`);
+        } else {
+            console.error(`DEBUG: Element with ID '${elementId}' not found!`);
         }
     }
 
     /**
-     * 获取元素的值
-     * @param {string} elementId - 元素ID
-     * @returns {string} 元素值
+     * Get element value
+     * @param {string} elementId - Element ID
+     * @returns {string} Element value
      */
     getElementValue(elementId) {
-        // 如果初始化时没拿到元素，再即时查一次并写回缓存
+        // If element wasn't found during initialization, try again and cache it
         let element = this.elements[elementId];
         if (!element) {
             element = document.getElementById(elementId);
-            if (element) this.elements[elementId] = element;   // 补进缓存
+            if (element) this.elements[elementId] = element;   // Add to cache
         }
         const value = element ? element.value : '';
 
-        // 添加调试日志
-        if (elementId === 'checkpoint-select') {
+        // Add debug logs
+        if (elementId === 'checkbox-select') {
             console.log(`getElementValue(${elementId}):`, {
                 element: element,
                 value: value,
@@ -566,9 +582,9 @@ export class UIController {
     }
 
     /**
-     * 设置元素的值
-     * @param {string} elementId - 元素ID
-     * @param {any} value - 值
+     * Set element value
+     * @param {string} elementId - Element ID
+     * @param {any} value - Value
      */
     setElementValue(elementId, value) {
         const element = this.elements[elementId];
@@ -578,8 +594,8 @@ export class UIController {
     }
 
     /**
-     * 显示错误状态
-     * @param {string} message - 错误消息
+     * Show error state
+     * @param {string} message - Error message
      */
     showError(message) {
         this.logMessage(message, LOG_TYPES.ERROR);
@@ -587,23 +603,23 @@ export class UIController {
     }
 
     /**
-     * 显示成功状态
-     * @param {string} message - 成功消息
+     * Show success state
+     * @param {string} message - Success message
      */
     showSuccess(message) {
         this.logMessage(message, LOG_TYPES.SUCCESS);
     }
 
     /**
-     * 显示警告状态
-     * @param {string} message - 警告消息
+     * Show warning state
+     * @param {string} message - Warning message
      */
     showWarning(message) {
         this.logMessage(message, LOG_TYPES.WARNING);
     }
 
     /**
-     * 重置UI到初始状态
+     * Reset UI to initial state
      */
     reset() {
         this.isTraining = false;

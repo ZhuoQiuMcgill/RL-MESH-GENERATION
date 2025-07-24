@@ -7,7 +7,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from src.rl.agent.sb3_sac_agent import SB3SACAgent
 from src.rl.config import load_config
-from src.utils.rl_ploter import plot_reward_change
+from src.utils.rl_ploter import plot_reward_change, plot_training_metrics
 from src.rl.training.history_manager import save_episode_details
 
 
@@ -25,8 +25,24 @@ class _EpisodeCallback(BaseCallback):
                      "is_completed": []}
         self._best_reward = -inf
         self._best_episode = 0
+        
+        # 新增：训练过程中的loss和alpha数据收集
+        self.training_metrics = {
+            "actor_losses": [],
+            "critic_losses": [],
+            "alphas": [],
+            "timesteps": []  # 记录对应的timestep
+        }
+        
+        # 当前最新的metrics值（用于实时显示）
+        self._latest_actor_loss = 0.0
+        self._latest_critic_loss = 0.0
+        self._latest_alpha = 0.0
 
     def _on_step(self) -> bool:
+        # 收集训练过程中的loss和alpha数据
+        self._collect_training_metrics()
+        
         infos = self.locals.get("infos", [])
         dones = self.locals.get("dones", [])
 
@@ -53,6 +69,83 @@ class _EpisodeCallback(BaseCallback):
                 self._current_timesteps += 1
 
         return True
+
+    def _collect_training_metrics(self):
+        """
+        收集训练过程中的loss和alpha数据
+        """
+        try:
+            if self.model and hasattr(self.model, 'logger') and self.model.logger:
+                # 获取logger中记录的值
+                name_to_value = getattr(self.model.logger, 'name_to_value', {})
+                
+                if name_to_value:
+                    current_timestep = self.model.num_timesteps
+                    
+                    # 获取actor loss
+                    if 'train/actor_loss' in name_to_value:
+                        actor_loss = name_to_value['train/actor_loss']
+                        self._latest_actor_loss = actor_loss
+                        self.training_metrics["actor_losses"].append(actor_loss)
+                        self.training_metrics["timesteps"].append(current_timestep)
+                    
+                    # 获取critic loss
+                    if 'train/critic_loss' in name_to_value:
+                        critic_loss = name_to_value['train/critic_loss']
+                        self._latest_critic_loss = critic_loss
+                        self.training_metrics["critic_losses"].append(critic_loss)
+                    
+                    # 获取alpha (entropy coefficient)
+                    if 'train/ent_coef' in name_to_value:
+                        alpha = name_to_value['train/ent_coef']
+                        self._latest_alpha = alpha
+                        self.training_metrics["alphas"].append(alpha)
+            
+            # 如果logger中没有数据，尝试直接从policy中获取alpha
+            if self._latest_alpha == 0.0 and self.model and hasattr(self.model, 'policy'):
+                try:
+                    if hasattr(self.model.policy, 'log_ent_coef'):
+                        import torch
+                        alpha = torch.exp(self.model.policy.log_ent_coef).item()
+                        self._latest_alpha = alpha
+                        if len(self.training_metrics["alphas"]) == 0 or self.training_metrics["alphas"][-1] != alpha:
+                            self.training_metrics["alphas"].append(alpha)
+                            if len(self.training_metrics["timesteps"]) == 0:
+                                self.training_metrics["timesteps"].append(self.model.num_timesteps)
+                    elif hasattr(self.model.policy, 'ent_coef'):
+                        alpha = float(self.model.policy.ent_coef)
+                        self._latest_alpha = alpha
+                        if len(self.training_metrics["alphas"]) == 0 or self.training_metrics["alphas"][-1] != alpha:
+                            self.training_metrics["alphas"].append(alpha)
+                            if len(self.training_metrics["timesteps"]) == 0:
+                                self.training_metrics["timesteps"].append(self.model.num_timesteps)
+                except Exception as e:
+                    pass  # 静默处理，避免影响训练
+        except Exception as e:
+            # 静默处理异常，避免影响训练过程
+            pass
+
+    def get_latest_training_metrics(self):
+        """
+        获取最新的训练指标，用于实时显示
+        
+        Returns:
+            dict: 包含最新的actor_loss, critic_loss, alpha
+        """
+        return {
+            "actor_loss": self._latest_actor_loss,
+            "critic_loss": self._latest_critic_loss,
+            "alpha": self._latest_alpha
+        }
+
+    def get_training_metrics(self):
+        """
+        获取完整的训练指标历史数据
+        
+        Returns:
+            dict: 包含所有训练指标的历史数据
+        """
+        return self.training_metrics.copy()
 
     def get_last_detail(self):
         return self.details[-1]
@@ -222,6 +315,9 @@ class SB3SACTrainer:
             Dict[str, Any]: 训练状态信息
         """
         last_detail = self._cb.get_last_detail()
+        
+        # 获取最新的训练指标
+        latest_metrics = self._cb.get_latest_training_metrics()
 
         return {
             "timesteps": self._cb.current_timesteps(),
@@ -233,6 +329,10 @@ class SB3SACTrainer:
             "latest_ref_point": last_detail.get('last_ref_point'),
             "avg_reward_100": self._cb.avg_reward_100(),
             "is_completed": last_detail.get('is_completed'),
+            # 新增：训练指标
+            "recent_actor_loss": latest_metrics.get("actor_loss", 0.0),
+            "recent_critic_loss": latest_metrics.get("critic_loss", 0.0),
+            "current_alpha": latest_metrics.get("alpha", 0.0),
         }
 
     def __getattr__(self, name):
@@ -243,6 +343,35 @@ class SB3SACTrainer:
 
     def plot_reward(self, path):
         plot_reward_change(self._cb.get_data('r'), self._cb.get_data('l'), path)
+
+    def plot_training_metrics(self, save_dir: str):
+        """
+        绘制训练过程中的loss和alpha图表
+        
+        Args:
+            save_dir: 保存目录路径
+            
+        Returns:
+            dict: 包含生成的图片路径
+        """
+        # 获取训练指标数据
+        metrics = self._cb.get_training_metrics()
+        
+        actor_losses = metrics.get("actor_losses", [])
+        critic_losses = metrics.get("critic_losses", [])
+        alphas = metrics.get("alphas", [])
+        timesteps = metrics.get("timesteps", [])
+        
+        # 生成图表
+        saved_plots = plot_training_metrics(
+            actor_losses=actor_losses,
+            critic_losses=critic_losses,
+            alphas=alphas,
+            timesteps=timesteps,
+            save_dir=save_dir
+        )
+        
+        return saved_plots
 
     def save_history(self, path):
         details = self._cb.get_non_zero_step_details()

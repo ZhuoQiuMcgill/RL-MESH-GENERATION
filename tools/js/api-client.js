@@ -46,8 +46,8 @@ export async function withRetry(apiCall, maxRetries = 1, retryDelay = 3000) {
             lastError = error;
 
             if (attempt < maxRetries) {
-                console.warn(`API调用失败，尝试重试 (${attempt + 1}/${maxRetries}):`, error.message);
-                await delay(retryDelay * Math.pow(2, attempt)); // 指数退避
+                console.warn(`API call failed, retrying (${attempt + 1}/${maxRetries}):`, error.message);
+                await delay(retryDelay * Math.pow(2, attempt)); // Exponential backoff
             }
         }
     }

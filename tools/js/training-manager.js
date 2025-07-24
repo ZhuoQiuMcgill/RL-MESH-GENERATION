@@ -1,6 +1,6 @@
 /**
- * 强化学习网格生成训练管理系统 - 支持checkpoint的版本
- * 主要的TrainingManager类，整合所有功能模块
+ * Reinforcement Learning Mesh Generation Training Management System - Checkpoint Support Version
+ * Main TrainingManager class that integrates all functional modules
  */
 
 import {CONSTANTS, STATUS, LOG_TYPES, formatNumber, throttle} from './utils.js';
@@ -10,35 +10,35 @@ import {UIController} from './ui-controller.js';
 
 export class TrainingManager {
     constructor() {
-        // 初始化各个模块
+        // Initialize all modules
         this.apiClient = new ApiClient();
         this.uiController = new UIController();
-        this.canvasRenderer = null; // 延迟初始化
+        this.canvasRenderer = null; // Delayed initialization
 
-        // 状态管理
+        // State management
         this.isTraining = false;
         this.updateInterval = null;
-        this.immediateUpdateTimer = null; // 新增：立即更新定时器
+        this.immediateUpdateTimer = null; // New: immediate update timer
 
-        // 创建带错误处理的API方法
+        // Create API methods with error handling
         this.safeApiCall = withErrorHandling.bind(this);
 
         this.init();
     }
 
     /**
-     * 初始化应用程序
+     * Initialize application
      */
     async init() {
         try {
             this.setupCanvas();
             this.bindEvents();
 
-            // 检查后端连接
+            // Check backend connection
             const isConnected = await this.checkBackendConnection();
             if (isConnected) {
                 await this.loadMeshList();
-                await this.loadCheckpointList(); // 新增：加载checkpoint列表
+                await this.loadCheckpointList(); // New: load checkpoint list
             } else {
                 this.uiController.logMessage('Cannot connect to backend server. Ensure the Flask app is running at http://localhost:5000', LOG_TYPES.ERROR);
             }
@@ -52,7 +52,7 @@ export class TrainingManager {
     }
 
     /**
-     * 设置Canvas
+     * Setup Canvas
      */
     setupCanvas() {
         const canvas = document.getElementById('mesh-canvas');
@@ -64,52 +64,52 @@ export class TrainingManager {
     }
 
     /**
-     * 绑定事件监听器
+     * Bind event listeners
      */
     bindEvents() {
-        // 开始训练按钮
+        // Start training button
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => this.startTraining());
         }
 
-        // 停止训练按钮
+        // Stop training button
         const stopBtn = document.getElementById('stop-btn');
         if (stopBtn) {
             stopBtn.addEventListener('click', () => this.stopTraining());
         }
 
-        // 刷新状态按钮
+        // Refresh status button
         const refreshBtn = document.getElementById('refresh-btn');
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => this.refreshStatus());
         }
 
-        // 清除日志按钮
+        // Clear log button
         const clearLogBtn = document.getElementById('clear-log-btn');
         if (clearLogBtn) {
             clearLogBtn.addEventListener('click', () => this.uiController.clearLogs());
         }
 
-        // Mesh选择变化 - 增强版本，支持预览
+        // Mesh selection change - enhanced version with preview support
         const meshSelect = document.getElementById('mesh-select');
         if (meshSelect) {
             meshSelect.addEventListener('change', (e) => this.onMeshSelectionChange(e.target.value));
         }
 
-        // 新增：Checkpoint模式切换
+        // New: Checkpoint mode toggle
         const checkpointMode = document.getElementById('checkpoint-mode');
         if (checkpointMode) {
             checkpointMode.addEventListener('change', (e) => this.onCheckpointModeChange(e.target.checked));
         }
 
-        // 新增：Checkpoint选择变化
+        // New: Checkpoint selection change
         const checkpointSelect = document.getElementById('checkpoint-select');
         if (checkpointSelect) {
             checkpointSelect.addEventListener('change', (e) => this.onCheckpointSelectionChange(e.target.value));
         }
 
-        // Canvas点击事件
+        // Canvas click event
         const canvas = document.getElementById('mesh-canvas');
         if (canvas && this.canvasRenderer) {
             canvas.addEventListener('click', this.handleCanvasClickThrottled);
@@ -117,8 +117,8 @@ export class TrainingManager {
     }
 
     /**
-     * 检查后端连接状态
-     * @returns {Promise<boolean>} 连接状态
+     * Check backend connection status
+     * @returns {Promise<boolean>} Connection status
      */
     async checkBackendConnection() {
         try {
@@ -134,7 +134,7 @@ export class TrainingManager {
     }
 
     /**
-     * 加载可用的Mesh列表
+     * Load available mesh list
      */
     async loadMeshList() {
         try {
@@ -159,7 +159,7 @@ export class TrainingManager {
     }
 
     /**
-     * 新增：加载可用的Checkpoint列表
+     * New: Load available checkpoint list
      */
     async loadCheckpointList() {
         try {
@@ -180,13 +180,13 @@ export class TrainingManager {
     }
 
     /**
-     * Mesh选择变化事件处理 - 增强版本，支持预览
-     * @param {string} meshName - 选中的mesh名称
+     * Mesh selection change event handler - enhanced version with preview support
+     * @param {string} meshName - Selected mesh name
      */
     async onMeshSelectionChange(meshName) {
         if (!meshName) {
             this.uiController.hideMeshInfo();
-            // 清空canvas，显示默认提示
+            // Clear canvas and show default prompt
             if (this.canvasRenderer) {
                 this.canvasRenderer.clearCanvas();
             }
@@ -196,17 +196,17 @@ export class TrainingManager {
         try {
             this.uiController.showLoading(true);
 
-            // 同时获取mesh信息和边界数据
+            // Get mesh info and boundary data simultaneously
             const [info, boundaryData] = await Promise.all([
                 this.apiClient.getMeshInfo(meshName),
                 this.apiClient.getMeshBoundary(meshName)
             ]);
 
-            // 更新UI信息
+            // Update UI info
             this.uiController.showMeshInfo(info);
             this.uiController.logMessage(`Selected mesh: ${meshName}`, LOG_TYPES.INFO);
 
-            // 在canvas中渲染边界预览
+            // Render boundary preview in canvas
             if (this.canvasRenderer && boundaryData.success) {
                 this.canvasRenderer.renderBoundaryPreview(
                     boundaryData.boundary_vertices,
@@ -228,7 +228,7 @@ export class TrainingManager {
             this.uiController.showError('Failed to get mesh info: ' + error.message);
             this.uiController.hideMeshInfo();
 
-            // 清空canvas
+            // Clear canvas
             if (this.canvasRenderer) {
                 this.canvasRenderer.clearCanvas();
             }
@@ -238,8 +238,8 @@ export class TrainingManager {
     }
 
     /**
-     * 新增：Checkpoint模式切换事件处理
-     * @param {boolean} useCheckpoint - 是否使用checkpoint
+     * New: Checkpoint mode toggle event handler
+     * @param {boolean} useCheckpoint - Whether to use checkpoint
      */
     onCheckpointModeChange(useCheckpoint) {
         this.uiController.showCheckpointSelection(useCheckpoint);
@@ -253,7 +253,7 @@ export class TrainingManager {
     }
 
     /**
-     * 新增：Checkpoint选择变化事件处理
+     * New: Checkpoint selection change event handler
      * @param {string} checkpointName - 选中的checkpoint名称
      */
     async onCheckpointSelectionChange(checkpointName) {

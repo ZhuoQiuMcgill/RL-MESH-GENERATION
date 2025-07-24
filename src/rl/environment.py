@@ -135,7 +135,7 @@ class MeshEnv(gym.Env):
 
         def invalid_penalty() -> float:
             # Negative reward for invalid action
-            punish = ((self.generated_elements - self.max_steps) * 0.1)
+            punish = (self.generated_elements - 100)
             if self.generated_elements == 0:
                 return punish
             return punish / self.generated_elements
@@ -155,7 +155,7 @@ class MeshEnv(gym.Env):
         if action_valid:
             reward = (
                     element_quality_reward
-                    + boundary_quality_reward
+                    + 1 * (boundary_quality_reward - 1)
                     + self._calculate_density_reward(generated_element)
             )
             self.generated_elements += 1

@@ -1,6 +1,6 @@
 /**
- * Canvas渲染模块 - 修复响应式和缩放问题
- * 负责所有Canvas相关的绘制功能
+ * Canvas Rendering Module - Fixed responsive and zoom issues
+ * Handles all Canvas-related drawing functions
  */
 
 import {CONSTANTS, isValidCoordinate, parseBackendData} from './utils.js';
@@ -12,16 +12,16 @@ export class CanvasRenderer {
         this.currentTransform = null;
         this.isResizing = false;
 
-        // 添加防抖机制
+        // Add debounce mechanism
         this.resizeDebounceTimer = null;
-        this.lastRenderData = null; // 缓存最后的渲染数据
+        this.lastRenderData = null; // Cache last render data
 
         this.setupCanvas();
         this.bindResizeEvent();
     }
 
     /**
-     * 设置Canvas基本配置
+     * Setup Canvas basic configuration
      */
     setupCanvas() {
         this.resizeCanvas();

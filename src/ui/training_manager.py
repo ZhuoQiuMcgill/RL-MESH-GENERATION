@@ -588,6 +588,19 @@ class TrainingManager:
             plot_path = os.path.join(self.training_session_dir, "plot", f"{self.training_id}_rewards.png")
             self.trainer.plot_reward(plot_path)
             self.logger.info(f"奖励图表已保存: {plot_path}")
+            
+            # 保存训练指标图表（actor loss, critic loss, alpha）
+            plot_dir = os.path.join(self.training_session_dir, "plot")
+            try:
+                saved_plots = self.trainer.plot_training_metrics(plot_dir)
+                if saved_plots:
+                    self.logger.info("训练指标图表已保存:")
+                    for metric_name, plot_path in saved_plots.items():
+                        self.logger.info(f"  {metric_name}: {plot_path}")
+                else:
+                    self.logger.info("没有训练指标数据可供绘图")
+            except Exception as e:
+                self.logger.warning(f"保存训练指标图表失败: {e}")
 
             history_path = os.path.join(self.training_session_dir, "history")
             self.trainer.save_history(history_path)
@@ -796,6 +809,10 @@ class TrainingManager:
                 "episode_length": trainer_status.get("latest_length", 0) or 0,
                 "training_id": self.training_id,
                 "online_learning_mode": False,  # SB3默认使用经验回放
+                # 更新训练指标
+                "recent_actor_loss": trainer_status.get("recent_actor_loss", 0.0),
+                "recent_critic_loss": trainer_status.get("recent_critic_loss", 0.0),
+                "current_alpha": trainer_status.get("current_alpha", 0.0),
             })
 
             mesh_data = trainer_status.get("latest_mesh")

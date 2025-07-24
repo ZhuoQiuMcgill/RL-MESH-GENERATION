@@ -1,9 +1,9 @@
 /**
- * 工具函数模块
- * 包含常量定义、格式化函数和通用工具函数
+ * Utility Functions Module
+ * Contains constant definitions, formatting functions, and common utility functions
  */
 
-// 常量定义
+// Constant definitions
 export const CONSTANTS = {
     API_BASE_URL: 'http://127.0.0.1:5000',
     CANVAS_DEVICE_PIXEL_RATIO: window.devicePixelRatio || 1,
@@ -11,12 +11,12 @@ export const CONSTANTS = {
     DEFAULT_PADDING: 50,
     CANVAS_PADDING: 32,
     MAX_LOGS: 100,
-    CONNECTION_TIMEOUT: 60000, // 增加到60秒
-    HISTORY_CONNECTION_TIMEOUT: 120000, // 历史记录专用超时：2分钟
-    TRAINING_STOP_TIMEOUT: 30000, // 停止训练专用超时：30秒
+    CONNECTION_TIMEOUT: 60000, // Increased to 60 seconds
+    HISTORY_CONNECTION_TIMEOUT: 120000, // History records timeout: 2 minutes
+    TRAINING_STOP_TIMEOUT: 30000, // Training stop timeout: 30 seconds
     VERTEX_RADIUS: 6,
     UPDATE_INTERVALS: {
-        DEFAULT: 10000 // 10秒
+        DEFAULT: 10000 // 10 seconds
     }
 };
 
