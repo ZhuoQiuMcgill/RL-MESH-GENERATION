@@ -1,9 +1,11 @@
 import numpy as np
 from typing import List, Tuple
 from math import inf
+from .fan_shape import FanShape
+import math
 
 # 只导入具体需要的函数，避免循环导入
-from src.utils.angle import get_interior_angle, is_angle_in_slice, euclidean_distance
+from src.utils.angle import get_interior_angle, euclidean_distance
 from src.utils.segment import (
     ray_segment_intersection,
     orientation,
@@ -43,9 +45,11 @@ class Boundary:
         """
         return [tuple(v) for v in self._verts]
 
-    def get_neighbors(self, ref_index, n):
+    def get_neighbors(self, ref_index, n, get_type="default"):
         vertices = []
         for i in range(-n, n + 1):
+            if get_type == "exclude ref" and i == 0:
+                continue
             vertices.append(self.get_vertex_by_index(ref_index + i))
         return vertices
 
@@ -121,7 +125,7 @@ class Boundary:
 
         min_distance = inf
         vertex_array = np.asarray(vertex, dtype=float)
-        
+
         for boundary_vertex in self.get_vertices():
             if to_tuple(boundary_vertex) in normalized_ignore:
                 continue
@@ -149,24 +153,24 @@ class Boundary:
             raise TypeError("vertex index v must be int")
         if not isinstance(n, int) or n <= 0:
             raise ValueError("n must be a positive integer")
-        
+
         boundary_size = self.size()
         if boundary_size < 2 * n:
             raise ValueError(f"Boundary has only {boundary_size} vertices, need at least {2 * n} for n={n}")
-        
+
         total_length = 0.0
         edge_count = 2 * n
-        
+
         # Calculate lengths of edges from (v-n) to (v+n)
         for i in range(-n, n):
             # Get current vertex and next vertex using existing boundary methods
             current_vertex = self.get_vertex_by_index(v + i)
             next_vertex = self.get_vertex_by_index(v + i + 1)
-            
+
             # Calculate edge length using existing euclidean_distance function
             edge_length = euclidean_distance(current_vertex, next_vertex)
             total_length += edge_length
-        
+
         return total_length / edge_count
 
     def size(self) -> int:
@@ -418,81 +422,15 @@ class Boundary:
 
         return area
 
-    def get_fan_points(self, reference_vertex_index: int, g: int, fan_radius: float) -> List[Tuple[float, float]]:
-        """
-        本函数旨在实现论文中定义的"前瞻性扇形区域"顶点提取功能。
-        它会从给定的参考顶点向多边形内部投射一个扇形区域，将其划分为`g`个相等的角切片，
-        并在每个切片中找到一个代表性的边界点，最终返回这`g`个点的列表。
-        """
-        # 输入验证
-        boundary_size = len(self._verts)
-        if not (0 <= reference_vertex_index < boundary_size):
-            raise IndexError("Reference vertex index out of range")
-
-        if g <= 0:
-            raise ValueError("Number of slices g must be positive")
-
-        # 1. 定义扇形几何边界
-        v_0 = self.get_vertex_by_index(reference_vertex_index)
-        v_l1 = self.get_vertex_by_index(reference_vertex_index + 1)  # 左邻居
-        v_r1 = self.get_vertex_by_index(reference_vertex_index - 1)  # 右邻居
-
-        # 计算定义扇形边界的两个向量
-        vec_left = v_l1 - v_0
-        vec_right = v_r1 - v_0
-
-        # 计算角度
-        angle_left = np.arctan2(vec_left[1], vec_left[0])
-        angle_right = np.arctan2(vec_right[1], vec_right[0])
-
-        # 计算总扇形角度（考虑顺时针边界）
-        # 从右邻居到左邻居的内角
-        total_fan_angle = angle_left - angle_right
-        if total_fan_angle <= 0:
-            total_fan_angle += 2 * np.pi
-
-        # 2. 划分扇形为g个切片
-        slice_angle = total_fan_angle / g
-        result_points = []
-
-        # 3. 为每个切片寻找代表点
-        for i in range(g):
-            # 当前切片的起始和结束角度（从右到左）
-            slice_start_angle = angle_right + i * slice_angle
-            slice_end_angle = angle_right + (i + 1) * slice_angle
-
-            # a. 筛选候选点
-            candidates = []
-            for j, vertex in enumerate(self._verts):
-                if j == reference_vertex_index:
-                    continue
-
-                # 计算到参考点的向量和距离
-                vec_to_vertex = vertex - v_0
-                distance = np.linalg.norm(vec_to_vertex)
-
-                if distance > fan_radius:
-                    continue
-
-                # 计算角度
-                vertex_angle = np.arctan2(vec_to_vertex[1], vec_to_vertex[0])
-
-                # 检查是否在当前切片内
-                if is_angle_in_slice(vertex_angle, slice_start_angle, slice_end_angle):
-                    candidates.append((j, vertex, distance))
-
-            # b. 选择最近点
-            if candidates:
-                # 选择距离最近的候选点
-                best_candidate = min(candidates, key=lambda x: x[2])
-                result_points.append(tuple(best_candidate[1]))
-            else:
-                # c. 处理空切片 - 使用角平分线与边界的交点
-                bisector_angle = (slice_start_angle + slice_end_angle) / 2
-                intersection_point = self._find_bisector_boundary_intersection(v_0, bisector_angle, fan_radius)
-                result_points.append(intersection_point)
-
-        return result_points
+    def get_fan_points(self, reference_vertex_index: int) -> List[Tuple[float, float]]:
+        base_length = self.get_avg_neighbor_length(reference_vertex_index, 2)
+        fan_shape = FanShape(
+            self.get_vertex_by_index(reference_vertex_index - 1),
+            self.get_vertex_by_index(reference_vertex_index),
+            self.get_vertex_by_index(reference_vertex_index + 1),
+            base_length
+        )
+        return fan_shape.process(self.get_vertices())
 
     # ------------------------------------------------------------
     # 私有辅助方法

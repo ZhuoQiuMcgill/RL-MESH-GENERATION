@@ -37,52 +37,51 @@ def is_angle_in_slice(angle: float, start_angle: float, end_angle: float) -> boo
         return angle >= start_angle or angle <= end_angle
 
 
-def normalize_coordinates(vertices, reference_vertex_idx, boundary, n):
-    reference_vertex = boundary.get_vertex_by_index(reference_vertex_idx)
+def normalize_coordinates(vertices,
+                          ref_vertex,
+                          right_neighbor_vertex,
+                          scale_factor):
+    """
+    Convert a list of vertices to normalized polar coordinates
+    in the local frame defined by (ref_vertex, right_neighbor_vertex).
 
-    # 获取参考方向：V0 -> Vr,1 (右侧第一个邻居)
-    right_neighbor = boundary.get_vertex_by_index(reference_vertex_idx - 1)
+    Args:
+        vertices (Iterable[Tuple[float, float]]): points to normalize
+        ref_vertex (Tuple[float, float]): origin of the local frame (V0)
+        right_neighbor_vertex (Tuple[float, float]): V_{r,1} used as +x axis
+        scale_factor (float): 1 / base_length for length normalization
 
-    # 计算参考方向向量
-    ref_direction = np.array([
-        right_neighbor[0] - reference_vertex[0],
-        right_neighbor[1] - reference_vertex[1]
-    ])
-
-    # 计算参考方向的角度
+    Returns:
+        List[Tuple[float, float]]: (r, theta) for each vertex
+    """
+    # Reference direction vector and its angle
+    ref_direction = (
+        right_neighbor_vertex[0] - ref_vertex[0],
+        right_neighbor_vertex[1] - ref_vertex[1]
+    )
     ref_angle = math.atan2(ref_direction[1], ref_direction[0])
 
-    # 计算基础长度作为缩放因子
-    base_length = boundary.get_avg_neighbor_length(reference_vertex_idx, n)
-    scale_factor = 1.0 / base_length if base_length > 0 else 1.0
-
-    normalized_coords = []
+    cos_ref, sin_ref = math.cos(-ref_angle), math.sin(-ref_angle)
+    normalized = []
 
     for vertex in vertices:
-        # 1. 平移：以参考顶点为原点
-        translated = np.array([
-            vertex[0] - reference_vertex[0],
-            vertex[1] - reference_vertex[1]
-        ])
+        if vertex is None:
+            normalized.append((0.0, 0.0))
+            continue
+        vx, vy = vertex
+        # translate
+        tx, ty = vx - ref_vertex[0], vy - ref_vertex[1]
+        # rotate
+        rx = tx * cos_ref - ty * sin_ref
+        ry = tx * sin_ref + ty * cos_ref
+        # scale
+        sx, sy = rx * scale_factor, ry * scale_factor
+        # polar
+        r = math.hypot(sx, sy)
+        theta = math.atan2(sy, sx)
+        normalized.append((r, theta))
 
-        # 2. 旋转：以V0Vr,1为参考方向（x轴）
-        cos_ref = math.cos(-ref_angle)
-        sin_ref = math.sin(-ref_angle)
-        rotated = np.array([
-            translated[0] * cos_ref - translated[1] * sin_ref,
-            translated[0] * sin_ref + translated[1] * cos_ref
-        ])
-
-        # 3. 缩放：基于基础长度标准化
-        scaled = rotated * scale_factor
-
-        # 4. 转换为极坐标（论文要求）
-        r = math.sqrt(scaled[0] ** 2 + scaled[1] ** 2)
-        theta = math.atan2(scaled[1], scaled[0])
-
-        normalized_coords.append((r, theta))
-
-    return normalized_coords
+    return normalized
 
 
 def calculate_polygon_area(vertices):

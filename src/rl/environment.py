@@ -58,8 +58,8 @@ class MeshEnv(gym.Env):
         )
 
         # 定义状态空间和动作空间
-        # State: (n_left + n_right + 1 + g_points) * 2 (coords) + 1 (area_ratio)
-        state_dim = (self.n + self.n + 1 + self.g) * 2 + 1
+        # State: (n_left + n_right + g_points) * 2 (coords)
+        state_dim = (self.n * 2 + self.g) * 2
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(state_dim,), dtype=np.float32)
 
         # Action space from ActionManager
@@ -135,11 +135,10 @@ class MeshEnv(gym.Env):
 
         def invalid_penalty() -> float:
             # Negative reward for invalid action
-            # punish = (self.generated_elements - 100)
-            # if self.generated_elements == 0:
-            #     return punish
-            # return punish / self.generated_elements
-            return -100
+            punish = (self.generated_elements - 100)
+            if self.generated_elements == 0:
+                return punish
+            return punish / self.generated_elements
 
         # Process action using ActionManager
         action_result = self.action_manager.process_action(
@@ -210,66 +209,53 @@ class MeshEnv(gym.Env):
 
     def _get_obs(self):
         """
-        获取当前状态观察，实现公式(4)的状态表示
-        严格按照论文方法进行坐标标准化
-
-        Returns:
-            np.ndarray: 状态向量
+        Build the state vector following Eq.(4) in the paper.
+        Order: neighbors first, then fan points, finally area ratio ρ_t.
         """
-
         if self.boundary.size() < 3:
             return np.zeros(self.observation_space.shape, dtype=np.float32)
 
-        # 获取参考顶点
+        # 1. reference vertex and geometric info
+        get_type = "exclude ref"
         reference_idx = self.boundary.get_ref_vertex()
+        ref_v = self.boundary.get_vertex_by_index(reference_idx)
+        right_neighbor_v = self.boundary.get_vertex_by_index(reference_idx - 1)
+        neighbor_coords = self.boundary.get_neighbors(reference_idx, self.n, get_type=get_type)
 
-        ref_vertex_coords = self.boundary.get_vertex_by_index(reference_idx)
-        local_env_coords = self.boundary.get_neighbors(reference_idx, self.n)
+        # 2. collect fan-sector vertices (global coords)
+        try:
+            fan_coords = list(self.boundary.get_fan_points(reference_idx))
+        except Exception:
+            fan_coords = [None] * self.g
 
-        self.last_reference_info = {
-            "ref_vertex": tuple(ref_vertex_coords),
-            "local_env_vertices": [tuple(v) for v in local_env_coords]
-        }
+        # 3. scale factor (based on average neighbor length)
+        base_len = self.boundary.get_avg_neighbor_length(reference_idx, self.n)
+        scale_factor = 1.0 / base_len if base_len > 0 else 1.0
 
+        # 4. normalize coordinates in one shot
+        normalized_vertex = normalize_coordinates(
+            neighbor_coords + fan_coords, ref_v, right_neighbor_v, scale_factor
+        )
+
+        # 5. construct state vector
         state_components = []
-
-        # 按论文方法标准化邻居顶点坐标
-        normalized_neighbors = normalize_coordinates(local_env_coords, reference_idx, self.boundary, self.n)
-
-        # 添加邻居顶点的标准化坐标到状态
-        for r, theta in normalized_neighbors:
+        for r, theta in normalized_vertex:
             state_components.extend([r, theta])
 
-        # 获取扇形区域内的观察点并标准化
-        try:
-            fan_points = self.boundary.get_fan_points(
-                reference_idx, self.g,
-                self.beta * self.boundary.get_avg_neighbor_length(reference_idx, self.n)
-            )
+        # 6. area ratio ρ_t
+        # area_ratio = (
+        #     self.boundary.get_area() / self.total_initial_area
+        #     if self.total_initial_area > 0 else 1.0
+        # )
+        # state_components.append(area_ratio)
 
-            # 将参考顶点加入fan_points列表的开头以便标准化
-            fan_vertices_with_ref = [ref_vertex_coords] + list(fan_points)
-            normalized_fan = normalize_coordinates(fan_vertices_with_ref, 0, self.boundary, self.n)  # 参考点在位置0
-
-            # 跳过参考点本身，只添加扇形点的坐标
-            for r, theta in normalized_fan[1:]:
-                state_components.extend([r, theta])
-
-            # 如果扇形点不足，用零填充
-            while len(normalized_fan) - 1 < self.g:
-                state_components.extend([0.0, 0.0])
-                if len(normalized_fan) - 1 >= self.g:
-                    break
-
-        except Exception:
-            # 如果获取扇形点失败，用零填充
-            for _ in range(self.g):
-                state_components.extend([0.0, 0.0])
-
-        # 添加面积比 ρt
-        current_area = self.boundary.get_area()
-        area_ratio = current_area / self.total_initial_area if self.total_initial_area > 0 else 1.0
-        state_components.append(area_ratio)
+        # 7. cache info for debugging/visualization
+        if get_type == "exclude ref":
+            neighbor_coords.insert(self.n, ref_v)
+        self.last_reference_info = {
+            "ref_vertex": tuple(ref_v),
+            "local_env_vertices": [tuple(v) for v in neighbor_coords]
+        }
 
         return np.array(state_components, dtype=np.float32)
 
