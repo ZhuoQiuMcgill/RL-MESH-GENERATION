@@ -241,6 +241,32 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         
         plot_timesteps = timesteps[:len(critic_losses)]
         
+        # 智能Y轴缩放：处理初期极高值问题
+        critic_losses_array = np.array(critic_losses)
+        
+        # 计算百分位数来确定合理的Y轴范围
+        q25, q75 = np.percentile(critic_losses_array, [25, 75])
+        iqr = q75 - q25
+        
+        # 如果有超过30%的数据点在后70%的时间范围内，使用后70%数据来设定Y轴
+        if len(critic_losses) > 100:
+            later_portion = critic_losses_array[int(len(critic_losses) * 0.3):]
+            later_q95 = np.percentile(later_portion, 95)
+            later_q5 = np.percentile(later_portion, 5)
+            
+            # 如果初期的极值远大于后期数据，使用后期数据的范围
+            if np.max(critic_losses_array[:int(len(critic_losses) * 0.3)]) > later_q95 * 3:
+                y_max = later_q95 * 1.1
+                y_min = max(0, later_q5 * 0.9)
+            else:
+                # 使用全部数据的95%分位数
+                y_max = np.percentile(critic_losses_array, 95)
+                y_min = max(0, np.percentile(critic_losses_array, 5))
+        else:
+            # 数据量少时使用全部数据
+            y_max = np.percentile(critic_losses_array, 95)
+            y_min = max(0, np.percentile(critic_losses_array, 5))
+        
         ax.plot(plot_timesteps, critic_losses,
                 color=accent_color, linewidth=1.5, alpha=0.9,
                 label='Critic Loss', zorder=3)
@@ -253,6 +279,9 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
             ax.plot(ma_timesteps, ma,
                     color=secondary_color, linewidth=2,
                     alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
+        
+        # 设置智能Y轴范围
+        ax.set_ylim(y_min, y_max)
         
         ax.set_xlabel('Timesteps', fontsize=12, color=text_color, fontweight='500')
         ax.set_ylabel('Critic Loss', fontsize=12, color=text_color, fontweight='500')
