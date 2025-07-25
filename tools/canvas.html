@@ -69,7 +69,7 @@
                     class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Ctrl</kbd>
                 +
                 <kbd class="px-2 py-1.5 text-xs font-semibold text-gray-800 bg-gray-100 border border-gray-200 rounded-lg">Z</kbd>
-                undo the last point.</p>
+                or <strong>right-click</strong> to undo the last point.</p>
         </div>
         <div id="message-box"
              class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white px-6 py-3 rounded-lg shadow-xl">
@@ -124,10 +124,10 @@
     /**
      * Snaps an angle to the nearest target angle (90° or 180°) within tolerance
      * @param {number} angle - Current angle in degrees
-     * @param {number} tolerance - Tolerance in degrees (default 15°)
+     * @param {number} tolerance - Tolerance in degrees (default 5°)
      * @returns {number} Snapped angle in degrees
      */
-    function snapAngle(angle, tolerance = 15) {
+    function snapAngle(angle, tolerance = 5) {
         const targetAngles = [0, 90, 180, -90, -180];
         
         for (let target of targetAngles) {
@@ -437,11 +437,27 @@
     function handleUndo(event) {
         if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
             event.preventDefault();
-            if (points.length > 0 && !isFinished) {
-                points.pop();
-                updateUI();
-                draw();
-            }
+            undoLastPoint();
+        }
+    }
+
+    /**
+     * Handles right-click on canvas to undo the last point.
+     * @param {MouseEvent} event - The right-click event.
+     */
+    function handleCanvasRightClick(event) {
+        event.preventDefault(); // Prevent context menu
+        undoLastPoint();
+    }
+
+    /**
+     * Removes the last added point (shared logic for Ctrl+Z and right-click).
+     */
+    function undoLastPoint() {
+        if (points.length > 0 && !isFinished) {
+            points.pop();
+            updateUI();
+            draw();
         }
     }
 
@@ -552,6 +568,7 @@
     window.addEventListener('resize', resizeCanvas);
     document.addEventListener('keydown', handleUndo);
     canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('contextmenu', handleCanvasRightClick);
     canvas.addEventListener('mousemove', handleCanvasMouseMove);
     canvas.addEventListener('mouseenter', handleCanvasMouseEnter);
     canvas.addEventListener('mouseleave', handleCanvasMouseLeave);

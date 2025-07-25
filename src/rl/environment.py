@@ -57,7 +57,7 @@ class MeshEnv(gym.Env):
         )
 
         # State: (n_left + n_right + g_points) * 2 (coords) + qt
-        state_dim = (self.n * 2 + self.g) * 2 + 1
+        state_dim = (self.n * 2 + self.g) * 2
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(state_dim,), dtype=np.float32)
 
         # Action space from ActionManager
@@ -75,6 +75,8 @@ class MeshEnv(gym.Env):
         self.episode_reward = 0.0
         self.episode_length = 0
         self.episode_count = 0
+
+        self.invalid_action_count = 0
 
     def _reset_episode_stats(self) -> None:
         """重置episode级别的统计信息"""
@@ -108,6 +110,7 @@ class MeshEnv(gym.Env):
         self.total_initial_area = self.boundary.get_area()
         self.current_step = 0
         self.generated_elements = 0
+        self.invalid_action_count = 0
 
         # 重置episode统计
         self._reset_episode_stats()
@@ -135,7 +138,7 @@ class MeshEnv(gym.Env):
             punish = -1
             if self.generated_elements == 0:
                 return punish
-            return punish
+            return punish / self.generated_elements
 
         # Process action using ActionManager
         action_result = self.action_manager.process_action(
@@ -148,6 +151,7 @@ class MeshEnv(gym.Env):
         boundary_quality_reward = action_result['boundary_quality_reward']
         generated_element = action_result['generated_element']
 
+        self.current_step += 1
         # Calculate reward and termination
         if action_valid:
             reward = (
@@ -156,7 +160,6 @@ class MeshEnv(gym.Env):
                     + self._calculate_density_reward(generated_element)
             )
             self.generated_elements += 1
-            self.current_step += 1
             terminated = self._is_terminated()
             complete = terminated
             truncated = self.current_step >= self.max_steps
@@ -164,7 +167,11 @@ class MeshEnv(gym.Env):
             trunc_reason = "time_limit" if truncated else None
         else:
             reward = invalid_penalty()
-            terminated = True  # illegal action → failure
+            self.invalid_action_count += 1
+            if self.invalid_action_count >= 100:
+                terminated = True
+            else:
+                terminated = False
             complete = False
             truncated = False
             term_reason = "invalid_action"
@@ -191,7 +198,8 @@ class MeshEnv(gym.Env):
                               "mesh_data": self.get_mesh_data(),
                               "boundary_vertices_data": self.boundary.get_vertices(),
                               "last_ref_point": self.get_last_reference_info(),
-                              "is_completed": complete}
+                              "is_completed": complete,
+                              "generated_elements": self.generated_elements}
 
         return observation, reward, terminated, truncated, info
 
@@ -240,11 +248,11 @@ class MeshEnv(gym.Env):
             state_components.extend([r, theta])
 
         # 6. area ratio ρ_t
-        area_ratio = (
-            self.boundary.get_area() / self.total_initial_area
-            if self.total_initial_area > 0 else 1.0
-        )
-        state_components.append(area_ratio)
+        # area_ratio = (
+        #     self.boundary.get_area() / self.total_initial_area
+        #     if self.total_initial_area > 0 else 1.0
+        # )
+        # state_components.append(area_ratio)
 
         # 7. cache info for debugging/visualization
         if get_type == "exclude ref":

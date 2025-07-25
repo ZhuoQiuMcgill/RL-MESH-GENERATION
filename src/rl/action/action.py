@@ -32,7 +32,7 @@ class ActionType(ABC):
         :param element: iterable of 4 vertices
         :return: quality in [0, 1]
         """
-        return quality_hybrid(element)
+        return quality_robust(element)
 
     @staticmethod
     def calculate_angle_quality(angle1, angle2, M_angle,
@@ -40,25 +40,26 @@ class ActionType(ABC):
                                 alpha=8.0,  # 控制 < pivot 区间的陡峭度 (alpha > 1  ⇒  f'' > 0)
                                 beta=3.0):  # 控制 ≥ pivot 区间的平缓度 (beta > 1  ⇒  f'' < 0)
 
-        # ---------------- basic checks ----------------
-        if M_angle <= 0:
-            raise ValueError("M_angle must be positive.")
-        theta = min(angle1, angle2, M_angle)  # 饱和到阈值
-        if theta <= 0:
-            return 0.0  # Fast exit
-
-        # ---------------- pre‑compute constants ----------------
-        xp = pivot_ratio  # 0 < xp < 1
-        x = theta / M_angle  # normalised angle ∈ [0, 1]
-
-        # ---------------- piecewise curve ----------------
-        if x < xp:  # 迅速下降区间，二阶导 > 0
-            quality = 0.5 * (x / xp) ** alpha
-        else:  # 缓慢下降区间，二阶导 < 0
-            quality = 1.0 - 0.5 * ((1.0 - x) / (1.0 - xp)) ** beta
-
-        # 数值护栏，确保 ∈ [0, 1]
-        return max(0.0, min(1.0, quality))
+        # # ---------------- basic checks ----------------
+        # if M_angle <= 0:
+        #     raise ValueError("M_angle must be positive.")
+        # theta = min(angle1, angle2, M_angle)
+        # if theta <= 0:
+        #     return 0.0  # Fast exit
+        #
+        # # ---------------- pre‑compute constants ----------------
+        # xp = pivot_ratio  # 0 < xp < 1
+        # x = theta / M_angle  # normalised angle ∈ [0, 1]
+        #
+        # # ---------------- piecewise curve ----------------
+        # if x < xp:  # 迅速下降区间，二阶导 > 0
+        #     quality = 0.5 * (x / xp) ** alpha
+        # else:  # 缓慢下降区间，二阶导 < 0
+        #     quality = 1.0 - 0.5 * ((1.0 - x) / (1.0 - xp)) ** beta
+        #
+        # # 数值护栏，确保 ∈ [0, 1]
+        # return max(0.0, min(1.0, quality))
+        return min(angle1, angle2, M_angle) / M_angle
 
     @abstractmethod
     def get_element_quality(self, boundary, reference_vertex_idx, *coords):

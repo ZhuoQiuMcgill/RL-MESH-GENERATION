@@ -22,7 +22,8 @@ class _EpisodeCallback(BaseCallback):
                      "mesh_data": [],
                      "boundary_vertices_data": [],
                      "last_ref_point": [],
-                     "is_completed": []}
+                     "is_completed": [],
+                     "generated_elements": []}
         self._best_reward = -inf
         self._best_episode = 0
         
@@ -58,6 +59,7 @@ class _EpisodeCallback(BaseCallback):
             self.data['boundary_vertices_data'].append(detail['boundary_vertices_data'])
             self.data['last_ref_point'].append(detail['last_ref_point'])
             self.data['last_ref_point'].append(detail['last_ref_point'])
+            self.data['generated_elements'].append(detail['generated_elements'])
 
             if detail['r'] > self._best_reward:
                 self._best_reward = detail['r']
@@ -171,12 +173,12 @@ class _EpisodeCallback(BaseCallback):
     def current_best_episode(self):
         return self._best_episode
 
-    def get_non_zero_step_details(self):
-        non_zero_step_details = []
+    def get_non_zero_generated_details(self):
+        non_zero_generated_details = []
         for detail in self.details:
-            if detail["l"] != 0:
-                non_zero_step_details.append(detail)
-        return non_zero_step_details
+            if detail.get("generated_elements", 0) > 0:
+                non_zero_generated_details.append(detail)
+        return non_zero_generated_details
 
 
 class SB3SACTrainer:
@@ -374,7 +376,7 @@ class SB3SACTrainer:
         return saved_plots
 
     def save_history(self, path):
-        details = self._cb.get_non_zero_step_details()
+        details = self._cb.get_non_zero_generated_details()
         best_episode_number = self._cb.current_best_episode()
         best_episode_index = 0
         for i, detail in enumerate(details):

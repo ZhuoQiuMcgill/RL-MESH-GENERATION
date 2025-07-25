@@ -25,21 +25,21 @@ def save_episode_details(details, best_episode, path):
     # 确保目录存在
     os.makedirs(path, exist_ok=True)
 
-    # 只保存非零步数的episode
-    non_zero_step_details = []
-    non_zero_step_episodes = []
+    # 只保存generated_elements > 0的episode
+    non_zero_generated_details = []
+    non_zero_generated_episodes = []
 
     for detail in details:
-        if detail.get("l", 0) > 0:  # l是step数量
-            non_zero_step_details.append(detail)
-            non_zero_step_episodes.append(detail.get("episode_number"))
+        if detail.get("generated_elements", 0) > 0:  # generated_elements是生成元素数量
+            non_zero_generated_details.append(detail)
+            non_zero_generated_episodes.append(detail.get("episode_number"))
 
     # 构建保存的数据结构
     data = {
-        "size": len(non_zero_step_details),
+        "size": len(non_zero_generated_details),
         "best_episode": best_episode,
-        "non_zero_step_episodes_index": non_zero_step_episodes,
-        "details": non_zero_step_details
+        "non_zero_generated_episodes_index": non_zero_generated_episodes,
+        "details": non_zero_generated_details
     }
 
     # 保存到JSON文件
@@ -56,7 +56,7 @@ class HistoryManager:
         self.size = 0
         self.history_dir = DATA_DIR
         self.focused = False
-        self.non_zero_step_episodes = []
+        self.non_zero_generated_episodes = []
         self.logger = logging.getLogger(__name__)
         
         # 智能缓存和文件监控相关属性
@@ -153,7 +153,7 @@ class HistoryManager:
         self.detail_data = None
         self.best_episode = 0
         self.size = 0
-        self.non_zero_step_episodes = []
+        self.non_zero_generated_episodes = []
         self._data_loaded = False
         self._file_last_modified = None
         self._cache_valid = False
@@ -187,7 +187,7 @@ class HistoryManager:
             self.detail_data = []
             self.size = 0
             self.best_episode = 0
-            self.non_zero_step_episodes = []
+            self.non_zero_generated_episodes = []
             self._data_loaded = True
             self._cache_valid = True
             self._file_last_modified = None
@@ -200,7 +200,7 @@ class HistoryManager:
             self.detail_data = data.get("details", [])
             self.size = data.get("size", len(self.detail_data))
             self.best_episode = data.get("best_episode", 0)
-            self.non_zero_step_episodes = data.get("non_zero_step_episodes_index", [])
+            self.non_zero_generated_episodes = data.get("non_zero_generated_episodes_index", [])
 
             # 更新缓存状态
             self._data_loaded = True
@@ -208,7 +208,7 @@ class HistoryManager:
             self._file_last_modified = self._get_file_modified_time()
 
             self.logger.info(f"成功加载训练数据: {self.id}, size={self.size}, best_episode={self.best_episode}")
-            self.logger.info(f"非零步数episodes: {len(self.non_zero_step_episodes)}个")
+            self.logger.info(f"非零generated_elements的episodes: {len(self.non_zero_generated_episodes)}个")
 
         except Exception as e:
             self.logger.error(f"Error reading data from {filename}: {e}")
@@ -216,13 +216,13 @@ class HistoryManager:
             self.detail_data = []
             self.size = 0
             self.best_episode = 0
-            self.non_zero_step_episodes = []
+            self.non_zero_generated_episodes = []
             self._data_loaded = True
             self._cache_valid = False  # 标记缓存无效，下次会重试
 
     def read_data(self):
         """
-        Read json file and update [self.detail_data, self.size, self.best_episode, self.non_zero_step_episodes]
+        Read json file and update [self.detail_data, self.size, self.best_episode, self.non_zero_generated_episodes]
         保留此方法以保持向后兼容性，但现在使用智能缓存
         :return:
         """
@@ -234,7 +234,7 @@ class HistoryManager:
         Return a single detail data, only return when is focused
         根据index获取数据，即使episode_number很大也要返回对应的数据
         现在使用智能缓存，避免重复读取文件
-        :param episode_index: int 在non_zero_step_episodes中的索引
+        :param episode_index: int 在non_zero_generated_episodes中的索引
         :return: single detail dict
         """
         if not self.focused:
@@ -248,7 +248,7 @@ class HistoryManager:
                 raise IndexError(f"Episode index {episode_index} out of range (0-{len(self.detail_data) - 1})")
 
             # 根据index直接返回对应的detail数据
-            # 这里的episode_index是在non_zero_step_episodes中的索引
+            # 这里的episode_index是在non_zero_generated_episodes中的索引
             episode_data = self.detail_data[episode_index]
 
             # 记录实际的episode_number供调试使用
@@ -269,7 +269,7 @@ class HistoryManager:
         with self._cache_lock:
             self._ensure_data_loaded()
 
-            # 在非零步数的episodes中查找
+            # 在非零generated_elements的episodes中查找
             for detail in self.detail_data:
                 if detail.get("episode_number") == episode_number:
                     return detail
@@ -278,7 +278,7 @@ class HistoryManager:
 
     def get_episode_index_by_number(self, episode_number):
         """
-        根据episode_number获取其在non_zero_step_episodes中的索引
+        根据episode_number获取其在non_zero_generated_episodes中的索引
         :param episode_number: int 实际的episode编号
         :return: int 索引位置，如果不存在返回-1
         """
@@ -322,7 +322,7 @@ class HistoryManager:
 
     def get_best_episode_index(self):
         """
-        获取最佳episode在non_zero_step_episodes中的索引
+        获取最佳episode在non_zero_generated_episodes中的索引
         :return: int 最佳episode的索引，如果不存在返回-1
         """
         if not self.focused:
@@ -357,13 +357,13 @@ class HistoryManager:
             lengths = [detail.get("l", 0) for detail in self.detail_data]
 
             return {
-                "total_episodes": len(self.non_zero_step_episodes),  # 只计算非零步数的
+                "total_episodes": len(self.non_zero_generated_episodes),  # 只计算非零generated_elements的
                 "non_zero_episodes": len(self.detail_data),
                 "best_episode": self.best_episode,
                 "best_episode_index": self.get_best_episode_index(),
                 "avg_reward": sum(rewards) / len(rewards) if rewards else 0.0,
                 "avg_length": sum(lengths) / len(lengths) if lengths else 0.0,
-                "episode_numbers": self.non_zero_step_episodes.copy()
+                "episode_numbers": self.non_zero_generated_episodes.copy()
             }
 
     def current_focus_id(self):

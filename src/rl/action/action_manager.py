@@ -108,7 +108,8 @@ class ActionManager:
         Returns:
             spaces.Box: Action space with shape (3,) and range [-1, 1]
         """
-        return spaces.Box(low=-1, high=1, shape=(self.action_dim,), dtype=np.float32)
+        # return spaces.Box(low=-1, high=1, shape=(self.action_dim,), dtype=np.float32)
+        return spaces.Box(np.array([-1, -1.5, 0]), np.array([1, 1.5, 1.5]), dtype=np.float32)
 
     def decode_action(self, action, boundary, reference_vertex_idx):
         """
@@ -128,29 +129,17 @@ class ActionManager:
         action_name = None
         action_instance = None
 
-        if self.auto_remap and len(self.enabled_actions) < 4:
-            # Use remapped ranges
-            for action_idx, action_info in self.action_logit_mapping.items():
-                start, end = action_info['range']
-                if start <= type_logit < end or (action_idx == len(self.enabled_actions) - 1 and type_logit >= start):
-                    action_name = action_info['name']
-                    action_instance = action_info['instance']
-                    break
+        if type_logit <= -0.5:
+            target_idx = 1  # type0_left
+        elif type_logit >= 0.5:
+            target_idx = 0  # type0_right
         else:
-            # Use original mapping ranges
-            if type_logit < -0.5:
-                target_idx = 0  # type0_left
-            elif type_logit < 0:
-                target_idx = 1  # type0_right  
-            elif type_logit < 0.5:
-                target_idx = 2  # type1
-            else:
-                target_idx = 3  # type2
+            target_idx = 2  # type1
 
-            if target_idx in self.action_logit_mapping:
-                action_info = self.action_logit_mapping[target_idx]
-                action_name = action_info['name']
-                action_instance = action_info['instance']
+        if target_idx in self.action_logit_mapping:
+            action_info = self.action_logit_mapping[target_idx]
+            action_name = action_info['name']
+            action_instance = action_info['instance']
 
         # Fallback to first enabled action if no match found
         if action_name is None:
@@ -159,7 +148,7 @@ class ActionManager:
 
         # Decode new vertex coordinates (if needed)
         new_coords = []
-        if action_name in ["type1"]:
+        if target_idx == 2:
             # Calculate action space radius
             ref_v = boundary.get_vertex_by_index(reference_vertex_idx)
             right_neighbor_v = boundary.get_vertex_by_index(reference_vertex_idx - 1)
