@@ -23,19 +23,19 @@
     </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
-<!-- 主容器 - 添加响应式类 -->
+<!-- Main Container - Add responsive classes -->
 <div class="main-container">
-    <!-- 左侧控制面板 - 添加响应式类 -->
+    <!-- Left Control Panel - Add responsive classes -->
     <div class="left-panel shadow-lg">
-        <!-- 头部 -->
+        <!-- Header -->
         <div class="p-6 border-b border-gray-200">
             <h1 class="text-2xl font-bold text-gray-800">Training Manager</h1>
             <p class="text-sm text-gray-600 mt-1">Reinforcement Learning Mesh Generation</p>
         </div>
 
-        <!-- 控制区域 -->
+        <!-- Control Area -->
         <div class="flex-1 p-6 overflow-y-auto custom-scrollbar">
-            <!-- 状态指示器 -->
+            <!-- Status Indicator -->
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm font-medium text-gray-700">Training Status</span>
@@ -46,7 +46,7 @@
                 </div>
             </div>
 
-            <!-- Checkpoint模式选择 - 新增 -->
+            <!-- Checkpoint Mode Selection - New -->
             <div class="mb-6">
                 <div class="flex items-center mb-3">
                     <input id="checkpoint-mode" type="checkbox"
@@ -56,7 +56,7 @@
                     </label>
                 </div>
 
-                <!-- Checkpoint选择 -->
+                <!-- Checkpoint Selection -->
                 <div id="checkpoint-selection" style="display: none;">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Select Checkpoint</label>
                     <select id="checkpoint-select"
@@ -64,16 +64,16 @@
                         <option value="">Loading...</option>
                     </select>
 
-                    <!-- Checkpoint信息显示 -->
+                    <!-- Checkpoint Info Display -->
                     <div id="checkpoint-info" class="mt-2 text-xs text-gray-500 hidden">
                         <div id="checkpoint-details">
-                            <!-- checkpoint详细信息将在这里显示 -->
+                            <!-- Checkpoint detailed info will be shown here -->
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Mesh选择 -->
+            <!-- Mesh Selection -->
             <div class="mb-6">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Select Initial Mesh</label>
                 <select id="mesh-select"
@@ -86,7 +86,7 @@
                 </div>
             </div>
 
-            <!-- 训练参数 -->
+            <!-- Training Parameters -->
             <div class="mb-6">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">Training Parameters</h3>
 
@@ -119,7 +119,7 @@
                 </div>
             </div>
 
-            <!-- 控制按钮 -->
+            <!-- Control Buttons -->
             <div class="space-y-3">
                 <button id="start-btn"
                         class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200">
@@ -136,7 +136,7 @@
                 </button>
             </div>
 
-            <!-- 训练统计 -->
+            <!-- Training Statistics -->
             <div class="mt-6 pt-6 border-t border-gray-200">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">Training Stats</h3>
                 <div class="space-y-2 text-xs">
@@ -159,7 +159,7 @@
                 </div>
             </div>
 
-            <!-- 训练指标 -->
+            <!-- Training Metrics -->
             <div class="mt-6 pt-6 border-t border-gray-200">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">Training Metrics</h3>
                 <div class="space-y-2 text-xs">
@@ -180,9 +180,9 @@
         </div>
     </div>
 
-    <!-- 右侧主要内容区域 - 添加响应式类 -->
+    <!-- Right Main Content Area - Add responsive classes -->
     <div class="right-content">
-        <!-- 顶部信息栏 - 添加响应式类 -->
+        <!-- Top Info Bar - Add responsive classes -->
         <div class="top-info-bar shadow-sm">
             <div class="flex items-center justify-between flex-wrap gap-4">
                 <div>
@@ -212,7 +212,7 @@
             </div>
         </div>
 
-        <!-- 网格可视化区域 - 添加响应式类 -->
+        <!-- Mesh Visualization Area - Add responsive classes -->
         <div class="visualization-area">
             <div class="h-full bg-white rounded-lg shadow-sm border border-gray-200 p-1">
                 <div class="canvas-container">
@@ -221,7 +221,7 @@
             </div>
         </div>
 
-        <!-- 底部日志区域 - 添加响应式类 -->
+        <!-- Bottom Log Area - Add responsive classes -->
         <div class="bottom-log-area">
             <div class="flex items-center justify-between mb-2">
                 <h3 class="text-sm font-medium text-gray-700">Training Log</h3>
@@ -235,7 +235,7 @@
     </div>
 </div>
 
-<!-- 加载指示器 -->
+<!-- Loading Indicator -->
 <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
         <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
@@ -243,16 +243,16 @@
     </div>
 </div>
 
-<!-- 引入模块化的JavaScript文件 -->
+<!-- Import Modular JavaScript Files -->
 <script type="module">
-    // 导入并初始化训练管理器
+    // Import and initialize training manager
     import {TrainingManager} from './js/training-manager.js';
 
-    // 当页面加载完成后初始化应用
+    // Initialize application after page loads
     document.addEventListener('DOMContentLoaded', () => {
         window.trainingManager = new TrainingManager();
 
-        // 添加checkpoint模式切换的特殊处理
+        // Add special handling for checkpoint mode switching
         const checkpointMode = document.getElementById('checkpoint-mode');
         const checkpointSelection = document.getElementById('checkpoint-selection');
 
@@ -266,12 +266,12 @@
             });
         }
 
-        // 添加窗口大小变化的监听器
+        // Add window resize listener
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
-                // 通知训练管理器窗口大小已改变
+                // Notify training manager that window size has changed
                 if (window.trainingManager && window.trainingManager.handleResize) {
                     window.trainingManager.handleResize();
                 }

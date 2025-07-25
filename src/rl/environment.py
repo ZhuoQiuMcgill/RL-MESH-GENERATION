@@ -45,7 +45,6 @@ class MeshEnv(gym.Env):
         self.kappa = env_cfg.get("kappa", 4.0)
         self.M_angle = env_cfg.get("M_angle", 60.0)
 
-        # 初始化动作管理器
         action_config = env_cfg.get("actions", {
             "enabled": ["type0_left", "type0_right", "type1", "type2"],
             "auto_remap": True
@@ -57,15 +56,13 @@ class MeshEnv(gym.Env):
             action_config=action_config
         )
 
-        # 定义状态空间和动作空间
-        # State: (n_left + n_right + g_points) * 2 (coords)
-        state_dim = (self.n * 2 + self.g) * 2
+        # State: (n_left + n_right + g_points) * 2 (coords) + qt
+        state_dim = (self.n * 2 + self.g) * 2 + 1
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(state_dim,), dtype=np.float32)
 
         # Action space from ActionManager
         self.action_space = self.action_manager.get_action_space()
 
-        # 环境状态变量
         self.boundary = None
         self.mesh = None
         self.last_reference_info = None
@@ -135,10 +132,10 @@ class MeshEnv(gym.Env):
 
         def invalid_penalty() -> float:
             # Negative reward for invalid action
-            punish = (self.generated_elements - 100)
+            punish = -1
             if self.generated_elements == 0:
                 return punish
-            return punish / self.generated_elements
+            return punish
 
         # Process action using ActionManager
         action_result = self.action_manager.process_action(
@@ -155,7 +152,7 @@ class MeshEnv(gym.Env):
         if action_valid:
             reward = (
                     element_quality_reward
-                    + 1 * (boundary_quality_reward - 1)
+                    + boundary_quality_reward - 1
                     + self._calculate_density_reward(generated_element)
             )
             self.generated_elements += 1
@@ -243,11 +240,11 @@ class MeshEnv(gym.Env):
             state_components.extend([r, theta])
 
         # 6. area ratio ρ_t
-        # area_ratio = (
-        #     self.boundary.get_area() / self.total_initial_area
-        #     if self.total_initial_area > 0 else 1.0
-        # )
-        # state_components.append(area_ratio)
+        area_ratio = (
+            self.boundary.get_area() / self.total_initial_area
+            if self.total_initial_area > 0 else 1.0
+        )
+        state_components.append(area_ratio)
 
         # 7. cache info for debugging/visualization
         if get_type == "exclude ref":

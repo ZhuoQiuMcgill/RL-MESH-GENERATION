@@ -4,7 +4,6 @@ from math import inf
 from .fan_shape import FanShape
 import math
 
-# 只导入具体需要的函数，避免循环导入
 from src.utils.angle import get_interior_angle, euclidean_distance
 from src.utils.segment import (
     ray_segment_intersection,

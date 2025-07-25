@@ -1,5 +1,5 @@
 /**
- * 几何坐标归一化可视化工具 JavaScript
+ * Geometric Coordinate Normalization Visualization Tool JavaScript
  */
 
 class GeometryViz {
@@ -9,11 +9,11 @@ class GeometryViz {
         this.inputCtx = this.inputCanvas.getContext('2d');
         this.outputCtx = this.outputCanvas.getContext('2d');
         
-        // 坐标存储
+        // Coordinate storage
         this.points = [];
         this.normalizedData = null;
         
-        // UI 元素
+        // UI elements
         this.pointCountEl = document.getElementById('pointCount');
         this.coordinatesListEl = document.getElementById('coordinatesList');
         this.resultsListEl = document.getElementById('resultsList');
@@ -22,7 +22,7 @@ class GeometryViz {
         this.clearBtn = document.getElementById('clearBtn');
         this.processBtn = document.getElementById('processBtn');
         
-        // 配置
+        // Configuration
         this.pointRadius = 6;
         this.apiBaseUrl = 'http://localhost:5000';
         
@@ -31,12 +31,12 @@ class GeometryViz {
     }
     
     initEventListeners() {
-        // 画布点击事件
+        // Canvas click event
         this.inputCanvas.addEventListener('click', (e) => {
             this.addPoint(e);
         });
         
-        // 按钮事件
+        // Button events
         this.clearBtn.addEventListener('click', () => {
             this.clearAll();
         });
@@ -69,12 +69,12 @@ class GeometryViz {
     }
     
     updateUI() {
-        // 更新点数显示
+        // Update point count display
         this.pointCountEl.textContent = this.points.length;
         
-        // 更新坐标列表
+        // Update coordinates list
         if (this.points.length === 0) {
-            this.coordinatesListEl.textContent = '暂无坐标点';
+            this.coordinatesListEl.textContent = 'No coordinate points';
         } else {
             this.coordinatesListEl.innerHTML = this.points
                 .map((point, index) => {
@@ -85,10 +85,10 @@ class GeometryViz {
                     
                     if (index === refIndex) {
                         className = 'text-green-600 font-semibold';
-                        label = ' (参考点)';
+                        label = ' (Reference Point)';
                     } else if (index === rightNeighborIndex && rightNeighborIndex >= 0) {
                         className = 'text-yellow-600 font-semibold';
-                        label = ' (右邻居)';
+                        label = ' (Right Neighbor)';
                     }
                     
                     return `<div class="${className}">${index}: [${point.x.toFixed(1)}, ${point.y.toFixed(1)}]${label}</div>`;
@@ -96,16 +96,16 @@ class GeometryViz {
                 .join('');
         }
         
-        // 更新处理按钮状态
+        // Update process button state
         const isOdd = this.points.length > 0 && this.points.length % 2 === 1;
         this.processBtn.disabled = !isOdd;
         
         if (this.points.length === 0) {
-            this.processBtn.textContent = '处理坐标';
+            this.processBtn.textContent = 'Process Coordinates';
         } else if (this.points.length % 2 === 0) {
-            this.processBtn.textContent = `需要奇数个点 (当前: ${this.points.length})`;
+            this.processBtn.textContent = `Need odd number of points (Current: ${this.points.length})`;
         } else {
-            this.processBtn.textContent = `处理 ${this.points.length} 个坐标`;
+            this.processBtn.textContent = `Process ${this.points.length} coordinates`;
         }
     }
     
@@ -113,7 +113,7 @@ class GeometryViz {
         const ctx = this.inputCtx;
         const canvas = this.inputCanvas;
         
-        // 清空画布
+        // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (this.points.length === 0) return;
@@ -121,7 +121,7 @@ class GeometryViz {
         const refIndex = Math.floor(this.points.length / 2);
         const rightNeighborIndex = refIndex - 1;
         
-        // 绘制连接线
+        // Draw connecting lines
         if (this.points.length > 1) {
             ctx.strokeStyle = '#6b7280';
             ctx.lineWidth = 2;
@@ -134,12 +134,12 @@ class GeometryViz {
             ctx.stroke();
         }
         
-        // 绘制点
+        // Draw points
         this.points.forEach((point, index) => {
             ctx.beginPath();
             ctx.arc(point.x, point.y, this.pointRadius, 0, 2 * Math.PI);
             
-            // 设置颜色
+            // Set colors
             if (index === refIndex) {
                 ctx.fillStyle = '#22c55e';
                 ctx.strokeStyle = '#16a34a';
@@ -155,7 +155,7 @@ class GeometryViz {
             ctx.fill();
             ctx.stroke();
             
-            // 绘制点的索引
+            // Draw point indices
             ctx.fillStyle = 'white';
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
@@ -168,16 +168,16 @@ class GeometryViz {
         const ctx = this.outputCtx;
         const canvas = this.outputCanvas;
         
-        // 清空画布
+        // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         if (!this.normalizedData || !this.normalizedData.normalized_coordinates) {
-            // 绘制等待文本
+            // Draw waiting text
             ctx.fillStyle = '#6b7280';
             ctx.font = '16px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('等待处理结果...', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('Waiting for processing results...', canvas.width / 2, canvas.height / 2);
             return;
         }
         
@@ -186,17 +186,17 @@ class GeometryViz {
         const centerY = canvas.height / 2;
         const maxRadius = Math.min(canvas.width, canvas.height) / 3;
         
-        // 绘制坐标轴
+        // Draw coordinate axes
         this.drawCoordinateAxes(ctx, centerX, centerY, maxRadius);
         
-        // 找到最大半径用于缩放
+        // Find maximum radius for scaling
         const maxR = Math.max(...normalizedCoords.map(coord => coord[0]));
         const scale = maxR > 0 ? maxRadius / maxR : 1;
         
         const refIndex = this.normalizedData.ref_vertex_index;
         const rightNeighborIndex = this.normalizedData.right_neighbor_index;
         
-        // 转换极坐标到笛卡尔坐标并绘制连接线
+        // Convert polar coordinates to Cartesian and draw connecting lines
         const cartesianPoints = normalizedCoords.map(([r, theta]) => ({
             x: centerX + r * scale * Math.cos(theta),
             y: centerY + r * scale * Math.sin(theta)
@@ -214,12 +214,12 @@ class GeometryViz {
             ctx.stroke();
         }
         
-        // 绘制点
+        // Draw points
         cartesianPoints.forEach((point, index) => {
             ctx.beginPath();
             ctx.arc(point.x, point.y, this.pointRadius, 0, 2 * Math.PI);
             
-            // 设置颜色
+            // Set colors
             if (index === refIndex) {
                 ctx.fillStyle = '#22c55e';
                 ctx.strokeStyle = '#16a34a';
@@ -235,7 +235,7 @@ class GeometryViz {
             ctx.fill();
             ctx.stroke();
             
-            // 绘制点的索引
+            // Draw point indices
             ctx.fillStyle = 'white';
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
@@ -243,7 +243,7 @@ class GeometryViz {
             ctx.fillText(index.toString(), point.x, point.y);
         });
         
-        // 绘制原点
+        // Draw origin point
         ctx.beginPath();
         ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
         ctx.fillStyle = '#1f2937';
@@ -254,19 +254,19 @@ class GeometryViz {
         ctx.strokeStyle = '#d1d5db';
         ctx.lineWidth = 1;
         
-        // X轴
+        // X axis
         ctx.beginPath();
         ctx.moveTo(centerX - maxRadius, centerY);
         ctx.lineTo(centerX + maxRadius, centerY);
         ctx.stroke();
         
-        // Y轴
+        // Y axis
         ctx.beginPath();
         ctx.moveTo(centerX, centerY - maxRadius);
         ctx.lineTo(centerX, centerY + maxRadius);
         ctx.stroke();
         
-        // 绘制圆形网格
+        // Draw circular grid
         ctx.strokeStyle = '#e5e7eb';
         for (let r = maxRadius / 4; r <= maxRadius; r += maxRadius / 4) {
             ctx.beginPath();
@@ -274,7 +274,7 @@ class GeometryViz {
             ctx.stroke();
         }
         
-        // 轴标签
+        // Axis labels
         ctx.fillStyle = '#6b7280';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
@@ -285,11 +285,11 @@ class GeometryViz {
     
     async processCoordinates() {
         if (this.points.length === 0 || this.points.length % 2 === 0) {
-            this.showStatus('error', '请添加奇数个坐标点');
+            this.showStatus('error', 'Please add an odd number of coordinate points');
             return;
         }
         
-        this.showStatus('info', '正在处理坐标...');
+        this.showStatus('info', 'Processing coordinates...');
         this.processBtn.disabled = true;
         
         try {
@@ -311,13 +311,13 @@ class GeometryViz {
                 this.normalizedData = data;
                 this.updateResultsList();
                 this.drawOutputCanvas();
-                this.showStatus('success', '坐标处理成功！');
+                this.showStatus('success', 'Coordinates processed successfully!');
             } else {
-                this.showStatus('error', `处理失败: ${data.message}`);
+                this.showStatus('error', `Processing failed: ${data.message}`);
             }
         } catch (error) {
-            console.error('API请求失败:', error);
-            this.showStatus('error', `网络错误: ${error.message}`);
+            console.error('API request failed:', error);
+            this.showStatus('error', `Network error: ${error.message}`);
         } finally {
             this.processBtn.disabled = false;
         }
@@ -325,7 +325,7 @@ class GeometryViz {
     
     updateResultsList() {
         if (!this.normalizedData) {
-            this.resultsListEl.textContent = '等待处理...';
+            this.resultsListEl.textContent = 'Waiting for processing...';
             return;
         }
         
@@ -340,10 +340,10 @@ class GeometryViz {
                 
                 if (index === refIndex) {
                     className = 'text-green-600 font-semibold';
-                    label = ' (参考点)';
+                    label = ' (Reference Point)';
                 } else if (index === rightNeighborIndex) {
                     className = 'text-yellow-600 font-semibold';
-                    label = ' (右邻居)';
+                    label = ' (Right Neighbor)';
                 }
                 
                 const degrees = (theta * 180 / Math.PI).toFixed(1);
@@ -351,12 +351,12 @@ class GeometryViz {
             })
             .join('');
         
-        // 添加处理信息
+        // Add processing information
         this.resultsListEl.innerHTML += `
             <div class="mt-2 pt-2 border-t border-gray-200 text-xs text-gray-500">
-                缩放因子: ${this.normalizedData.scale_factor.toFixed(4)}<br>
-                平均边长: ${this.normalizedData.average_edge_length.toFixed(2)}<br>
-                使用边数: ${this.normalizedData.edges_used_for_scale}
+                Scale Factor: ${this.normalizedData.scale_factor.toFixed(4)}<br>
+                Average Edge Length: ${this.normalizedData.average_edge_length.toFixed(2)}<br>
+                Edges Used for Scale: ${this.normalizedData.edges_used_for_scale}
             </div>
         `;
     }
@@ -366,7 +366,7 @@ class GeometryViz {
         this.statusTextEl.textContent = message;
         this.statusMessageEl.classList.remove('hidden');
         
-        // 自动隐藏成功消息
+        // Auto-hide success messages
         if (type === 'success') {
             setTimeout(() => {
                 this.hideStatus();
@@ -379,7 +379,7 @@ class GeometryViz {
     }
 }
 
-// 初始化应用
+// Initialize application
 document.addEventListener('DOMContentLoaded', () => {
     new GeometryViz();
 });

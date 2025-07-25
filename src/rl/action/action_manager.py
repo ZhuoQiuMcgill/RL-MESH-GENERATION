@@ -5,7 +5,7 @@ from .type0_left import ActionType0Left
 from .type0_right import ActionType0Right
 from .type1 import ActionType1
 from .type2 import ActionType2
-from src.utils import euclidean_distance
+from src.utils import euclidean_distance, decode_coordinate
 
 
 class ActionManager:
@@ -159,31 +159,18 @@ class ActionManager:
 
         # Decode new vertex coordinates (if needed)
         new_coords = []
-        if action_name in ["type1", "type2"]:  # Only ActionType1 and ActionType2 need new vertices
+        if action_name in ["type1"]:
             # Calculate action space radius
-            base_length = boundary.get_avg_neighbor_length(reference_vertex_idx, self.n)
-            radius = self.alpha * base_length
+            ref_v = boundary.get_vertex_by_index(reference_vertex_idx)
+            right_neighbor_v = boundary.get_vertex_by_index(reference_vertex_idx - 1)
+            base_len = boundary.get_avg_neighbor_length(reference_vertex_idx, self.n)
 
-            # Map [-1,1] range action to coordinates within fan area
-            vertices = boundary.get_vertices()
-            reference_vertex = vertices[reference_vertex_idx]
+            scale_factor = 1.0 / base_len if base_len > 0 else 1.0
+            new_r, new_theta = action[1], action[2]
 
-            # First new vertex coordinates
-            angle = action[1] * math.pi  # Map [-1,1] to [-π,π]
-            distance = (action[2] + 1) / 2 * radius  # Map [-1,1] to [0,radius]
+            x, y = decode_coordinate(ref_v, right_neighbor_v, scale_factor, new_r, new_theta)
 
-            x = reference_vertex[0] + distance * math.cos(angle)
-            y = reference_vertex[1] + distance * math.sin(angle)
             new_coords.append((x, y))
-
-            # Second new vertex coordinates (only ActionType2 needs)
-            if action_name == "type2":
-                # For simplification, second vertex uses fixed offset
-                angle2 = angle + math.pi / 6  # Offset 30 degrees
-                distance2 = distance * 0.8
-                x2 = reference_vertex[0] + distance2 * math.cos(angle2)
-                y2 = reference_vertex[1] + distance2 * math.sin(angle2)
-                new_coords.append((x2, y2))
 
         return action_name, action_instance, new_coords, reference_vertex_idx
 

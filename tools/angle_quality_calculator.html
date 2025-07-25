@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>角度质量函数可视化（完全可调参数）</title>
+    <title>Angle Quality Function Visualization (Fully Adjustable Parameters)</title>
     <!-- 引入 Tailwind CSS 以便快速美化页面 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 Chart.js 用于绘图 -->
@@ -48,8 +48,8 @@
 
 <div class="w-full max-w-4xl bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 md:p-8">
     <div class="text-center mb-6">
-        <h1 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">角度质量函数可视化</h1>
-        <p class="text-gray-600 dark:text-gray-400 mt-2">拖动滑块以调整参数并观察曲线变化</p>
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Angle Quality Function Visualization</h1>
+        <p class="text-gray-600 dark:text-gray-400 mt-2">Drag sliders to adjust parameters and observe curve changes</p>
     </div>
 
     <!-- 图表容器 -->
@@ -85,7 +85,7 @@
     <!-- 参数显示区域 -->
     <div class="mt-8 text-center">
         <div class="inline-block bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">M_angle (固定)</p>
+            <p class="text-sm font-medium text-gray-500 dark:text-gray-400">M_angle (Fixed)</p>
             <p class="text-lg font-semibold text-gray-900 dark:text-white">60°</p>
         </div>
     </div>
@@ -213,7 +213,7 @@
                         // FIX: Specify x-axis type as 'linear' to treat it as a numerical scale
                         x: {
                             type: 'linear',
-                            title: {display: true, text: 'Theta (角度)', font: {size: 14}},
+                            title: {display: true, text: 'Theta (Angle)', font: {size: 14}},
                             grid: {color: 'rgba(200, 200, 200, 0.2)'}
                         }
                     },

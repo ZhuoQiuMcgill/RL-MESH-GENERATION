@@ -1,6 +1,6 @@
 /**
- * 训练历史记录管理器
- * 负责管理历史训练数据的查看和可视化
+ * Training History Manager
+ * Responsible for managing the viewing and visualization of historical training data
  */
 
 import {CONSTANTS, STATUS, LOG_TYPES, formatNumber, throttle} from './utils.js';
@@ -9,30 +9,30 @@ import {CanvasRenderer} from './canvas-renderer.js';
 
 export class HistoryManager {
     constructor() {
-        // 初始化各个模块
+        // Initialize all modules
         this.apiClient = new HistoryApiClient();
-        this.canvasRenderer = null; // 延迟初始化
+        this.canvasRenderer = null; // Lazy initialization
 
-        // 状态管理
+        // State management
         this.trainingList = [];
         this.currentTrainingId = null;
         this.currentTrainingInfo = null;
         this.currentEpisodeIndex = null;
         this.currentEpisodeData = null;
 
-        // 防止重复请求的状态管理
+        // State management to prevent duplicate requests
         this.isLoadingHistory = false;
         this.isLoadingTraining = false;
         this.isLoadingEpisode = false;
 
-        // DOM元素引用
+        // DOM element references
         this.elements = this.initializeElements();
 
         this.init();
     }
 
     /**
-     * 初始化DOM元素引用
+     * Initialize DOM element references
      */
     initializeElements() {
         const elementIds = [
@@ -43,7 +43,7 @@ export class HistoryManager {
             'actual-episode-number-display', 'boundary-vertices-count', 'mesh-vertices-count', 'ref-point-display',
             'click-coordinates-display', 'episode-data-container',
             'history-log-container', 'history-loading-overlay',
-            // 按钮
+            // Buttons
             'refresh-history-btn', 'health-check-btn', 'goto-episode-btn',
             'goto-best-episode-btn', 'goto-last-episode-btn', 'prev-episode-btn',
             'next-episode-btn', 'clear-history-log-btn'
@@ -58,14 +58,14 @@ export class HistoryManager {
     }
 
     /**
-     * 初始化应用程序
+     * Initialize application
      */
     async init() {
         try {
             this.setupCanvas();
             this.bindEvents();
 
-            // 检查后端连接
+            // Check backend connection
             const isConnected = await this.checkBackendConnection();
             if (isConnected) {
                 await this.loadTrainingHistory();
@@ -81,7 +81,7 @@ export class HistoryManager {
     }
 
     /**
-     * 设置Canvas
+     * Setup Canvas
      */
     setupCanvas() {
         const canvas = document.getElementById('history-canvas');
@@ -93,22 +93,22 @@ export class HistoryManager {
     }
 
     /**
-     * 绑定事件监听器
+     * Bind event listeners
      */
     bindEvents() {
-        // 刷新历史记录按钮
+        // Refresh history button
         const refreshBtn = this.elements['refresh-history-btn'];
         if (refreshBtn) {
             refreshBtn.addEventListener('click', () => this.refreshTrainingHistory());
         }
 
-        // 健康检查按钮
+        // Health check button
         const healthBtn = this.elements['health-check-btn'];
         if (healthBtn) {
             healthBtn.addEventListener('click', () => this.checkHealthStatus());
         }
 
-        // Episode导航按钮
+        // Episode navigation buttons
         const gotoBtn = this.elements['goto-episode-btn'];
         if (gotoBtn) {
             gotoBtn.addEventListener('click', () => this.gotoEpisode());
@@ -134,13 +134,13 @@ export class HistoryManager {
             nextBtn.addEventListener('click', () => this.gotoNextEpisode());
         }
 
-        // 清除日志按钮
+        // Clear log button
         const clearLogBtn = this.elements['clear-history-log-btn'];
         if (clearLogBtn) {
             clearLogBtn.addEventListener('click', () => this.clearLogs());
         }
 
-        // Episode输入框回车事件
+        // Episode input box enter event
         const episodeInput = this.elements['episode-index-input'];
         if (episodeInput) {
             episodeInput.addEventListener('keypress', (e) => {
@@ -150,7 +150,7 @@ export class HistoryManager {
             });
         }
 
-        // Canvas点击事件
+        // Canvas click event
         const canvas = document.getElementById('history-canvas');
         if (canvas && this.canvasRenderer) {
             canvas.addEventListener('click', this.handleCanvasClickThrottled);
@@ -158,7 +158,7 @@ export class HistoryManager {
     }
 
     /**
-     * 检查后端连接状态
+     * Check backend connection status
      */
     async checkBackendConnection() {
         try {
@@ -177,7 +177,7 @@ export class HistoryManager {
     }
 
     /**
-     * 加载训练历史记录列表
+     * Load training history list
      */
     async loadTrainingHistory() {
         if (this.isLoadingHistory) {
@@ -210,7 +210,7 @@ export class HistoryManager {
     }
 
     /**
-     * 刷新训练历史记录
+     * Refresh training history
      */
     async refreshTrainingHistory() {
         if (this.isLoadingHistory) {
@@ -222,7 +222,7 @@ export class HistoryManager {
     }
 
     /**
-     * 检查健康状态
+     * Check health status
      */
     async checkHealthStatus() {
         try {
@@ -238,14 +238,14 @@ export class HistoryManager {
                 this.logMessage(`Service status abnormal: ${response.error || 'Unknown error'}`, LOG_TYPES.ERROR);
             }
         } catch (error) {
-            this.logMessage(`健康检查失败: ${error.message}`, LOG_TYPES.ERROR);
+            this.logMessage(`Health check failed: ${error.message}`, LOG_TYPES.ERROR);
         } finally {
             this.showLoading(false);
         }
     }
 
     /**
-     * 更新训练列表显示
+     * Update training list display
      */
     updateTrainingList() {
         const container = this.elements['training-list'];
@@ -254,40 +254,40 @@ export class HistoryManager {
         if (!this.trainingList || this.trainingList.length === 0) {
             container.innerHTML = `
                 <div class="text-center text-gray-500 py-8">
-                    <div class="text-sm">暂无训练历史记录</div>
+                    <div class="text-sm">No training history records available</div>
                     <button class="mt-2 text-primary hover:text-blue-600 text-xs" onclick="window.historyManager.refreshTrainingHistory()">
-                        点击刷新
+                        Click to refresh
                     </button>
                 </div>
             `;
             return;
         }
 
-        // 按时间戳排序训练会话，最新的在前面
+        // Sort training sessions by timestamp, newest first
         const sortedTrainingList = [...this.trainingList].sort((a, b) => {
             const aDisplayName = this.formatTrainingDisplayName(a);
             const bDisplayName = this.formatTrainingDisplayName(b);
             
-            // 提取时间戳进行比较
+            // Extract timestamps for comparison
             const aTimestamp = aDisplayName.timestamp;
             const bTimestamp = bDisplayName.timestamp;
             
-            // 如果都有时间戳，按时间戳倒序排列（最新的在前）
+            // If both have timestamps, sort in reverse chronological order (newest first)
             if (aTimestamp && bTimestamp && aTimestamp.includes('_') && bTimestamp.includes('_')) {
-                const aTime = aTimestamp.replace(/[^0-9]/g, ''); // 移除非数字字符
-                const bTime = bTimestamp.replace(/[^0-9]/g, ''); // 移除非数字字符
-                return bTime.localeCompare(aTime); // 倒序比较
+                const aTime = aTimestamp.replace(/[^0-9]/g, ''); // Remove non-numeric characters
+                const bTime = bTimestamp.replace(/[^0-9]/g, ''); // Remove non-numeric characters
+                return bTime.localeCompare(aTime); // Reverse comparison
             }
             
-            // 如果只有一个有时间戳，有时间戳的排在前面
+            // If only one has timestamp, the one with timestamp comes first
             if (aTimestamp && !bTimestamp) return -1;
             if (!aTimestamp && bTimestamp) return 1;
             
-            // 都没有时间戳则按ID字符串倒序排列
+            // If neither has timestamp, sort by ID string in reverse order
             return b.localeCompare(a);
         });
 
-        // 生成训练项目HTML
+        // Generate training item HTML
         const itemsHTML = sortedTrainingList.map(trainingId => {
             const isActive = trainingId === this.currentTrainingId;
             const displayName = this.formatTrainingDisplayName(trainingId);
@@ -305,7 +305,7 @@ export class HistoryManager {
 
         container.innerHTML = itemsHTML;
 
-        // 绑定点击事件，确保不会重复绑定导致多次请求
+        // Bind click events, ensure no duplicate binding causing multiple requests
         container.onclick = (e) => {
             const trainingItem = e.target.closest('.training-item');
             if (trainingItem) {
@@ -316,14 +316,14 @@ export class HistoryManager {
     }
 
     /**
-     * 格式化训练显示名称
+     * Format training display name
      */
     formatTrainingDisplayName(trainingId) {
         return this.apiClient.formatTrainingDisplayName(trainingId);
     }
 
     /**
-     * 选择训练会话
+     * Select training session
      */
     async selectTraining(trainingId) {
         if (trainingId === this.currentTrainingId) return;
@@ -335,9 +335,9 @@ export class HistoryManager {
         try {
             this.isLoadingTraining = true;
             this.showLoading(true);
-            this.logMessage(`正在加载训练: ${trainingId}`, LOG_TYPES.INFO);
+            this.logMessage(`Loading training: ${trainingId}`, LOG_TYPES.INFO);
 
-            // 获取训练信息
+            // Get training information
             const response = await this.apiClient.getTrainingInfo(trainingId);
 
             if (response.success) {
@@ -348,12 +348,12 @@ export class HistoryManager {
                     best_episode: response.best_episode
                 };
 
-                // 更新UI
-                this.updateTrainingList(); // 刷新列表以显示选中状态
+                // Update UI
+                this.updateTrainingList(); // Refresh list to show selected state
                 this.updateTrainingInfo();
                 this.showTrainingControls(true);
 
-                // 默认加载最佳Episode
+                // Load best episode by default
                 await this.loadEpisode(this.currentTrainingInfo.best_episode);
 
                 this.logMessage(`Training loaded successfully: ${response.detail_length} episodes`, LOG_TYPES.SUCCESS);
@@ -371,7 +371,7 @@ export class HistoryManager {
     }
 
     /**
-     * 更新训练信息显示
+     * Update training information display
      */
     updateTrainingInfo() {
         if (!this.currentTrainingInfo) return;
@@ -382,7 +382,7 @@ export class HistoryManager {
         this.updateElement('detail-length-display', this.currentTrainingInfo.detail_length);
         this.updateElement('best-episode-display', this.currentTrainingInfo.best_episode);
 
-        // 更新Episode输入框的最大值
+        // Update maximum value for episode input box
         const episodeInput = this.elements['episode-index-input'];
         if (episodeInput) {
             episodeInput.max = this.currentTrainingInfo.detail_length - 1;
@@ -390,7 +390,7 @@ export class HistoryManager {
     }
 
     /**
-     * 显示/隐藏训练控制界面
+     * Show/hide training control interface
      */
     showTrainingControls(show) {
         const infoDiv = this.elements['current-training-info'];
@@ -414,7 +414,7 @@ export class HistoryManager {
     }
 
     /**
-     * 加载指定Episode数据
+     * Load specified episode data
      */
     async loadEpisode(episodeIndex) {
         if (!this.currentTrainingId || !this.currentTrainingInfo) {
@@ -429,7 +429,7 @@ export class HistoryManager {
 
         try {
             this.showLoading(true);
-            this.logMessage(`正在加载Episode ${episodeIndex}...`, LOG_TYPES.INFO);
+            this.logMessage(`Loading Episode ${episodeIndex}...`, LOG_TYPES.INFO);
 
             const response = await this.apiClient.getEpisodeData(this.currentTrainingId, episodeIndex);
 
@@ -437,12 +437,12 @@ export class HistoryManager {
                 this.currentEpisodeIndex = episodeIndex;
                 this.currentEpisodeData = response.episode_data;
 
-                // 更新UI
+                // Update UI
                 this.updateEpisodeInfo();
                 this.updateEpisodeData();
                 this.updateVisualization();
 
-                // 更新Episode输入框值
+                // Update episode input box value
                 const episodeInput = this.elements['episode-index-input'];
                 if (episodeInput) {
                     episodeInput.value = episodeIndex;
@@ -462,7 +462,7 @@ export class HistoryManager {
     }
 
     /**
-     * 更新Episode信息显示
+     * Update episode information display
      */
     updateEpisodeInfo() {
         if (!this.currentEpisodeData) return;
@@ -475,20 +475,20 @@ export class HistoryManager {
         this.updateElement('episode-length-display', length);
         this.updateElement('episode-status-display', is_completed ? 'Completed' : 'Incomplete');
 
-        // 显示元信息
+        // Show meta information
         const metaInfo = this.elements['episode-meta-info'];
         if (metaInfo) {
             metaInfo.classList.remove('hidden');
         }
 
-        // 更新边界和网格顶点数
+        // Update boundary and mesh vertex counts
         const boundaryVertices = this.currentEpisodeData.boundary_vertices_data || [];
         const meshData = this.currentEpisodeData.mesh_data || {};
 
         this.updateElement('boundary-vertices-count', boundaryVertices.length);
         this.updateElement('mesh-vertices-count', Object.keys(meshData).length);
 
-        // 更新参考点信息
+        // Update reference point information
         const refPointInfo = this.currentEpisodeData.last_ref_point;
         if (refPointInfo && refPointInfo.ref_vertex) {
             const [rx, ry] = refPointInfo.ref_vertex;
@@ -499,12 +499,12 @@ export class HistoryManager {
     }
 
     /**
-     * 更新Episode详细数据显示
+     * Update episode detailed data display
      */
     updateEpisodeData() {
         if (!this.currentEpisodeData) return;
 
-        // 更新Episode数据容器
+        // Update episode data container
         const episodeContainer = this.elements['episode-data-container'];
         if (episodeContainer) {
             const {r: reward, l: length, is_completed} = this.currentEpisodeData;
@@ -513,19 +513,19 @@ export class HistoryManager {
 
             episodeContainer.innerHTML = `
                 <div class="episode-data-item">
-                    <span class="episode-data-key">索引:</span>
+                    <span class="episode-data-key">Index:</span>
                     <span class="episode-data-value">${this.currentEpisodeIndex}</span>
                 </div>
                 <div class="episode-data-item">
-                    <span class="episode-data-key">实际Episode:</span>
+                    <span class="episode-data-key">Actual Episode:</span>
                     <span class="episode-data-value">${episode_number || 'N/A'}</span>
                 </div>
                 <div class="episode-data-item">
-                    <span class="episode-data-key">奖励值:</span>
+                    <span class="episode-data-key">Reward:</span>
                     <span class="episode-data-value">${formatNumber(reward)}</span>
                 </div>
                 <div class="episode-data-item">
-                    <span class="episode-data-key">步数:</span>
+                    <span class="episode-data-key">Steps:</span>
                     <span class="episode-data-value">${length}</span>
                 </div>
                 <div class="episode-data-item">
@@ -540,7 +540,7 @@ export class HistoryManager {
     }
 
     /**
-     * 更新可视化
+     * Update visualization
      */
     updateVisualization() {
         if (!this.canvasRenderer || !this.currentEpisodeData) return;
@@ -553,7 +553,7 @@ export class HistoryManager {
     }
 
     /**
-     * Episode导航方法
+     * Episode navigation methods
      */
     async gotoEpisode() {
         const episodeInput = this.elements['episode-index-input'];
@@ -590,7 +590,7 @@ export class HistoryManager {
     }
 
     /**
-     * Canvas点击事件处理
+     * Canvas click event handling
      */
     handleCanvasClick(event) {
         if (!this.canvasRenderer) return;
@@ -609,11 +609,11 @@ export class HistoryManager {
         const coordText = `(${worldCoords[0].toFixed(3)}, ${worldCoords[1].toFixed(3)})`;
 
         this.updateElement('click-coordinates-display', coordText);
-        this.logMessage(`点击坐标: ${coordText}`, LOG_TYPES.INFO);
+        this.logMessage(`Click coordinates: ${coordText}`, LOG_TYPES.INFO);
     }
 
     /**
-     * 工具方法
+     * Utility methods
      */
     showLoading(show) {
         const overlay = this.elements['history-loading-overlay'];
@@ -663,7 +663,7 @@ export class HistoryManager {
         container.appendChild(logEntry);
         container.scrollTop = container.scrollHeight;
 
-        // 限制日志条数
+        // Limit number of log entries
         while (container.children.length > CONSTANTS.MAX_LOGS) {
             container.removeChild(container.firstChild);
         }
@@ -677,7 +677,7 @@ export class HistoryManager {
     }
 
     /**
-     * 处理窗口大小变化
+     * Handle window resize
      */
     handleResize() {
         if (this.canvasRenderer) {
@@ -687,14 +687,14 @@ export class HistoryManager {
     }
 
     /**
-     * Canvas点击事件的节流版本
+     * Throttled version of canvas click event
      */
     handleCanvasClickThrottled = throttle((event) => {
         this.handleCanvasClick(event);
     }, 100);
 
     /**
-     * 销毁管理器，清理资源
+     * Destroy manager and clean up resources
      */
     destroy() {
         if (this.canvasRenderer) {

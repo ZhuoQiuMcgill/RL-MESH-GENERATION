@@ -32,7 +32,7 @@ class ActionType(ABC):
         :param element: iterable of 4 vertices
         :return: quality in [0, 1]
         """
-        return quality_hybrid_ar(element)
+        return quality_hybrid(element)
 
     @staticmethod
     def calculate_angle_quality(angle1, angle2, M_angle,

@@ -1,27 +1,27 @@
 /**
- * 模块索引文件
- * 统一导出所有模块，方便管理和使用
+ * Module index file
+ * Unified export of all modules for convenient management and usage
  */
 
-// 工具模块
+// Utility module
 export * from './utils.js';
 
-// API客户端模块
+// API client module
 export { ApiClient, withErrorHandling, withRetry } from './api-client.js';
 
-// Canvas渲染模块
+// Canvas renderer module
 export { CanvasRenderer } from './canvas-renderer.js';
 
-// UI控制器模块
+// UI controller module
 export { UIController } from './ui-controller.js';
 
-// 训练管理器模块
+// Training manager module
 export { TrainingManager } from './training-manager.js';
 
-// 版本信息
+// Version information
 export const VERSION = '1.0.0';
 
-// 模块信息
+// Module information
 export const MODULES = {
     utils: 'Utility module',
     apiClient: 'API client module',
@@ -30,7 +30,7 @@ export const MODULES = {
     trainingManager: 'Training manager module'
 };
 
-// 检查所有模块是否正确加载
+// Check if all modules are loaded correctly
 export function checkModules() {
     const results = {
         utils: typeof CONSTANTS !== 'undefined',

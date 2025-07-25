@@ -29,10 +29,10 @@ export class CanvasRenderer {
     }
 
     /**
-     * 绑定窗口大小改变事件 - 修复版本
+     * Bind window resize event - Fixed version
      */
     bindResizeEvent() {
-        // 使用防抖机制优化性能
+        // Use debounce mechanism to optimize performance
         const debouncedResize = () => {
             clearTimeout(this.resizeDebounceTimer);
             this.resizeDebounceTimer = setTimeout(() => {
@@ -42,7 +42,7 @@ export class CanvasRenderer {
 
         window.addEventListener('resize', debouncedResize);
 
-        // 监听浏览器缩放变化
+        // Monitor browser zoom changes
         let lastDevicePixelRatio = window.devicePixelRatio;
         const checkPixelRatio = () => {
             if (window.devicePixelRatio !== lastDevicePixelRatio) {
@@ -55,7 +55,7 @@ export class CanvasRenderer {
     }
 
     /**
-     * 处理窗口大小变化 - 新增方法
+     * Handle window size changes - New method
      */
     handleResize() {
         if (this.isResizing) return;
@@ -65,7 +65,7 @@ export class CanvasRenderer {
         try {
             this.resizeCanvas();
 
-            // 如果有缓存的渲染数据，重新渲染
+            // If there is cached render data, re-render
             if (this.lastRenderData) {
                 this.renderScene(
                     this.lastRenderData.meshData,
@@ -83,7 +83,7 @@ export class CanvasRenderer {
     }
 
     /**
-     * 调整Canvas大小 - 修复版本，确保居中
+     * Resize Canvas - Fixed version, ensuring centering
      */
     resizeCanvas() {
         const container = this.canvas.parentElement;
@@ -91,55 +91,55 @@ export class CanvasRenderer {
 
         const rect = container.getBoundingClientRect();
 
-        // 确保容器有有效的尺寸
+        // Ensure container has valid dimensions
         if (rect.width === 0 || rect.height === 0) {
-            // 延迟重试
+            // Delayed retry
             setTimeout(() => this.resizeCanvas(), 100);
             return;
         }
 
-        // 考虑容器的padding和边框
+        // Consider container padding and borders
         const computedStyle = window.getComputedStyle(container);
         const paddingX = parseFloat(computedStyle.paddingLeft) + parseFloat(computedStyle.paddingRight);
         const paddingY = parseFloat(computedStyle.paddingTop) + parseFloat(computedStyle.paddingBottom);
         const borderX = parseFloat(computedStyle.borderLeftWidth) + parseFloat(computedStyle.borderRightWidth);
         const borderY = parseFloat(computedStyle.borderTopWidth) + parseFloat(computedStyle.borderBottomWidth);
 
-        // 计算可用空间
+        // Calculate available space
         const availableWidth = rect.width - paddingX - borderX;
         const availableHeight = rect.height - paddingY - borderY;
 
-        // 设置Canvas的显示大小，保持一定的边距
-        const margin = 8; // 8px的边距
+        // Set Canvas display size, maintaining certain margins
+        const margin = 8; // 8px margin
         const displayWidth = Math.max(100, availableWidth - margin * 2);
         const displayHeight = Math.max(100, availableHeight - margin * 2);
 
-        // 获取当前设备像素比，处理高DPI显示器
+        // Get current device pixel ratio, handle high DPI displays
         const devicePixelRatio = window.devicePixelRatio || 1;
 
-        // 设置Canvas的实际像素大小
+        // Set Canvas actual pixel size
         this.canvas.width = displayWidth * devicePixelRatio;
         this.canvas.height = displayHeight * devicePixelRatio;
 
-        // 设置Canvas的显示大小
+        // Set Canvas display size
         this.canvas.style.width = displayWidth + 'px';
         this.canvas.style.height = displayHeight + 'px';
 
-        // 清除之前的变换并重新设置
+        // Clear previous transforms and reset
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        // 缩放Canvas上下文以匹配设备像素比
+        // Scale Canvas context to match device pixel ratio
         this.ctx.scale(devicePixelRatio, devicePixelRatio);
 
-        // 重新设置默认样式
+        // Reset default styles
         this.ctx.imageSmoothingEnabled = true;
         this.ctx.imageSmoothingQuality = 'high';
 
-        // 确保Canvas在容器中居中（通过CSS flexbox已经处理，这里不需要额外设置）
+        // Ensure Canvas is centered in container (already handled by CSS flexbox, no additional setup needed here)
     }
 
     /**
-     * 清空Canvas
+     * Clear Canvas
      */
     clearCanvas() {
         const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
@@ -153,7 +153,7 @@ export class CanvasRenderer {
     }
 
     /**
-     * 绘制网格背景 - 修复版本
+     * Draw grid background - Fixed version
      */
     drawGrid() {
         const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
@@ -163,7 +163,7 @@ export class CanvasRenderer {
         this.ctx.strokeStyle = '#F3F4F6';
         this.ctx.lineWidth = 0.5;
 
-        // 垂直线
+        // Vertical lines
         for (let x = 0; x <= displayWidth; x += gridSize) {
             this.ctx.beginPath();
             this.ctx.moveTo(x, 0);
@@ -171,7 +171,7 @@ export class CanvasRenderer {
             this.ctx.stroke();
         }
 
-        // 水平线
+        // Horizontal lines
         for (let y = 0; y <= displayHeight; y += gridSize) {
             this.ctx.beginPath();
             this.ctx.moveTo(0, y);
@@ -181,7 +181,7 @@ export class CanvasRenderer {
     }
 
     /**
-     * 绘制等待文本 - 修复版本
+     * Draw waiting text - Fixed version
      */
     drawWaitingText() {
         const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
@@ -198,9 +198,9 @@ export class CanvasRenderer {
     }
 
     /**
-     * 渲染边界预览（新增方法）
-     * @param {Array} boundaryVertices - 边界顶点数据
-     * @param {string} meshName - mesh名称
+     * Render boundary preview (New method)
+     * @param {Array} boundaryVertices - Boundary vertex data
+     * @param {string} meshName - Mesh name
      */
     renderBoundaryPreview(boundaryVertices, meshName = '') {
         const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
@@ -214,7 +214,7 @@ export class CanvasRenderer {
             return;
         }
 
-        // 缓存预览数据
+        // Cache preview data
         this.lastRenderData = {
             meshData: null,
             boundaryVertices: boundaryVertices,
@@ -223,21 +223,21 @@ export class CanvasRenderer {
             meshName: meshName
         };
 
-        // 计算变换参数
+        // Calculate transformation parameters
         const transform = this.calculateTransform(boundaryVertices);
         this.currentTransform = transform;
 
-        // 绘制边界
+        // Draw boundary
         this.renderBoundaryWithTransform(boundaryVertices, transform);
 
-        // 绘制标题
+        // Draw title
         this.drawPreviewTitle(meshName, boundaryVertices.length);
     }
 
     /**
-     * 绘制预览标题
-     * @param {string} meshName - mesh名称
-     * @param {number} vertexCount - 顶点数量
+     * Draw preview title
+     * @param {string} meshName - Mesh name
+     * @param {number} vertexCount - Vertex count
      */
     drawPreviewTitle(meshName, vertexCount) {
         const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
@@ -253,13 +253,13 @@ export class CanvasRenderer {
     }
 
     /**
-     * 统一渲染Mesh和Boundary - 修复版本
-     * @param {Object} meshData - 网格数据
-     * @param {Array} boundaryVertices - 边界顶点数据
-     * @param {Object} refPointInfo - 参考点信息
+     * Unified rendering of Mesh and Boundary - Fixed version
+     * @param {Object} meshData - Mesh data
+     * @param {Array} boundaryVertices - Boundary vertex data
+     * @param {Object} refPointInfo - Reference point information
      */
     renderScene(meshData, boundaryVertices, refPointInfo = null) {
-        // 缓存渲染数据
+        // Cache render data
         this.lastRenderData = {
             meshData: meshData,
             boundaryVertices: boundaryVertices,
@@ -267,7 +267,7 @@ export class CanvasRenderer {
             isPreview: false
         };
 
-        // 解析数据
+        // Parse data
         meshData = parseBackendData(meshData);
         boundaryVertices = parseBackendData(boundaryVertices);
 
@@ -277,7 +277,7 @@ export class CanvasRenderer {
         this.ctx.clearRect(0, 0, displayWidth, displayHeight);
         this.drawGrid();
 
-        // 收集所有顶点用于计算变换
+        // Collect all vertices for transform calculation
         const allVertices = this.collectAllVertices(meshData, boundaryVertices);
 
         if (allVertices.length === 0) {
@@ -285,11 +285,11 @@ export class CanvasRenderer {
             return;
         }
 
-        // 计算变换参数
+        // Calculate transformation parameters
         const transform = this.calculateTransform(allVertices);
         this.currentTransform = transform;
 
-        // 按层次渲染
+        // Render in layers
         if (meshData && Object.keys(meshData).length > 0) {
             this.renderMeshWithTransform(meshData, transform);
         }
@@ -304,10 +304,10 @@ export class CanvasRenderer {
     }
 
     /**
-     * 收集所有顶点用于计算边界
-     * @param {Object} meshData - 网格数据
-     * @param {Array} boundaryVertices - 边界顶点
-     * @returns {Array} 所有顶点数组
+     * Collect all vertices for boundary calculation
+     * @param {Object} meshData - Mesh data
+     * @param {Array} boundaryVertices - Boundary vertices
+     * @returns {Array} Array of all vertices
      */
     collectAllVertices(meshData, boundaryVertices) {
         const allVertices = [];
@@ -337,9 +337,9 @@ export class CanvasRenderer {
     }
 
     /**
-     * 计算坐标变换参数 - 修复版本
-     * @param {Array} vertices - 顶点数组
-     * @returns {Object} 变换参数
+     * Calculate coordinate transformation parameters - Fixed version
+     * @param {Array} vertices - Vertex array
+     * @returns {Object} Transformation parameters
      */
     calculateTransform(vertices) {
         const xCoords = vertices.map(v => v[0]);
@@ -352,7 +352,7 @@ export class CanvasRenderer {
         const dataWidth = maxX - minX;
         const dataHeight = maxY - minY;
 
-        // 使用逻辑像素计算
+        // Use logical pixels for calculation
         const logicalWidth = this.canvas.width / (window.devicePixelRatio || 1);
         const logicalHeight = this.canvas.height / (window.devicePixelRatio || 1);
 
@@ -368,12 +368,12 @@ export class CanvasRenderer {
     }
 
     /**
-     * 使用指定变换参数渲染Mesh
-     * @param {Object} meshData - 网格数据
-     * @param {Object} transform - 变换参数
+     * Render Mesh using specified transformation parameters
+     * @param {Object} meshData - Mesh data
+     * @param {Object} transform - Transformation parameters
      */
     renderMeshWithTransform(meshData, transform) {
-        // 绘制网格边
+        // Draw mesh edges
         this.ctx.strokeStyle = '#6366F1';
         this.ctx.lineWidth = 2;
 
@@ -395,14 +395,14 @@ export class CanvasRenderer {
             }
         });
 
-        // 绘制网格顶点
+        // Draw mesh vertices
         this.drawMeshVertices(meshData, transform);
     }
 
     /**
-     * 绘制网格顶点
-     * @param {Object} meshData - 网格数据
-     * @param {Object} transform - 变换参数
+     * Draw mesh vertices
+     * @param {Object} meshData - Mesh data
+     * @param {Object} transform - Transformation parameters
      */
     drawMeshVertices(meshData, transform) {
         const drawn = new Set();
@@ -413,7 +413,7 @@ export class CanvasRenderer {
 
         Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
             try {
-                // 绘制中心顶点
+                // Draw center vertex
                 if (!drawn.has(vertexStr)) {
                     const center = JSON.parse(vertexStr);
                     if (isValidCoordinate(center)) {
@@ -423,7 +423,7 @@ export class CanvasRenderer {
                     }
                 }
 
-                // 绘制邻接顶点
+                // Draw adjacent vertices
                 if (Array.isArray(adjacentVertices)) {
                     adjacentVertices.forEach(vertex => {
                         if (isValidCoordinate(vertex)) {
@@ -443,16 +443,16 @@ export class CanvasRenderer {
     }
 
     /**
-     * 使用指定变换参数渲染边界
-     * @param {Array} boundaryVertices - 边界顶点
-     * @param {Object} transform - 变换参数
+     * Render boundary using specified transformation parameters
+     * @param {Array} boundaryVertices - Boundary vertices
+     * @param {Object} transform - Transformation parameters
      */
     renderBoundaryWithTransform(boundaryVertices, transform) {
         if (!Array.isArray(boundaryVertices) || boundaryVertices.length === 0) {
             return;
         }
 
-        // 绘制边界线
+        // Draw boundary lines
         this.ctx.strokeStyle = '#EF4444';
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
@@ -467,11 +467,11 @@ export class CanvasRenderer {
             }
         }
 
-        // 闭合边界
+        // Close boundary
         this.ctx.lineTo(firstPoint[0], firstPoint[1]);
         this.ctx.stroke();
 
-        // 绘制边界顶点
+        // Draw boundary vertices
         this.ctx.fillStyle = '#DC2626';
         boundaryVertices.forEach(vertex => {
             if (isValidCoordinate(vertex)) {
@@ -482,9 +482,9 @@ export class CanvasRenderer {
     }
 
     /**
-     * 渲染参考点信息
-     * @param {Object} refInfo - 参考点信息
-     * @param {Object} transform - 变换参数
+     * Render reference point information
+     * @param {Object} refInfo - Reference point information
+     * @param {Object} transform - Transformation parameters
      */
     renderReferencePointInfo(refInfo, transform) {
         if (!refInfo || !refInfo.local_env_vertices || !refInfo.ref_vertex) {
@@ -493,7 +493,7 @@ export class CanvasRenderer {
 
         const {local_env_vertices, ref_vertex} = refInfo;
 
-        // 绘制局部环境的边
+        // Draw local environment edges
         if (Array.isArray(local_env_vertices) && local_env_vertices.length > 1) {
             this.ctx.strokeStyle = '#F59E0B';
             this.ctx.lineWidth = 4;
@@ -512,7 +512,7 @@ export class CanvasRenderer {
             this.ctx.stroke();
         }
 
-        // 突出显示参考点
+        // Highlight reference point
         if (isValidCoordinate(ref_vertex)) {
             const refScreenPos = this.worldToScreen(ref_vertex, transform);
             this.ctx.fillStyle = '#10B981';
@@ -523,9 +523,9 @@ export class CanvasRenderer {
     }
 
     /**
-     * 绘制顶点
-     * @param {Array} position - 屏幕坐标 [x, y]
-     * @param {number} radius - 半径
+     * Draw vertex
+     * @param {Array} position - Screen coordinates [x, y]
+     * @param {number} radius - Radius
      */
     drawVertex(position, radius) {
         this.ctx.beginPath();
@@ -535,9 +535,9 @@ export class CanvasRenderer {
     }
 
     /**
-     * 绘制线段
-     * @param {Array} start - 起点 [x, y]
-     * @param {Array} end - 终点 [x, y]
+     * Draw line segment
+     * @param {Array} start - Start point [x, y]
+     * @param {Array} end - End point [x, y]
      */
     drawLine(start, end) {
         this.ctx.beginPath();
@@ -547,10 +547,10 @@ export class CanvasRenderer {
     }
 
     /**
-     * 世界坐标转屏幕坐标
-     * @param {Array} worldCoords - 世界坐标 [x, y]
-     * @param {Object} transform - 变换参数
-     * @returns {Array} 屏幕坐标 [x, y]
+     * Convert world coordinates to screen coordinates
+     * @param {Array} worldCoords - World coordinates [x, y]
+     * @param {Object} transform - Transformation parameters
+     * @returns {Array} Screen coordinates [x, y]
      */
     worldToScreen(worldCoords, transform) {
         const [x, y] = worldCoords;
@@ -561,11 +561,11 @@ export class CanvasRenderer {
     }
 
     /**
-     * 屏幕坐标转世界坐标 - 修复版本
-     * @param {number} screenX - 屏幕X坐标
-     * @param {number} screenY - 屏幕Y坐标
-     * @param {Object} transform - 变换参数
-     * @returns {Array} 世界坐标 [x, y]
+     * Convert screen coordinates to world coordinates - Fixed version
+     * @param {number} screenX - Screen X coordinate
+     * @param {number} screenY - Screen Y coordinate
+     * @param {Object} transform - Transformation parameters
+     * @returns {Array} World coordinates [x, y]
      */
     screenToWorld(screenX, screenY, transform) {
         if (!transform) {
@@ -578,22 +578,22 @@ export class CanvasRenderer {
     }
 
     /**
-     * 获取当前变换参数
-     * @returns {Object|null} 变换参数
+     * Get current transformation parameters
+     * @returns {Object|null} Transformation parameters
      */
     getCurrentTransform() {
         return this.currentTransform;
     }
 
     /**
-     * 公共方法：处理窗口大小变化
+     * Public method: Handle window size changes
      */
     onResize() {
         this.handleResize();
     }
 
     /**
-     * 销毁Canvas渲染器
+     * Destroy Canvas renderer
      */
     destroy() {
         if (this.resizeDebounceTimer) {

@@ -23,19 +23,19 @@
     </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
-<!-- 主容器 -->
+<!-- Main Container -->
 <div class="history-main-container">
-    <!-- 左侧训练列表面板 -->
+    <!-- Left Training List Panel -->
     <div class="history-left-panel shadow-lg">
-        <!-- 头部 -->
+        <!-- Header -->
         <div class="p-6 border-b border-gray-200">
             <h1 class="text-2xl font-bold text-gray-800">Training History</h1>
             <p class="text-sm text-gray-600 mt-1">View past training sessions and details</p>
         </div>
 
-        <!-- 控制区域 -->
+        <!-- Control Area -->
         <div class="flex-1 p-6 flex flex-col overflow-hidden">
-            <!-- 操作按钮 -->
+            <!-- Action Buttons -->
             <div class="mb-6 space-y-3">
                 <button id="refresh-history-btn"
                         class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
@@ -47,7 +47,7 @@
                 </button>
             </div>
 
-            <!-- 训练会话列表 -->
+            <!-- Training Session List -->
             <div class="mb-6 flex-1 overflow-y-auto custom-scrollbar training-list-container">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">Training Sessions</h3>
                 <div id="training-list" class="space-y-2">
@@ -58,7 +58,7 @@
                 </div>
             </div>
 
-            <!-- 当前选中的训练信息 -->
+            <!-- Current Selected Training Info -->
             <div id="current-training-info" class="hidden">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">Training Summary</h3>
                 <div class="bg-white rounded-lg p-4 border border-gray-200 space-y-2">
@@ -77,7 +77,7 @@
                 </div>
             </div>
 
-            <!-- Episode导航 -->
+            <!-- Episode Navigation -->
             <div id="episode-navigation" class="hidden mt-6">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">Episode Navigation</h3>
                 <div class="space-y-3">
@@ -114,9 +114,9 @@
         </div>
     </div>
 
-    <!-- 右侧主要内容区域 -->
+    <!-- Right Main Content Area -->
     <div class="history-right-content">
-        <!-- 顶部信息栏 -->
+        <!-- Top Info Bar -->
         <div class="history-top-info-bar shadow-sm">
             <div class="flex items-center justify-between flex-wrap gap-4">
                 <div>
@@ -152,7 +152,7 @@
             </div>
         </div>
 
-        <!-- 可视化区域 -->
+        <!-- Visualization Area -->
         <div class="history-visualization-area">
             <div class="h-full bg-white rounded-lg shadow-sm border border-gray-200 p-1">
                 <div class="canvas-container">
@@ -161,10 +161,10 @@
             </div>
         </div>
 
-        <!-- 底部详细信息区域 -->
+        <!-- Bottom Detail Info Area -->
         <div class="history-bottom-info-area">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 h-full">
-                <!-- Episode数据 -->
+                <!-- Episode Data -->
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                     <h3 class="text-sm font-medium text-gray-700 mb-3">Episode Data</h3>
                     <div id="episode-data-container"
@@ -174,7 +174,7 @@
                 </div>
 
 
-                <!-- 日志/操作历史 -->
+                <!-- Log/Operation History -->
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-sm font-medium text-gray-700">Operation Log</h3>
@@ -191,7 +191,7 @@
     </div>
 </div>
 
-<!-- 加载指示器 -->
+<!-- Loading Indicator -->
 <div id="history-loading-overlay"
      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
     <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
@@ -200,21 +200,21 @@
     </div>
 </div>
 
-<!-- 引入模块化的JavaScript文件 -->
+<!-- Import Modular JavaScript Files -->
 <script type="module">
-    // 导入并初始化历史记录管理器
+    // Import and initialize history manager
     import {HistoryManager} from './js/history-manager.js';
 
-    // 当页面加载完成后初始化应用
+    // Initialize application after page loads
     document.addEventListener('DOMContentLoaded', () => {
         window.historyManager = new HistoryManager();
 
-        // 添加窗口大小变化的监听器
+        // Add window resize listener
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
             resizeTimeout = setTimeout(() => {
-                // 通知历史记录管理器窗口大小已改变
+                // Notify history manager that window size has changed
                 if (window.historyManager && window.historyManager.handleResize) {
                     window.historyManager.handleResize();
                 }

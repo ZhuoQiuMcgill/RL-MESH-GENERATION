@@ -126,11 +126,8 @@ class ActionType1(ActionType):
         left_edge_2 = euclidean_distance(v3, boundary.get_vertex_by_index(reference_vertex_idx + 2))
         right_edge_2 = euclidean_distance(v1, boundary.get_vertex_by_index(reference_vertex_idx - 2))
 
-        edge_lengths_sum = (
-                left_edge_1 + right_edge_1 + left_edge_2 + right_edge_2
-                + (left_edge_1 + right_edge_1) / 2.0  # count the new edge once more as “target_len”
-        )
-        mean_dist = edge_lengths_sum / 5.0  # five segments total
+        edge_lengths_sum = (left_edge_1 + right_edge_1 + left_edge_2 + right_edge_2)
+        mean_dist = edge_lengths_sum / 4.0
         target_len = (left_edge_1 + right_edge_1) / 2.0  # average of two half‑edges
 
         smoothness = (

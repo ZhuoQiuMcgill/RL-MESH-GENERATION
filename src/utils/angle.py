@@ -41,19 +41,6 @@ def normalize_coordinates(vertices,
                           ref_vertex,
                           right_neighbor_vertex,
                           scale_factor):
-    """
-    Convert a list of vertices to normalized polar coordinates
-    in the local frame defined by (ref_vertex, right_neighbor_vertex).
-
-    Args:
-        vertices (Iterable[Tuple[float, float]]): points to normalize
-        ref_vertex (Tuple[float, float]): origin of the local frame (V0)
-        right_neighbor_vertex (Tuple[float, float]): V_{r,1} used as +x axis
-        scale_factor (float): 1 / base_length for length normalization
-
-    Returns:
-        List[Tuple[float, float]]: (r, theta) for each vertex
-    """
     # Reference direction vector and its angle
     ref_direction = (
         right_neighbor_vertex[0] - ref_vertex[0],
@@ -82,6 +69,36 @@ def normalize_coordinates(vertices,
         normalized.append((r, theta))
 
     return normalized
+
+
+def decode_coordinate(
+        ref_vertex,
+        right_neighbor_vertex,
+        scale_factor,
+        new_r,
+        new_theta):
+    # Absolute angle of the reference direction
+    dx, dy = right_neighbor_vertex[0] - ref_vertex[0], right_neighbor_vertex[1] - ref_vertex[1]
+    ref_angle = math.atan2(dy, dx)
+
+    # 1. Polar → Cartesian in normalized frame
+    sx = new_r * math.cos(new_theta)
+    sy = new_r * math.sin(new_theta)
+
+    # 2. Undo scaling
+    rx = sx / scale_factor
+    ry = sy / scale_factor
+
+    # 3. Undo rotation (rotate by +ref_angle)
+    cos_a, sin_a = math.cos(ref_angle), math.sin(ref_angle)
+    tx = rx * cos_a - ry * sin_a
+    ty = rx * sin_a + ry * cos_a
+
+    # 4. Undo translation
+    vx = tx + ref_vertex[0]
+    vy = ty + ref_vertex[1]
+
+    return vx, vy
 
 
 def calculate_polygon_area(vertices):

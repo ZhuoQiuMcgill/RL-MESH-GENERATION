@@ -1,14 +1,14 @@
 /**
- * API客户端模块
- * 负责与后端API的所有通信
+ * API Client Module
+ * Responsible for all communication with backend API
  */
 
 import {CONSTANTS, delay} from './utils.js';
 
 /**
- * API错误处理装饰器
- * @param {Function} apiMethod - API方法
- * @returns {Function} 包装后的方法
+ * API Error Handling Decorator
+ * @param {Function} apiMethod - API method
+ * @returns {Function} Wrapped method
  */
 export function withErrorHandling(apiMethod) {
     return async function (...args) {
@@ -17,8 +17,8 @@ export function withErrorHandling(apiMethod) {
         } catch (error) {
             console.error(`API call failed:`, error);
 
-            // 根据错误类型返回不同的错误信息
-            if (error.message.includes('timeout') || error.message.includes('超时')) {
+            // Return different error messages based on error type
+            if (error.message.includes('timeout')) {
                 throw new Error('Request timed out, please check network connection');
             } else if (error.message.includes('Failed to fetch')) {
                 throw new Error('Network connection failed, please check server status');
@@ -30,11 +30,11 @@ export function withErrorHandling(apiMethod) {
 }
 
 /**
- * 带重试机制的API调用
- * @param {Function} apiCall - API调用函数
- * @param {number} maxRetries - 最大重试次数
- * @param {number} retryDelay - 重试延迟时间（毫秒）
- * @returns {Promise<any>} API响应
+ * API Call with Retry Mechanism
+ * @param {Function} apiCall - API call function
+ * @param {number} maxRetries - Maximum retry attempts
+ * @param {number} retryDelay - Retry delay time (milliseconds)
+ * @returns {Promise<any>} API response
  */
 export async function withRetry(apiCall, maxRetries = 1, retryDelay = 3000) {
     let lastError;
@@ -61,11 +61,11 @@ export class ApiClient {
     }
 
     /**
-     * 通用的API请求方法
-     * @param {string} endpoint - API端点
-     * @param {Object} options - 请求选项
-     * @param {number} customTimeout - 自定义超时时间（毫秒），如果不提供则使用默认值
-     * @returns {Promise<any>} API响应
+     * Generic API Request Method
+     * @param {string} endpoint - API endpoint
+     * @param {Object} options - Request options
+     * @param {number} customTimeout - Custom timeout (milliseconds), uses default if not provided
+     * @returns {Promise<any>} API response
      */
     async request(endpoint, options = {}, customTimeout = null) {
         const url = `${this.baseUrl}${endpoint}`;
@@ -77,11 +77,11 @@ export class ApiClient {
 
         const requestOptions = {...defaultOptions, ...options};
 
-        // 确定超时时间
+        // Determine timeout duration
         const timeout = customTimeout || CONSTANTS.CONNECTION_TIMEOUT;
 
         try {
-            // 创建超时控制器
+            // Create timeout controller
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -107,8 +107,8 @@ export class ApiClient {
     }
 
     /**
-     * 检查后端连接状态
-     * @returns {Promise<boolean>} 连接状态
+     * Check Backend Connection Status
+     * @returns {Promise<boolean>} Connection status
      */
     async checkConnection() {
         try {
@@ -121,23 +121,23 @@ export class ApiClient {
     }
 
     /**
-     * 获取训练状态
-     * @returns {Promise<Object>} 训练状态信息
+     * Get Training Status
+     * @returns {Promise<Object>} Training status information
      */
     async getTrainingStatus() {
         return await this.request('/training/status');
     }
 
     /**
-     * 启动训练
-     * @param {Object} config - 训练配置
-     * @returns {Promise<Object>} 启动结果
+     * Start Training
+     * @param {Object} config - Training configuration
+     * @returns {Promise<Object>} Start result
      */
     async startTraining(config) {
-        console.log('=== API客户端发送请求 ===');
-        console.log('请求配置:', config);
-        console.log('请求体:', JSON.stringify(config));
-        console.log('========================');
+        console.log('=== API Client Sending Request ===');
+        console.log('Request Config:', config);
+        console.log('Request Body:', JSON.stringify(config));
+        console.log('==================================');
 
         return await this.request('/training/start', {
             method: 'POST',
@@ -146,19 +146,19 @@ export class ApiClient {
     }
 
     /**
-     * 停止训练 - 使用较长的超时时间
-     * @returns {Promise<Object>} 停止结果
+     * Stop Training - Uses longer timeout
+     * @returns {Promise<Object>} Stop result
      */
     async stopTraining() {
         return await this.request('/training/stop', {
             method: 'POST'
-        }, CONSTANTS.TRAINING_STOP_TIMEOUT); // 使用30秒超时
+        }, CONSTANTS.TRAINING_STOP_TIMEOUT); // Use 30 second timeout
     }
 
     /**
-     * 获取可用的Mesh列表
-     * @param {string} subfolder - 子文件夹名称，默认为'mesh'
-     * @returns {Promise<Object>} Mesh列表
+     * Get Available Mesh List
+     * @param {string} subfolder - Subfolder name, defaults to 'mesh'
+     * @returns {Promise<Object>} Mesh list
      */
     async getMeshList(subfolder = 'mesh') {
         const params = new URLSearchParams({subfolder});
@@ -166,10 +166,10 @@ export class ApiClient {
     }
 
     /**
-     * 获取指定Mesh的信息
-     * @param {string} meshName - Mesh名称
-     * @param {string} subfolder - 子文件夹名称，默认为'mesh'
-     * @returns {Promise<Object>} Mesh信息
+     * Get Specified Mesh Information
+     * @param {string} meshName - Mesh name
+     * @param {string} subfolder - Subfolder name, defaults to 'mesh'
+     * @returns {Promise<Object>} Mesh information
      */
     async getMeshInfo(meshName, subfolder = 'mesh') {
         const params = new URLSearchParams({subfolder});
@@ -177,10 +177,10 @@ export class ApiClient {
     }
 
     /**
-     * 获取指定Mesh的边界数据（新增）
-     * @param {string} meshName - Mesh名称
-     * @param {string} subfolder - 子文件夹名称，默认为'mesh'
-     * @returns {Promise<Object>} Mesh边界数据
+     * Get Specified Mesh Boundary Data (New)
+     * @param {string} meshName - Mesh name
+     * @param {string} subfolder - Subfolder name, defaults to 'mesh'
+     * @returns {Promise<Object>} Mesh boundary data
      */
     async getMeshBoundary(meshName, subfolder = 'mesh') {
         const params = new URLSearchParams({subfolder});
@@ -188,53 +188,53 @@ export class ApiClient {
     }
 
     /**
-     * 检查Mesh API健康状态
-     * @returns {Promise<Object>} 健康状态
+     * Check Mesh API Health Status
+     * @returns {Promise<Object>} Health status
      */
     async checkMeshHealth() {
         return await this.request('/mesh/health');
     }
 
     /**
-     * 检查训练API健康状态
-     * @returns {Promise<Object>} 健康状态
+     * Check Training API Health Status
+     * @returns {Promise<Object>} Health status
      */
     async checkTrainingHealth() {
         return await this.request('/training/health');
     }
 
-    // ========== Checkpoint相关API ==========
+    // ========== Checkpoint Related APIs ==========
 
     /**
-     * 获取可用的Checkpoint列表
-     * @returns {Promise<Object>} Checkpoint列表
+     * Get Available Checkpoint List
+     * @returns {Promise<Object>} Checkpoint list
      */
     async getCheckpointList() {
         return await this.request('/checkpoint/list');
     }
 
     /**
-     * 获取指定Checkpoint的信息
-     * @param {string} checkpointName - Checkpoint名称
-     * @returns {Promise<Object>} Checkpoint信息
+     * Get Specified Checkpoint Information
+     * @param {string} checkpointName - Checkpoint name
+     * @returns {Promise<Object>} Checkpoint information
      */
     async getCheckpointInfo(checkpointName) {
         return await this.request(`/checkpoint/info/${checkpointName}`);
     }
 
     /**
-     * 验证Checkpoint是否有效
-     * @param {string} checkpointName - Checkpoint名称
-     * @returns {Promise<Object>} 验证结果
+     * Validate Checkpoint Validity
+     * @param {string} checkpointName - Checkpoint name
+     * @returns {Promise<Object>} Validation result
      */
     async validateCheckpoint(checkpointName) {
         return await this.request(`/checkpoint/validate/${checkpointName}`);
     }
 
     /**
-     * 删除指定的Checkpoint
-     * @param {string} checkpointName - Checkpoint名称
-     * @returns {Promise<Object>} 删除结果
+     * Delete Specified Checkpoint
+     * @param {string} checkpointName - Checkpoint name
+     * @returns {Promise<Object>} Deletion result
      */
     async deleteCheckpoint(checkpointName) {
         return await this.request(`/checkpoint/delete/${checkpointName}`, {
@@ -243,10 +243,10 @@ export class ApiClient {
     }
 
     /**
-     * 从历史训练目录复制Checkpoint
-     * @param {string} trainingId - 训练会话ID
-     * @param {string} checkpointName - 目标Checkpoint名称（可选）
-     * @returns {Promise<Object>} 复制结果
+     * Copy Checkpoint from Historical Training Directory
+     * @param {string} trainingId - Training session ID
+     * @param {string} checkpointName - Target checkpoint name (optional)
+     * @returns {Promise<Object>} Copy result
      */
     async copyCheckpointFromHistory(trainingId, checkpointName = null) {
         const body = {training_id: trainingId};
@@ -261,8 +261,8 @@ export class ApiClient {
     }
 
     /**
-     * 检查Checkpoint API健康状态
-     * @returns {Promise<Object>} 健康状态
+     * Check Checkpoint API Health Status
+     * @returns {Promise<Object>} Health status
      */
     async checkCheckpointHealth() {
         return await this.request('/checkpoint/health');

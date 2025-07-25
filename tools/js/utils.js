@@ -20,7 +20,7 @@ export const CONSTANTS = {
     }
 };
 
-// 状态相关常量
+// Status-related constants
 export const STATUS = {
     RUNNING: 'running',
     STOPPED: 'stopped',
@@ -30,7 +30,7 @@ export const STATUS = {
     IDLE: 'idle'
 };
 
-// 日志类型
+// Log types
 export const LOG_TYPES = {
     SUCCESS: 'success',
     ERROR: 'error',
@@ -39,27 +39,27 @@ export const LOG_TYPES = {
 };
 
 /**
- * 格式化数字显示
- * @param {number} num - 要格式化的数字
- * @param {number} decimals - 小数位数，默认3位
- * @returns {string} 格式化后的字符串
+ * Format number display
+ * @param {number} num - The number to format
+ * @param {number} decimals - Number of decimal places, default 3
+ * @returns {string} Formatted string
  */
 export function formatNumber(num, decimals = 3) {
     return (num !== undefined && num !== null) ? num.toFixed(decimals) : 'N/A';
 }
 
 /**
- * 获取当前时间戳字符串
- * @returns {string} 时间戳字符串
+ * Get current timestamp string
+ * @returns {string} Timestamp string
  */
 export function getTimestamp() {
     return new Date().toLocaleTimeString();
 }
 
 /**
- * 深度清理数据，确保JSON安全
- * @param {any} data - 要清理的数据
- * @returns {any} 清理后的数据
+ * Deep clean data to ensure JSON safety
+ * @param {any} data - Data to clean
+ * @returns {any} Cleaned data
  */
 export function deepCleanForJSON(data) {
     if (data === null || data === undefined) {
@@ -82,7 +82,7 @@ export function deepCleanForJSON(data) {
         return cleaned;
     }
 
-    // 对于其他类型，尝试转换为字符串
+    // For other types, try to convert to string
     try {
         return String(data);
     } catch {
@@ -91,10 +91,10 @@ export function deepCleanForJSON(data) {
 }
 
 /**
- * 防抖函数
- * @param {Function} func - 要防抖的函数
- * @param {number} wait - 等待时间（毫秒）
- * @returns {Function} 防抖后的函数
+ * Debounce function
+ * @param {Function} func - Function to debounce
+ * @param {number} wait - Wait time (milliseconds)
+ * @returns {Function} Debounced function
  */
 export function debounce(func, wait) {
     let timeout;
@@ -109,10 +109,10 @@ export function debounce(func, wait) {
 }
 
 /**
- * 节流函数
- * @param {Function} func - 要节流的函数
- * @param {number} limit - 限制时间（毫秒）
- * @returns {Function} 节流后的函数
+ * Throttle function
+ * @param {Function} func - Function to throttle
+ * @param {number} limit - Limit time (milliseconds)
+ * @returns {Function} Throttled function
  */
 export function throttle(func, limit) {
     let lastFunc;
@@ -134,18 +134,18 @@ export function throttle(func, limit) {
 }
 
 /**
- * 创建延迟函数
- * @param {number} ms - 延迟时间（毫秒）
- * @returns {Promise} Promise对象
+ * Create delay function
+ * @param {number} ms - Delay time (milliseconds)
+ * @returns {Promise} Promise object
  */
 export function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
- * 解析后端返回的数据
- * @param {any} data - 要解析的数据
- * @returns {any} 解析后的数据
+ * Parse backend returned data
+ * @param {any} data - Data to parse
+ * @returns {any} Parsed data
  */
 export function parseBackendData(data) {
     if (typeof data === 'string') {
@@ -160,9 +160,9 @@ export function parseBackendData(data) {
 }
 
 /**
- * 验证坐标数据
- * @param {any} coords - 坐标数据
- * @returns {boolean} 是否为有效坐标
+ * Validate coordinate data
+ * @param {any} coords - Coordinate data
+ * @returns {boolean} Whether it is a valid coordinate
  */
 export function isValidCoordinate(coords) {
     return Array.isArray(coords) &&
@@ -174,10 +174,10 @@ export function isValidCoordinate(coords) {
 }
 
 /**
- * 计算两点间距离
- * @param {Array} p1 - 点1 [x, y]
- * @param {Array} p2 - 点2 [x, y]
- * @returns {number} 距离值
+ * Calculate distance between two points
+ * @param {Array} p1 - Point 1 [x, y]
+ * @param {Array} p2 - Point 2 [x, y]
+ * @returns {number} Distance value
  */
 export function calculateDistance(p1, p2) {
     if (!isValidCoordinate(p1) || !isValidCoordinate(p2)) {
@@ -189,9 +189,9 @@ export function calculateDistance(p1, p2) {
 }
 
 /**
- * 获取日志样式
- * @param {string} type - 日志类型
- * @returns {Object} 样式对象
+ * Get log style
+ * @param {string} type - Log type
+ * @returns {Object} Style object
  */
 export function getLogStyle(type) {
     const styles = {
@@ -205,9 +205,9 @@ export function getLogStyle(type) {
 }
 
 /**
- * 安全地获取DOM元素
- * @param {string} id - 元素ID
- * @returns {HTMLElement|null} DOM元素或null
+ * Safely get DOM element
+ * @param {string} id - Element ID
+ * @returns {HTMLElement|null} DOM element or null
  */
 export function safeGetElement(id) {
     try {

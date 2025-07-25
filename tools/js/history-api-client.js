@@ -1,6 +1,6 @@
 /**
- * 历史记录专用API客户端
- * 扩展基础ApiClient，专门处理训练历史相关的API调用
+ * History Record Dedicated API Client
+ * Extends base ApiClient, specifically handles training history related API calls
  */
 
 import {ApiClient} from './api-client.js';
@@ -13,8 +13,8 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 获取训练历史列表
-     * @returns {Promise<Object>} 训练历史列表响应
+     * Get training history list
+     * @returns {Promise<Object>} Training history list response
      */
     async getTrainingHistoryList() {
         const fetchList = async () => {
@@ -54,9 +54,9 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 获取指定训练的基本信息
-     * @param {string} trainingId - 训练会话ID
-     * @returns {Promise<Object>} 训练信息响应
+     * Get basic information of specified training
+     * @param {string} trainingId - Training session ID
+     * @returns {Promise<Object>} Training information response
      */
     async getTrainingInfo(trainingId) {
         try {
@@ -83,10 +83,10 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 获取指定Episode的详细数据
-     * @param {string} trainingId - 训练会话ID
-     * @param {number} episodeIndex - Episode索引
-     * @returns {Promise<Object>} Episode数据响应
+     * Get detailed data of specified Episode
+     * @param {string} trainingId - Training session ID
+     * @param {number} episodeIndex - Episode index
+     * @returns {Promise<Object>} Episode data response
      */
     async getEpisodeData(trainingId, episodeIndex) {
         try {
@@ -117,10 +117,10 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 批量获取Episode数据
-     * @param {string} trainingId - 训练会话ID
-     * @param {Array<number>} episodeIndices - Episode索引数组
-     * @returns {Promise<Array>} Episode数据数组
+     * Batch get Episode data
+     * @param {string} trainingId - Training session ID
+     * @param {Array<number>} episodeIndices - Episode index array
+     * @returns {Promise<Array>} Episode data array
      */
     async getBatchEpisodeData(trainingId, episodeIndices) {
         const promises = episodeIndices.map(index =>
@@ -154,11 +154,11 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 获取Episode范围数据
-     * @param {string} trainingId - 训练会话ID
-     * @param {number} startIndex - 起始索引
-     * @param {number} endIndex - 结束索引（包含）
-     * @returns {Promise<Array>} Episode数据数组
+     * Get Episode range data
+     * @param {string} trainingId - Training session ID
+     * @param {number} startIndex - Start index
+     * @param {number} endIndex - End index (inclusive)
+     * @returns {Promise<Array>} Episode data array
      */
     async getEpisodeRange(trainingId, startIndex, endIndex) {
         const indices = [];
@@ -169,16 +169,16 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 搜索Episodes（按奖励值筛选）
-     * @param {string} trainingId - 训练会话ID
-     * @param {number} minReward - 最小奖励值
-     * @param {number} maxReward - 最大奖励值
-     * @param {number} maxResults - 最大结果数量
-     * @returns {Promise<Array>} 符合条件的Episode数据数组
+     * Search Episodes (filter by reward value)
+     * @param {string} trainingId - Training session ID
+     * @param {number} minReward - Minimum reward value
+     * @param {number} maxReward - Maximum reward value
+     * @param {number} maxResults - Maximum number of results
+     * @returns {Promise<Array>} Episode data array that meets criteria
      */
     async searchEpisodesByReward(trainingId, minReward = -Infinity, maxReward = Infinity, maxResults = 100) {
         try {
-            // 首先获取训练信息
+            // First get training information
             const trainingInfo = await this.getTrainingInfo(trainingId);
             if (!trainingInfo.success) {
                 throw new Error(trainingInfo.error);
@@ -187,7 +187,7 @@ export class HistoryApiClient extends ApiClient {
             const totalEpisodes = trainingInfo.detail_length;
             const results = [];
 
-            // 分批获取数据以避免过多并发请求
+            // Get data in batches to avoid too many concurrent requests
             const batchSize = 20;
             for (let i = 0; i < totalEpisodes && results.length < maxResults; i += batchSize) {
                 const endIndex = Math.min(i + batchSize - 1, totalEpisodes - 1);
@@ -214,10 +214,10 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 获取最佳Episodes
-     * @param {string} trainingId - 训练会话ID
-     * @param {number} topN - 获取前N个最佳Episode
-     * @returns {Promise<Array>} 最佳Episode数据数组
+     * Get best Episodes
+     * @param {string} trainingId - Training session ID
+     * @param {number} topN - Get top N best Episodes
+     * @returns {Promise<Array>} Best Episode data array
      */
     async getTopEpisodes(trainingId, topN = 10) {
         try {
@@ -229,7 +229,7 @@ export class HistoryApiClient extends ApiClient {
             const totalEpisodes = trainingInfo.detail_length;
             const allEpisodes = [];
 
-            // 分批获取所有Episode数据
+            // Get all Episode data in batches
             const batchSize = 50;
             for (let i = 0; i < totalEpisodes; i += batchSize) {
                 const endIndex = Math.min(i + batchSize - 1, totalEpisodes - 1);
@@ -242,7 +242,7 @@ export class HistoryApiClient extends ApiClient {
                 allEpisodes.push(...validBatch);
             }
 
-            // 按奖励值排序并获取前N个
+            // Sort by reward value and get top N
             allEpisodes.sort((a, b) => b.episode_data.r - a.episode_data.r);
             return allEpisodes.slice(0, topN);
 
@@ -252,9 +252,9 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 获取训练统计信息
-     * @param {string} trainingId - 训练会话ID
-     * @returns {Promise<Object>} 训练统计信息
+     * Get training statistics
+     * @param {string} trainingId - Training session ID
+     * @returns {Promise<Object>} Training statistics information
      */
     async getTrainingStatistics(trainingId) {
         try {
@@ -266,19 +266,19 @@ export class HistoryApiClient extends ApiClient {
                 };
             }
 
-            // 获取关键Episode数据进行统计
+            // Get key Episode data for statistics
             const keyEpisodes = [];
             const totalEpisodes = trainingInfo.detail_length;
-            const sampleSize = Math.min(100, totalEpisodes); // 采样100个Episode进行统计
+            const sampleSize = Math.min(100, totalEpisodes); // Sample 100 Episodes for statistics
 
-            // 均匀采样
+            // Uniform sampling
             const step = Math.floor(totalEpisodes / sampleSize);
             const sampleIndices = [];
             for (let i = 0; i < totalEpisodes; i += step) {
                 sampleIndices.push(i);
             }
 
-            // 确保包含最佳Episode和最后一个Episode
+            // Ensure including best Episode and last Episode
             if (!sampleIndices.includes(trainingInfo.best_episode)) {
                 sampleIndices.push(trainingInfo.best_episode);
             }
@@ -296,7 +296,7 @@ export class HistoryApiClient extends ApiClient {
                 };
             }
 
-            // 计算统计信息
+            // Calculate statistics
             const rewards = validSamples.map(item => item.episode_data.r);
             const lengths = validSamples.map(item => item.episode_data.l);
             const completedCount = validSamples.filter(item => item.episode_data.is_completed).length;
@@ -339,8 +339,8 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 检查历史服务健康状态
-     * @returns {Promise<Object>} 健康状态响应
+     * Check history service health status
+     * @returns {Promise<Object>} Health status response
      */
     async checkHistoryHealth() {
         try {
@@ -364,9 +364,9 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 验证训练ID是否存在
-     * @param {string} trainingId - 训练会话ID
-     * @returns {Promise<boolean>} 是否存在
+     * Validate if training ID exists
+     * @param {string} trainingId - Training session ID
+     * @returns {Promise<boolean>} Whether it exists
      */
     async validateTrainingId(trainingId) {
         try {
@@ -378,9 +378,9 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 获取训练会话的元数据摘要
-     * @param {Array<string>} trainingIds - 训练ID列表
-     * @returns {Promise<Array>} 元数据摘要数组
+     * Get metadata summary of training sessions
+     * @param {Array<string>} trainingIds - Training ID list
+     * @returns {Promise<Array>} Metadata summary array
      */
     async getTrainingsSummary(trainingIds) {
         const promises = trainingIds.map(async (trainingId) => {
@@ -421,9 +421,9 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 工具方法：计算中位数
-     * @param {Array<number>} values - 数值数组
-     * @returns {number} 中位数
+     * Utility method: Calculate median
+     * @param {Array<number>} values - Number array
+     * @returns {number} Median
      */
     calculateMedian(values) {
         if (values.length === 0) return 0;
@@ -439,9 +439,9 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 工具方法：格式化训练显示名称
-     * @param {string} trainingId - 训练ID
-     * @returns {Object} 格式化后的显示信息
+     * Utility method: Format training display name
+     * @param {string} trainingId - Training ID
+     * @returns {Object} Formatted display information
      */
     formatTrainingDisplayName(trainingId) {
         const parts = trainingId.split('_');
@@ -452,17 +452,17 @@ export class HistoryApiClient extends ApiClient {
         try {
             if (parts.length >= 4) {
                 if (parts[0] === 'continue') {
-                    // Continue格式: continue_checkpointName_date_time_meshName
+                    // Continue format: continue_checkpointName_date_time_meshName
                     algorithm = 'Continue';
                     if (parts.length >= 5) {
-                        // 找到日期时间部分（8位数字_6位数字的模式）
+                        // Find date-time part (8-digit_6-digit pattern)
                         let dateTimeFound = false;
                         for (let i = 1; i < parts.length - 1; i++) {
                             if (parts[i].length === 8 && /^\d{8}$/.test(parts[i]) &&
                                 i + 1 < parts.length && parts[i + 1].length === 6 && /^\d{6}$/.test(parts[i + 1])) {
-                                // 找到了日期时间部分
+                                // Found date-time part
                                 timestamp = `${parts[i]}_${parts[i + 1]}`;
-                                // mesh名称是剩余的部分
+                                // mesh name is the remaining part
                                 const beforeDateTime = parts.slice(1, i);
                                 const afterDateTime = parts.slice(i + 2);
                                 mesh = [...afterDateTime, ...beforeDateTime].join('_');
@@ -472,43 +472,43 @@ export class HistoryApiClient extends ApiClient {
                         }
 
                         if (!dateTimeFound) {
-                            // 回退到旧逻辑
+                            // Fall back to old logic
                             timestamp = parts.length >= 4 ? `${parts[2]}_${parts[3]}` : '';
                             mesh = parts.slice(4).join('_');
                         }
                     } else {
-                        // 不够5个部分，直接用剩余的作为mesh名
+                        // Less than 5 parts, use remaining as mesh name
                         mesh = parts.slice(1).join('_');
                         timestamp = '';
                     }
                 } else {
-                    // 普通格式: algorithm_date_time_meshName
+                    // Normal format: algorithm_date_time_meshName
                     algorithm = parts[0].toUpperCase();
                     if (parts.length >= 3 && parts[1].length === 8 && /^\d{8}$/.test(parts[1]) &&
                         parts[2].length === 6 && /^\d{6}$/.test(parts[2])) {
                         timestamp = `${parts[1]}_${parts[2]}`;
                         mesh = parts.slice(3).join('_');
                     } else {
-                        // 回退处理
+                        // Fallback handling
                         timestamp = parts.slice(1, 3).join('_');
                         mesh = parts.slice(3).join('_');
                     }
                 }
             } else {
-                // 少于4个部分，无法正确解析
+                // Less than 4 parts, cannot parse correctly
                 algorithm = 'Unknown';
                 timestamp = '';
                 mesh = trainingId;
             }
         } catch (error) {
-            // 解析出错，使用原始值
-            console.warn('训练ID解析失败:', trainingId, error);
+            // Parsing error, use original values
+            console.warn('Training ID parsing failed:', trainingId, error);
             algorithm = 'Unknown';
             timestamp = '';
             mesh = trainingId;
         }
 
-        // 格式化时间戳显示
+        // Format timestamp display
         let formattedTimestamp = timestamp;
         if (timestamp && timestamp.includes('_')) {
             const [date, time] = timestamp.split('_');
@@ -528,10 +528,10 @@ export class HistoryApiClient extends ApiClient {
     }
 
     /**
-     * 导出Episode数据为CSV格式
-     * @param {string} trainingId - 训练会话ID
-     * @param {Array<number>} episodeIndices - Episode索引数组（可选，默认导出所有）
-     * @returns {Promise<string>} CSV格式的数据
+     * Export Episode data to CSV format
+     * @param {string} trainingId - Training session ID
+     * @param {Array<number>} episodeIndices - Episode index array (optional, default export all)
+     * @returns {Promise<string>} CSV format data
      */
     async exportEpisodesToCSV(trainingId, episodeIndices = null) {
         try {
@@ -540,7 +540,7 @@ export class HistoryApiClient extends ApiClient {
             if (episodeIndices) {
                 episodeData = await this.getBatchEpisodeData(trainingId, episodeIndices);
             } else {
-                // 导出所有Episode
+                // Export all Episodes
                 const trainingInfo = await this.getTrainingInfo(trainingId);
                 if (!trainingInfo.success) {
                     throw new Error(trainingInfo.error);
@@ -556,7 +556,7 @@ export class HistoryApiClient extends ApiClient {
                 throw new Error('No valid episode data to export');
             }
 
-            // 生成CSV头部
+            // Generate CSV header
             const headers = [
                 'episode_index',
                 'reward',
@@ -566,7 +566,7 @@ export class HistoryApiClient extends ApiClient {
                 'mesh_vertices_count'
             ];
 
-            // 生成CSV内容
+            // Generate CSV content
             const csvRows = [headers.join(',')];
 
             validData.forEach(item => {
@@ -585,7 +585,7 @@ export class HistoryApiClient extends ApiClient {
             return csvRows.join('\n');
 
         } catch (error) {
-            throw new Error(`导出CSV失败: ${error.message}`);
+            throw new Error(`CSV export failed: ${error.message}`);
         }
     }
 }
