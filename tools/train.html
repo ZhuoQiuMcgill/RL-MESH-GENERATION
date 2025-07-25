@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RL Mesh Generation Training Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/shared.css">
     <link rel="stylesheet" href="css/train.css">
     <script>
         tailwind.config = {
@@ -23,18 +24,65 @@
     </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
+    <!-- Navigation Header -->
+    <div class="nav-header">
+        <div class="nav-left">
+            <a href="index.html" class="back-btn">
+                ← Back to Dashboard
+            </a>
+            <h1 class="tool-title">Training Monitor</h1>
+        </div>
+        <div class="nav-right">
+            <div class="nav-breadcrumb">
+                <a href="index.html">Tools</a> / Training Monitor
+            </div>
+        </div>
+    </div>
+    
+<!-- Compact Status Bar -->
+<div class="compact-status-bar">
+    <div class="status-group">
+        <div class="status-item">
+            <div id="status-indicator-dot" class="status-indicator-dot bg-gray-400"></div>
+            <span id="compact-status-text">Idle</span>
+        </div>
+        <div class="status-item">
+            <span>Episode: <span id="compact-episode">0</span></span>
+        </div>
+        <div class="status-item">
+            <span>Steps: <span id="compact-steps">0</span></span>
+        </div>
+    </div>
+    <div class="status-group">
+        <div class="status-item">
+            <span>Actor Loss: <span id="compact-actor-loss">0.000</span></span>
+        </div>
+        <div class="status-item">
+            <span>Critic Loss: <span id="compact-critic-loss">0.000</span></span>
+        </div>
+        <div class="status-item">
+            <span>Alpha: <span id="compact-alpha">0.000</span></span>
+        </div>
+        <div class="status-item">
+            <span>Reward (avg 100): <span id="compact-avg-reward">0.000</span></span>
+        </div>
+    </div>
+</div>
+
 <!-- Main Container - Add responsive classes -->
 <div class="main-container">
     <!-- Left Control Panel - Add responsive classes -->
     <div class="left-panel shadow-lg">
         <!-- Header -->
-        <div class="p-6 border-b border-gray-200">
-            <h1 class="text-2xl font-bold text-gray-800">Training Manager</h1>
-            <p class="text-sm text-gray-600 mt-1">Reinforcement Learning Mesh Generation</p>
+        <div class="p-4 border-b border-gray-200">
+            <h1 class="text-xl font-bold text-gray-800">Training Manager</h1>
+            <p class="text-sm text-gray-600 mt-1">Reinforcement Learning Control</p>
         </div>
 
-        <!-- Control Area -->
-        <div class="flex-1 p-6 overflow-y-auto custom-scrollbar">
+        <!-- Left Panel Content with new structure -->
+        <div class="left-panel-content">
+            <!-- Control Area -->
+            <div class="left-panel-scroll custom-scrollbar">
             <!-- Status Indicator -->
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-2">
@@ -136,44 +184,54 @@
                 </button>
             </div>
 
-            <!-- Training Statistics -->
-            <div class="mt-6 pt-6 border-t border-gray-200">
-                <h3 class="text-sm font-medium text-gray-700 mb-3">Training Stats</h3>
-                <div class="space-y-2 text-xs">
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Current Episode:</span>
-                        <span id="current-episode" class="font-medium">0</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Total Steps (Timesteps):</span>
-                        <span id="total-steps" class="font-medium">0</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Average Reward:</span>
-                        <span id="avg-reward" class="font-medium">0.000</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Buffer Size:</span>
-                        <span id="buffer-size" class="font-medium">0</span>
+            </div>
+            
+            <!-- Training Status Panel - Fixed at bottom but more prominent -->
+            <div class="training-status-panel">
+                <h3 class="text-sm font-medium text-gray-800 mb-3 flex items-center">
+                    <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                    Live Training Status
+                </h3>
+                
+                <!-- Training Statistics -->
+                <div class="mb-4">
+                    <h4 class="text-xs font-medium text-gray-700 mb-2">Current Session</h4>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Episode:</span>
+                            <span id="current-episode" class="font-medium">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Steps:</span>
+                            <span id="total-steps" class="font-medium">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Avg Reward:</span>
+                            <span id="avg-reward" class="font-medium">0.000</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Buffer:</span>
+                            <span id="buffer-size" class="font-medium">0</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Training Metrics -->
-            <div class="mt-6 pt-6 border-t border-gray-200">
-                <h3 class="text-sm font-medium text-gray-700 mb-3">Training Metrics</h3>
-                <div class="space-y-2 text-xs">
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Actor Loss:</span>
-                        <span id="actor-loss" class="font-medium text-red-600">0.000</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Critic Loss:</span>
-                        <span id="critic-loss" class="font-medium text-orange-600">0.000</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-gray-600">Alpha (Entropy):</span>
-                        <span id="alpha-value" class="font-medium text-purple-600">0.000</span>
+                
+                <!-- Training Metrics -->
+                <div>
+                    <h4 class="text-xs font-medium text-gray-700 mb-2">Model Metrics</h4>
+                    <div class="grid grid-cols-1 gap-1 text-xs">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Actor Loss:</span>
+                            <span id="actor-loss" class="font-medium text-red-600">0.000</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Critic Loss:</span>
+                            <span id="critic-loss" class="font-medium text-orange-600">0.000</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Alpha:</span>
+                            <span id="alpha-value" class="font-medium text-purple-600">0.000</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -182,32 +240,42 @@
 
     <!-- Right Main Content Area - Add responsive classes -->
     <div class="right-content">
-        <!-- Top Info Bar - Add responsive classes -->
+        <!-- Top Info Bar - More compact design -->
         <div class="top-info-bar shadow-sm">
-            <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-800">Mesh Visualization</h2>
-                    <p class="text-sm text-gray-600">Episode <span id="display-episode">0</span> -
-                        Boundary Vertices: <span id="boundary-vertices">0</span> -
-                        Total Steps: <span id="display-total-steps">0</span></p>
+                    <h2 class="text-base font-semibold text-gray-800">Mesh Visualization</h2>
                 </div>
-                <div class="flex items-center space-x-4 flex-wrap">
-                    <div class="text-sm">
-                        <span class="text-gray-600">Episode Length:</span>
-                        <span id="episode-length" class="font-semibold text-gray-800">0</span>
-                    </div>
-                    <div class="text-sm">
-                        <span class="text-gray-600">Episode Reward:</span>
-                        <span id="episode-reward" class="font-semibold text-gray-800">0.000</span>
-                    </div>
-                    <div class="text-sm">
-                        <span class="text-gray-600">Reference Point:</span>
-                        <span id="ref-point" class="font-semibold text-gray-800">N/A</span>
-                    </div>
-                    <div class="text-sm">
-                        <span class="text-gray-600">Click Coordinates:</span>
-                        <span id="click-coordinates" class="font-semibold text-blue-600">Not clicked</span>
-                    </div>
+                <div class="text-sm text-gray-600">
+                    <span>Episode <span id="display-episode" class="font-semibold text-gray-800">0</span></span>
+                </div>
+            </div>
+            
+            <!-- Compact info grid -->
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Boundary Vertices</div>
+                    <div id="boundary-vertices" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Episode Length</div>
+                    <div id="episode-length" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Episode Reward</div>
+                    <div id="episode-reward" class="info-value">0.000</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Reference Point</div>
+                    <div id="ref-point" class="info-value">N/A</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Click Coordinates</div>
+                    <div id="click-coordinates" class="info-value text-blue-600">Not clicked</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Total Steps</div>
+                    <div id="display-total-steps" class="info-value">0</div>
                 </div>
             </div>
         </div>

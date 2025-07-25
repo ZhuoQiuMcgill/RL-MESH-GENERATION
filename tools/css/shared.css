@@ -1,0 +1,114 @@
+/* Shared Navigation Styles */
+.nav-header {
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    padding: 12px 24px;
+    color: white;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.nav-header .nav-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.nav-header .back-btn {
+    background: rgba(255,255,255,0.2);
+    border: none;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 20px;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.nav-header .back-btn:hover {
+    background: rgba(255,255,255,0.3);
+    transform: translateX(-2px);
+}
+
+.nav-header .tool-title {
+    font-size: 1.5em;
+    font-weight: 300;
+    margin: 0;
+}
+
+.nav-header .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.nav-breadcrumb {
+    color: rgba(255,255,255,0.8);
+    font-size: 0.9em;
+}
+
+.nav-breadcrumb a {
+    color: rgba(255,255,255,0.9);
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.nav-breadcrumb a:hover {
+    color: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .nav-header {
+        padding: 8px 16px;
+        height: 50px;
+        font-size: 0.9rem;
+    }
+    
+    .nav-header .tool-title {
+        font-size: 1.1em;
+    }
+    
+    .nav-header .back-btn {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+    }
+    
+    .nav-breadcrumb {
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-header {
+        padding: 6px 12px;
+        height: 45px;
+        flex-direction: column;
+        gap: 4px;
+        text-align: center;
+    }
+    
+    .nav-header .nav-left,
+    .nav-header .nav-right {
+        justify-content: center;
+    }
+    
+    .nav-header .tool-title {
+        font-size: 1rem;
+    }
+    
+    .nav-breadcrumb {
+        display: none;
+    }
+}

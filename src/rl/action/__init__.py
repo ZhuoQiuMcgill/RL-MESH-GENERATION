@@ -36,7 +36,6 @@ from .action import ActionType
 from .type0_left import ActionType0Left
 from .type0_right import ActionType0Right
 from .type1 import ActionType1
-from .type2 import ActionType2
 
 # 定义模块的公共API
 __all__ = [
@@ -44,11 +43,10 @@ __all__ = [
     'ActionType0Left',
     'ActionType0Right',
     'ActionType1',
-    'ActionType2'
 ]
 
 # 版本信息
-__version__ = '1.3.0'
+__version__ = '1.4.0'
 
 # 模块作者信息
 __author__ = 'ZhuoQiuMcgill'
@@ -58,7 +56,6 @@ ACTION_TYPE_MAPPING = {
     0: ActionType0Left,
     1: ActionType0Right,
     2: ActionType1,
-    3: ActionType2
 }
 
 # 动作类型名称映射
@@ -66,5 +63,4 @@ ACTION_TYPE_NAMES = {
     0: "ActionType0Left",
     1: "ActionType0Right",
     2: "ActionType1",
-    3: "ActionType2"
 }

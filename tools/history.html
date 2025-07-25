@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Training History Viewer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/shared.css">
     <link rel="stylesheet" href="css/history.css">
     <script>
         tailwind.config = {
@@ -23,6 +24,21 @@
     </script>
 </head>
 <body class="bg-gray-50 min-h-screen">
+    <!-- Navigation Header -->
+    <div class="nav-header">
+        <div class="nav-left">
+            <a href="index.html" class="back-btn">
+                ← Back to Dashboard
+            </a>
+            <h1 class="tool-title">History Viewer</h1>
+        </div>
+        <div class="nav-right">
+            <div class="nav-breadcrumb">
+                <a href="index.html">Tools</a> / History Viewer
+            </div>
+        </div>
+    </div>
+    
 <!-- Main Container -->
 <div class="history-main-container">
     <!-- Left Training List Panel -->
@@ -89,24 +105,24 @@
                             View
                         </button>
                     </div>
-                    <div class="flex space-x-2">
+                    <div class="quick-nav-grid">
                         <button id="goto-best-episode-btn"
-                                class="flex-1 bg-success hover:bg-green-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
-                            Best Episode
+                                class="bg-success hover:bg-green-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
+                            🏆 Best Episode
                         </button>
                         <button id="goto-last-episode-btn"
-                                class="flex-1 bg-warning hover:bg-orange-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
-                            Last Episode
+                                class="bg-warning hover:bg-orange-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
+                            📍 Last Episode
                         </button>
                     </div>
-                    <div class="flex space-x-2">
+                    <div class="nav-control-grid">
                         <button id="prev-episode-btn"
-                                class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
-                            Previous
+                                class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
+                            ← Previous
                         </button>
                         <button id="next-episode-btn"
-                                class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
-                            Next
+                                class="bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
+                            Next →
                         </button>
                     </div>
                 </div>

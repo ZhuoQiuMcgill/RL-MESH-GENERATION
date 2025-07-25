@@ -6,6 +6,7 @@
     <title>Angle Quality Function Visualization (Fully Adjustable Parameters)</title>
     <!-- 引入 Tailwind CSS 以便快速美化页面 -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/shared.css">
     <!-- 引入 Chart.js 用于绘图 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- 引入 Chart.js Annotation 插件用于绘制标注线 -->
@@ -44,9 +45,24 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex items-center justify-center min-h-screen p-4">
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex flex-col items-center justify-center min-h-screen p-4">
 
-<div class="w-full max-w-4xl bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 md:p-8">
+    <!-- Navigation Header -->
+    <div class="nav-header w-full max-w-4xl rounded-t-2xl">
+        <div class="nav-left">
+            <a href="index.html" class="back-btn">
+                ← Back to Dashboard
+            </a>
+            <h1 class="tool-title">Angle Quality Calculator</h1>
+        </div>
+        <div class="nav-right">
+            <div class="nav-breadcrumb">
+                <a href="index.html">Tools</a> / Angle Quality Calculator
+            </div>
+        </div>
+    </div>
+    
+<div class="w-full max-w-4xl bg-white dark:bg-gray-800 shadow-lg p-6 md:p-8" style="border-radius: 0 0 1rem 1rem;">
     <div class="text-center mb-6">
         <h1 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">Angle Quality Function Visualization</h1>
         <p class="text-gray-600 dark:text-gray-400 mt-2">Drag sliders to adjust parameters and observe curve changes</p>

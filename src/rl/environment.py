@@ -1,7 +1,6 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-import math
 import copy
 from typing import Any
 
@@ -77,6 +76,7 @@ class MeshEnv(gym.Env):
         self.episode_count = 0
 
         self.invalid_action_count = 0
+        self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
 
     def _reset_episode_stats(self) -> None:
         """重置episode级别的统计信息"""
@@ -112,6 +112,8 @@ class MeshEnv(gym.Env):
         self.generated_elements = 0
         self.invalid_action_count = 0
 
+        self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
+
         # 重置episode统计
         self._reset_episode_stats()
 
@@ -133,13 +135,6 @@ class MeshEnv(gym.Env):
         # Get reference vertex
         reference_vertex_idx = self._get_reference_vertex()
 
-        def invalid_penalty() -> float:
-            # Negative reward for invalid action
-            punish = -1
-            if self.generated_elements == 0:
-                return punish
-            return punish / self.generated_elements
-
         # Process action using ActionManager
         action_result = self.action_manager.process_action(
             action, self.mesh, self.boundary, reference_vertex_idx, self.M_angle
@@ -156,8 +151,8 @@ class MeshEnv(gym.Env):
         if action_valid:
             reward = (
                     element_quality_reward
-                    + boundary_quality_reward - 1
-                    + self._calculate_density_reward(generated_element)
+                    + 1 * (boundary_quality_reward - 1)
+                    + self.speed_penalty(generated_element)
             )
             self.generated_elements += 1
             terminated = self._is_terminated()
@@ -166,7 +161,7 @@ class MeshEnv(gym.Env):
             term_reason = "task_complete" if terminated else None
             trunc_reason = "time_limit" if truncated else None
         else:
-            reward = invalid_penalty()
+            reward = self.invalid_penalty()
             self.invalid_action_count += 1
             if self.invalid_action_count >= 100:
                 terminated = True
@@ -264,82 +259,39 @@ class MeshEnv(gym.Env):
 
         return np.array(state_components, dtype=np.float32)
 
-    def _calculate_density_reward(self, element):
-        """
-        计算密度奖励 μ_t，实现公式(9)
-
-        Args:
-            element: 生成的元素
-
-        Returns:
-            float: 密度奖励值
-        """
-        if element is None:
-            return 0.0
-
-        # 计算元素面积
+    def speed_penalty(self, element):
         element_area = calculate_polygon_area(element)
+        if element_area < self.min_area:
+            return -1
+        if self.min_area <= element_area < self.critical_area:
+            return (element_area - self.critical_area) / (self.critical_area - self.min_area)
+        return 0
 
-        # 获取边界信息计算最小和最大面积
-        vertices = self.boundary.get_vertices()
-        if len(vertices) < 2:
-            return 0.0
-
-        # 计算边长范围
-        edge_lengths = []
-        for i in range(len(vertices)):
-            v1 = vertices[i]
-            v2 = vertices[(i + 1) % len(vertices)]
-            edge_lengths.append(euclidean_distance(v1, v2))
-
-        e_min = min(edge_lengths)
-        e_max = max(edge_lengths)
-
-        # 计算最小和最大允许面积
-        A_min = self.upsilon * e_min ** 2
-        A_max = self.upsilon * ((e_max - e_min) / self.kappa + e_min) ** 2
-
-        # 计算密度奖励
-        if element_area < A_min:
-            return -1.0
-        elif A_min <= element_area < A_max:
-            return (element_area - A_min) / (A_max - A_min)
-        else:
-            return 0.0
+    def invalid_penalty(self):
+        # Negative reward for invalid action
+        punish = -1
+        if self.generated_elements == 0:
+            return punish
+        return punish / self.generated_elements
 
     def _is_terminated(self):
-        """
-        判断是否完成网格生成（边界变成四边形或更少顶点）
-
-        Returns:
-            bool: 是否终止
-        """
         return self.boundary.size() <= 4
 
     def render(self):
-        """可视化当前状态（可选实现）"""
         pass
 
     def close(self):
-        """清理资源"""
         pass
 
     def get_last_reference_info(self):
-        """返回上一步的参考点及其局部环境信息"""
         return self.last_reference_info
 
     def get_mesh_data(self):
-        """
-        获取当前网格的邻接关系数据，用于前端可视化
-
-        Returns:
-            dict: 网格邻接关系字典，格式为 {vertex_str: [adjacent_vertices]}
-        """
         if self.mesh is None:
             return {}
 
         try:
             return self.mesh.get_adjacency_dict()
         except Exception as e:
-            print(f"获取mesh数据失败: {e}")
+            print(f"Fail to get mesh data: {e}")
             return {}

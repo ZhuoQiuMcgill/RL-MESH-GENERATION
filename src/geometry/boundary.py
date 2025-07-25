@@ -172,6 +172,67 @@ class Boundary:
 
         return total_length / edge_count
 
+    def get_avg_vertex_distance(self) -> float:
+        """
+        Calculate the average edge length of all boundary edges.
+        
+        Returns:
+            float: The average length of all edges in the boundary
+        """
+        if self.size() < 2:
+            return 0.0
+
+        total_length = 0.0
+        edge_count = self.size()
+
+        # Calculate lengths of all boundary edges
+        for i in range(edge_count):
+            current_vertex = self.get_vertex_by_index(i)
+            next_vertex = self.get_vertex_by_index(i + 1)
+
+            # Calculate edge length using existing euclidean_distance function
+            edge_length = euclidean_distance(current_vertex, next_vertex)
+            total_length += edge_length
+
+        return total_length / edge_count
+
+    def get_min_and_critical_area(self):
+        """
+        Calculate min_area and critical_area based on boundary vertex geometry.
+        Returns:
+            tuple: (min_area, critical_area) as float values
+        """
+        # Step 1 - Calculate edge lengths
+        edge_lengths = []
+        for i in range(self.size()):
+            current_vertex = self.get_vertex_by_index(i)
+            next_vertex = self.get_vertex_by_index(i + 1)  # handles wraparound via modulo
+            edge_length = euclidean_distance(current_vertex, next_vertex)
+            edge_lengths.append(edge_length)
+
+        # Step 2 - Sort edge lengths
+        sorted_lengths = sorted(edge_lengths)
+
+        # Ensure we have at least 2 edges for indexing operations
+        if len(sorted_lengths) < 2:
+            raise ValueError("Boundary must have at least 2 edges")
+
+        # Step 3 - Calculate base parameters
+        L = sum(edge_lengths) / len(edge_lengths)  # average edge length
+
+        min_L = min(L / math.sqrt(2), sorted_lengths[1])  # second shortest edge
+        max_L = min(sorted_lengths[-2], 2 * L)  # second longest edge
+
+        # Step 4 - Calculate area range bounds
+        lower_bound = min_L
+        upper_bound = (max_L + 3 * min_L) / 4
+
+        # Step 5 - Compute final area thresholds
+        min_area = lower_bound ** 2
+        critical_area = upper_bound ** 2
+
+        return min_area, critical_area
+
     def size(self) -> int:
         """
         返回当前边界中顶点的数量

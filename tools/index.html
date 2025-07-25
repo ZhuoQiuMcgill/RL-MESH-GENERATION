@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RL Mesh Generation - Visualization Tools</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            padding: 40px;
+            text-align: center;
+            color: white;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            padding: 40px;
+        }
+        
+        .tool-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .tool-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+            border-color: #4CAF50;
+        }
+        
+        .tool-icon {
+            font-size: 3em;
+            margin-bottom: 20px;
+            display: block;
+        }
+        
+        .tool-title {
+            font-size: 1.5em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+        
+        .tool-description {
+            color: #7f8c8d;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        
+        .tool-button {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .tool-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 15px rgba(76, 175, 80, 0.3);
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 30px;
+            background: #ecf0f1;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>RL Mesh Generation</h1>
+            <p>Visualization Tools Dashboard</p>
+        </div>
+        
+        <div class="tools-grid">
+            <a href="geometry_viz.html" class="tool-card">
+                <div class="tool-icon">🔺</div>
+                <div class="tool-title">Geometry Visualizer</div>
+                <div class="tool-description">
+                    Interactive visualization of mesh geometries, boundaries, and structural elements
+                </div>
+                <button class="tool-button">Open Tool</button>
+            </a>
+            
+            <a href="canvas.html" class="tool-card">
+                <div class="tool-icon">🎨</div>
+                <div class="tool-title">Canvas Renderer</div>
+                <div class="tool-description">
+                    Real-time mesh rendering and manipulation with interactive canvas controls
+                </div>
+                <button class="tool-button">Open Tool</button>
+            </a>
+            
+            <a href="quality.html" class="tool-card">
+                <div class="tool-icon">📊</div>
+                <div class="tool-title">Quality Analyzer</div>
+                <div class="tool-description">
+                    Mesh quality assessment tools with metrics visualization and analysis
+                </div>
+                <button class="tool-button">Open Tool</button>
+            </a>
+            
+            <a href="angle_quality_calculator.html" class="tool-card">
+                <div class="tool-icon">📐</div>
+                <div class="tool-title">Angle Quality Calculator</div>
+                <div class="tool-description">
+                    Calculate and visualize triangle angle quality metrics for mesh optimization
+                </div>
+                <button class="tool-button">Open Tool</button>
+            </a>
+            
+            <a href="train.html" class="tool-card">
+                <div class="tool-icon">🤖</div>
+                <div class="tool-title">Training Monitor</div>
+                <div class="tool-description">
+                    Monitor reinforcement learning training progress with real-time metrics
+                </div>
+                <button class="tool-button">Open Tool</button>
+            </a>
+            
+            <a href="history.html" class="tool-card">
+                <div class="tool-icon">📈</div>
+                <div class="tool-title">History Viewer</div>
+                <div class="tool-description">
+                    View training history, performance metrics, and model evolution over time
+                </div>
+                <button class="tool-button">Open Tool</button>
+            </a>
+        </div>
+        
+        <div class="footer">
+            <p>Select a visualization tool to get started with mesh generation analysis</p>
+        </div>
+    </div>
+</body>
+</html>

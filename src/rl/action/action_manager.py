@@ -4,11 +4,12 @@ from gymnasium import spaces
 from .type0_left import ActionType0Left
 from .type0_right import ActionType0Right
 from .type1 import ActionType1
-from .type2 import ActionType2
 from src.utils import euclidean_distance, decode_coordinate
 
 
 class ActionManager:
+    _EPS = 0.0001
+
     def __init__(self, alpha=2, n=2, max_steps=1000, action_config=None):
         """
         Initialize ActionManager with configurable action types
@@ -24,19 +25,17 @@ class ActionManager:
             "type0_left": ActionType0Left(),
             "type0_right": ActionType0Right(),
             "type1": ActionType1(),
-            "type2": ActionType2()
         }
 
         # Parse action configuration
         if action_config is None:
             action_config = {
-                "enabled": ["type0_left", "type0_right", "type1", "type2"],
+                "enabled": ["type0_left", "type0_right", "type1"],
                 "auto_remap": True
             }
 
         self.action_config = action_config
-        self.enabled_actions = action_config.get("enabled", ["type0_left", "type0_right", "type1", "type2"])
-        self.auto_remap = action_config.get("auto_remap", True)
+        self.enabled_actions = action_config.get("enabled", ["type0_left", "type0_right", "type1"])
 
         # Validate enabled actions
         for action_name in self.enabled_actions:
@@ -66,31 +65,15 @@ class ActionManager:
             "type0_left": 0,
             "type0_right": 1,
             "type1": 2,
-            "type2": 3
         }
 
-        if self.auto_remap and num_enabled < 4:
-            # Create new mapping for enabled actions only
-            self.action_logit_mapping = {}
-            interval = 2.0 / num_enabled  # Split [-1, 1] range
-
-            for i, action_name in enumerate(self.enabled_actions):
-                start = -1.0 + i * interval
-                end = -1.0 + (i + 1) * interval
-                self.action_logit_mapping[i] = {
-                    'name': action_name,
-                    'range': (start, end),
-                    'instance': self.action_types[action_name]
-                }
-        else:
-            # Use original mapping, but only for enabled actions
-            self.action_logit_mapping = {}
-            for action_name in self.enabled_actions:
-                original_idx = self._original_action_indices[action_name]
-                self.action_logit_mapping[original_idx] = {
-                    'name': action_name,
-                    'instance': self.action_types[action_name]
-                }
+        self.action_logit_mapping = {}
+        for action_name in self.enabled_actions:
+            original_idx = self._original_action_indices[action_name]
+            self.action_logit_mapping[original_idx] = {
+                'name': action_name,
+                'instance': self.action_types[action_name]
+            }
 
     def get_enabled_actions(self):
         """Get list of enabled action names"""
@@ -160,6 +143,16 @@ class ActionManager:
             x, y = decode_coordinate(ref_v, right_neighbor_v, scale_factor, new_r, new_theta)
 
             new_coords.append((x, y))
+            eps_dist = boundary.get_avg_vertex_distance() * self._EPS
+
+            if euclidean_distance((x, y), boundary.get_vertex_by_index(reference_vertex_idx + 2)) <= eps_dist:
+                # type1 -> type0_right
+                action_name = self.enabled_actions[1]
+                action_instance = self.action_types[action_name]
+            elif euclidean_distance((x, y), boundary.get_vertex_by_index(reference_vertex_idx - 2)) <= eps_dist:
+                # type1 -> type0_left
+                action_name = self.enabled_actions[0]
+                action_instance = self.action_types[action_name]
 
         return action_name, action_instance, new_coords, reference_vertex_idx
 
@@ -182,8 +175,6 @@ class ActionManager:
                 return action_instance.is_valid(boundary, reference_vertex_idx)
             elif action_name == "type1":
                 return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0])
-            elif action_name == "type2":
-                return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0], new_coords[1])
             else:
                 return False
         except Exception:
@@ -207,8 +198,6 @@ class ActionManager:
             return action_instance.get_element_quality(boundary, reference_vertex_idx)
         elif action_name == "type1":
             return action_instance.get_element_quality(boundary, reference_vertex_idx, new_coords[0])
-        elif action_name == "type2":
-            return action_instance.get_element_quality(boundary, reference_vertex_idx, new_coords[0], new_coords[1])
         else:
             return 0.0
 
@@ -231,9 +220,6 @@ class ActionManager:
             return action_instance.get_boundary_quality(boundary, reference_vertex_idx, M_angle=M_angle)
         elif action_name == "type1":
             return action_instance.get_boundary_quality(boundary, reference_vertex_idx, new_coords[0], M_angle=M_angle)
-        elif action_name == "type2":
-            return action_instance.get_boundary_quality(boundary, reference_vertex_idx, new_coords[0], new_coords[1],
-                                                        M_angle=M_angle)
         else:
             return -1
 
@@ -257,8 +243,6 @@ class ActionManager:
                 return action_instance.execute(mesh, boundary, reference_vertex_idx)
             elif action_name == "type1":
                 return action_instance.execute(mesh, boundary, reference_vertex_idx, new_coords[0])
-            elif action_name == "type2":
-                return action_instance.execute(mesh, boundary, reference_vertex_idx, new_coords[0], new_coords[1])
             else:
                 return None
         except Exception:
