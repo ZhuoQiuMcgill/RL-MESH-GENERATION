@@ -1,24 +1,24 @@
-from src.rl.config import load_config
 import math
 import numpy as np
 
 
 class FanShape:
-    def __init__(self, v_right, v_ref, v_left, base_L):
+    def __init__(self, v_right, v_ref, v_left, base_L, beta=6, g=3):
         """
         Args:
             v_right (np.ndarray | Tuple[float, float]): 右邻顶点
             v_ref   (np.ndarray | Tuple[float, float]): 参考顶点 V0
             v_left  (np.ndarray | Tuple[float, float]): 左邻顶点
             base_L  (float):     论文式 (2) 的平均边长
+            beta    (int):       放大因子 (默认6)
+            g       (int):       扇形切片数 (默认3)
         """
         self.v_ref = np.asarray(v_ref, dtype=float)
-        # 读取环境配置
-        env_cfg = load_config().get("environment", {})
-        self.beta = env_cfg.get("beta", 6)  # 放大因子
-        self.g = env_cfg.get("g", 3)  # 扇形切片数
 
-        self.fan_vertices = []  # g+1 条射线端点（定义 g 个扇形）
+        self.beta = beta  # 放大因子
+        self.g = g  # 扇形切片数
+
+        self.fan_vertices = []
         self.radius = self.beta * base_L
         self._init_fan_shapes(np.asarray(v_right, dtype=float),
                               self.v_ref,

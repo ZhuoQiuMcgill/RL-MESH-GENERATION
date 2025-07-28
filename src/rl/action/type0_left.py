@@ -1,5 +1,5 @@
 from .action import ActionType
-from src.utils import get_interior_angle, euclidean_distance
+from src.utils import get_interior_angle, euclidean_distance, valid_element_angle
 import math
 
 
@@ -30,6 +30,10 @@ class ActionType0Left(ActionType):
             return False
 
         quadrilateral = self.get_element(boundary, reference_vertex_idx)
+
+        if not valid_element_angle(quadrilateral):
+            return False
+
         v0, v3, v2, v1 = quadrilateral
         new_internal_edge = (v2, v3)
 

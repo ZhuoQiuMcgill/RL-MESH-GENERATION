@@ -1,6 +1,6 @@
 # 直接导入不会造成循环依赖的模块
 from .angle import euclidean_distance, get_interior_angle, is_angle_in_slice, normalize_coordinates, decode_coordinate, \
-    calculate_polygon_area
+    calculate_polygon_area, valid_element_angle
 from .segment import ray_segment_intersection, orientation, point_on_line_segment, line_segments_intersect, \
     segments_overlap_interior, point_to_segment_distance
 
@@ -20,7 +20,8 @@ def _get_checkpoint_manager_module():
 
 def _get_plotter_module():
     """延迟导入rl_ploter模块"""
-    from .rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution
+    from .rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, \
+        plot_action_reward_distribution
     return plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution
 
 
@@ -77,7 +78,8 @@ __all__ = [
     'line_segments_intersect',
     'segments_overlap_interior',
     'point_to_segment_distance',
-    'decode_coordinate'
+    'decode_coordinate',
+    'valid_element_angle'
 ]
 
 # 版本信息

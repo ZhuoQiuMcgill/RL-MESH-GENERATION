@@ -66,7 +66,7 @@ sb3_sac:
   # 详细输出级别 - 0:无输出, 1:基本信息, 2:详细信息
   verbose: 0
 
-  ent_coef: "auto"
+  ent_coef: 0.2
 
 # 环境配置
 environment:
@@ -109,18 +109,6 @@ environment:
       type0_left: "Type 0 Left - Connect left boundary vertices to form quadrilateral"
       type0_right: "Type 0 Right - Connect right boundary vertices to form quadrilateral"
       type1: "Type 1 - Add one new vertex to form quadrilateral"
-      type2: "Type 2 - Add two new vertices to form quadrilateral"
-    
-    # 配置示例：
-    # 仅使用简单动作（不生成新顶点）:
-    # enabled: ["type0_left", "type0_right"]
-    
-    # 仅使用复杂动作（生成新顶点）:
-    # enabled: ["type1", "type2"]
-    
-    # 保持原始4个动作映射（不重新映射）:
-    # enabled: ["type0_left", "type1", "type2"]
-    # auto_remap: false
 
 # 训练配置
 training:

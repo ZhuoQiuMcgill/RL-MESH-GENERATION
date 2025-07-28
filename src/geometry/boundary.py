@@ -153,10 +153,6 @@ class Boundary:
         if not isinstance(n, int) or n <= 0:
             raise ValueError("n must be a positive integer")
 
-        boundary_size = self.size()
-        if boundary_size < 2 * n:
-            raise ValueError(f"Boundary has only {boundary_size} vertices, need at least {2 * n} for n={n}")
-
         total_length = 0.0
         edge_count = 2 * n
 
@@ -366,13 +362,15 @@ class Boundary:
 
         return area
 
-    def get_fan_points(self, reference_vertex_index: int) -> List[Tuple[float, float]]:
-        base_length = self.get_avg_neighbor_length(reference_vertex_index, 2)
+    def get_fan_points(self, reference_vertex_index: int, n, beta=6, g=3) -> List[Tuple[float, float]]:
+        base_length = self.get_avg_neighbor_length(reference_vertex_index, n)
         fan_shape = FanShape(
             self.get_vertex_by_index(reference_vertex_index - 1),
             self.get_vertex_by_index(reference_vertex_index),
             self.get_vertex_by_index(reference_vertex_index + 1),
-            base_length
+            base_length,
+            beta=beta,
+            g=g
         )
         return fan_shape.process(self.get_vertices())
 

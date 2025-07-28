@@ -92,7 +92,7 @@ class ActionManager:
             spaces.Box: Action space with shape (3,) and range [-1, 1]
         """
         # return spaces.Box(low=-1, high=1, shape=(self.action_dim,), dtype=np.float32)
-        return spaces.Box(np.array([-1, -1.5, 0]), np.array([1, 1.5, 1.5]), dtype=np.float32)
+        return spaces.Box(low=np.array([-1, 0, -1.5]), high=np.array([1, 1.5, 1.5]), dtype=np.float32)
 
     def decode_action(self, action, boundary, reference_vertex_idx):
         """

@@ -1,5 +1,5 @@
 from .action import ActionType
-from src.utils import get_interior_angle, euclidean_distance
+from src.utils import get_interior_angle, euclidean_distance, valid_element_angle
 import math
 
 
@@ -45,8 +45,11 @@ class ActionType1(ActionType):
         quadrilateral = self.get_element(boundary, reference_vertex_idx, coords[0])
         v0, v3, v2, v1 = quadrilateral
 
-        if not boundary.vertex_inside_action_space(v2, reference_vertex_idx, alpha, n):
+        if not valid_element_angle(quadrilateral):
             return False
+
+        # if not boundary.vertex_inside_action_space(v2, reference_vertex_idx, alpha, n):
+        #     return False
 
         if not boundary.vertex_inside_boundary(v2):
             return False

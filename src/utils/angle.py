@@ -123,3 +123,16 @@ def calculate_polygon_area(vertices):
         area -= vertices[j][0] * vertices[i][1]
 
     return abs(area) / 2.0
+
+
+def valid_element_angle(element):
+    v0, v1, v2, v3 = element
+    a1 = get_interior_angle(v0, v1, v2)
+    a2 = get_interior_angle(v1, v2, v3)
+    a3 = get_interior_angle(v2, v3, v0)
+    a4 = get_interior_angle(v3, v0, v1)
+    for angle in [a1, a2, a3, a4]:
+        if angle < 0.01 * math.pi or angle > 0.99 * math.pi:
+            return False
+
+    return True

@@ -39,9 +39,6 @@ class MeshEnv(gym.Env):
             action_config=action_config
         )
 
-        # State: (n_left + n_right + g_points) * 2 (coords) + qt
-        state_dim = (self.n * 2 + self.g) * 2
-
         # Calculate dynamic bounds from boundary points
         boundary_vertices = initial_boundary.get_vertices()
         if boundary_vertices:
@@ -50,7 +47,10 @@ class MeshEnv(gym.Env):
             max_coord = np.max(all_coords)
         else:
             min_coord, max_coord = -1.0, 1.0
+        print(f"min_coord: {min_coord}, max_coord: {max_coord}")
 
+        # State: (n_left + n_right + g_points) * 2 (coords) + qt
+        state_dim = (self.n * 2 + self.g) * 2
         self.observation_space = spaces.Box(low=min_coord, high=max_coord, shape=(state_dim,), dtype=np.float32)
 
         # Action space from ActionManager
@@ -218,7 +218,7 @@ class MeshEnv(gym.Env):
 
         # 2. collect fan-sector vertices (global coords)
         try:
-            fan_coords = list(self.boundary.get_fan_points(reference_idx))
+            fan_coords = list(self.boundary.get_fan_points(reference_idx, self.n, self.beta, self.g))
         except Exception:
             fan_coords = [None] * self.g
 
