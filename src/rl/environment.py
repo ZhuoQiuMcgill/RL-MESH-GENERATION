@@ -12,24 +12,9 @@ from src.utils import euclidean_distance, normalize_coordinates, calculate_polyg
 
 
 class MeshEnv(gym.Env):
-    """
-    网格生成的强化学习环境
-    实现了基于论文的MDP formulation
-    现在包含SB3兼容的episode统计功能
-    """
     metadata = {'render_modes': ['human']}
 
     def __init__(self, initial_boundary: Boundary, n=None, g=None, alpha=None, beta=None, max_steps=None, config=None):
-        """
-        初始化网格生成环境
-
-        Args:
-            initial_boundary: 初始边界对象
-            n: 参考顶点左右邻居数量
-            g: 扇形区域内观察点数量
-            alpha: 动作空间半径因子
-            beta: 状态观察半径因子
-        """
         super(MeshEnv, self).__init__()
         cfg = load_config() if config is None else config
         env_cfg = cfg.get("environment", {})
@@ -45,8 +30,8 @@ class MeshEnv(gym.Env):
         self.M_angle = env_cfg.get("M_angle", 60.0)
 
         action_config = env_cfg.get("actions", {
-            "enabled": ["type0_left", "type0_right", "type1", "type2"],
-            "auto_remap": True
+            "enabled": ["type0_left", "type0_right", "type1"],
+            "auto_remap": False
         })
         self.action_manager = ActionManager(
             alpha=self.alpha,
@@ -57,7 +42,17 @@ class MeshEnv(gym.Env):
 
         # State: (n_left + n_right + g_points) * 2 (coords) + qt
         state_dim = (self.n * 2 + self.g) * 2
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(state_dim,), dtype=np.float32)
+
+        # Calculate dynamic bounds from boundary points
+        boundary_vertices = initial_boundary.get_vertices()
+        if boundary_vertices:
+            all_coords = np.array(boundary_vertices)
+            min_coord = np.min(all_coords)
+            max_coord = np.max(all_coords)
+        else:
+            min_coord, max_coord = -1.0, 1.0
+
+        self.observation_space = spaces.Box(low=min_coord, high=max_coord, shape=(state_dim,), dtype=np.float32)
 
         # Action space from ActionManager
         self.action_space = self.action_manager.get_action_space()
@@ -77,31 +72,23 @@ class MeshEnv(gym.Env):
 
         self.invalid_action_count = 0
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
+        self.action_count = {}
 
     def _reset_episode_stats(self) -> None:
-        """重置episode级别的统计信息"""
         self.episode_reward = 0.0
         self.episode_length = 0
 
     def _update_episode_stats(self, reward: float) -> None:
-        """更新episode级别的统计信息"""
         self.episode_reward += float(reward)
         self.episode_length += 1
 
     def get_wrapper_attr(self, name: str) -> Any:
-        """获取环境属性，兼容SB3/gymnasium wrapper标准"""
         if hasattr(self, name):
             return getattr(self, name)
         else:
             raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
     def reset(self, seed=None, options=None):
-        """
-        重置环境到初始状态
-
-        Returns:
-            tuple: (observation, info)
-        """
         super().reset(seed=seed)
 
         # 创建边界和网格的深拷贝
@@ -111,13 +98,11 @@ class MeshEnv(gym.Env):
         self.current_step = 0
         self.generated_elements = 0
         self.invalid_action_count = 0
-
+        self.action_count = {}
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
 
-        # 重置episode统计
         self._reset_episode_stats()
 
-        # 增加episode计数（仅在非首次reset时）
         if hasattr(self, '_initialized'):
             self.episode_count += 1
         else:
@@ -174,6 +159,7 @@ class MeshEnv(gym.Env):
 
         # Update episode statistics
         self._update_episode_stats(reward)
+        self._collect_action_info(action_name, action_valid, reward)
         observation = self._get_obs()
 
         info = {
@@ -194,17 +180,26 @@ class MeshEnv(gym.Env):
                               "boundary_vertices_data": self.boundary.get_vertices(),
                               "last_ref_point": self.get_last_reference_info(),
                               "is_completed": complete,
-                              "generated_elements": self.generated_elements}
+                              "generated_elements": self.generated_elements,
+                              "action_count": self.action_count}
 
         return observation, reward, terminated, truncated, info
 
-    def _get_reference_vertex(self):
-        """
-        根据公式(1)选择具有最小平均内角的参考顶点
+    def _collect_action_info(self, action_name, action_valid, reward):
+        if action_name in self.action_count:
+            if action_valid:
+                self.action_count[action_name]["valid"] += 1
+            else:
+                self.action_count[action_name]["invalid"] += 1
+            self.action_count[action_name]["rewards"].append(reward)
+        else:
+            if action_valid:
+                self.action_count[action_name] = {"valid": 1, "invalid": 0}
+            else:
+                self.action_count[action_name] = {"valid": 0, "invalid": 1}
+            self.action_count[action_name]["rewards"] = [reward]
 
-        Returns:
-            int: 参考顶点在边界中的索引
-        """
+    def _get_reference_vertex(self):
         return self.boundary.get_ref_vertex()
 
     def _get_obs(self):

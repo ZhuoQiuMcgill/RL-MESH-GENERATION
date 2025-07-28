@@ -4,7 +4,7 @@ from src.quality import *
 
 class ActionType(ABC):
     """动作类型的抽象基类"""
-    QUALITY_THRESHOLD = 0.1
+    QUALITY_THRESHOLD = 0.00
 
     @abstractmethod
     def execute(self, mesh, boundary, reference_vertex_idx, *coords):

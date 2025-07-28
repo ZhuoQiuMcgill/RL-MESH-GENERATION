@@ -20,8 +20,8 @@ def _get_checkpoint_manager_module():
 
 def _get_plotter_module():
     """延迟导入rl_ploter模块"""
-    from .rl_ploter import plot_reward_change
-    return plot_reward_change
+    from .rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution
+    return plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution
 
 
 # 通过属性访问实现延迟导入
@@ -39,14 +39,17 @@ def __getattr__(name):
         _, get_checkpoint_manager = _get_checkpoint_manager_module()
         return get_checkpoint_manager
     elif name == 'plot_reward_change':
-        plot_reward_change = _get_plotter_module()
+        plot_reward_change, _, _, _ = _get_plotter_module()
         return plot_reward_change
     elif name == 'plot_training_metrics':
-        # 如果需要其他绘图函数，可以在这里添加
-        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-    elif name == 'create_training_summary_plot':
-        # 如果需要其他绘图函数，可以在这里添加
-        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+        _, plot_training_metrics, _, _ = _get_plotter_module()
+        return plot_training_metrics
+    elif name == 'plot_action_distribution':
+        _, _, plot_action_distribution, _ = _get_plotter_module()
+        return plot_action_distribution
+    elif name == 'plot_action_reward_distribution':
+        _, _, _, plot_action_reward_distribution = _get_plotter_module()
+        return plot_action_reward_distribution
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -58,6 +61,9 @@ __all__ = [
     'CheckpointManager',
     'get_checkpoint_manager',
     'plot_reward_change',
+    'plot_training_metrics',
+    'plot_action_distribution',
+    'plot_action_reward_distribution',
 
     # 直接导入的项目
     'euclidean_distance',

@@ -601,6 +601,22 @@ class TrainingManager:
                     self.logger.info("没有训练指标数据可供绘图")
             except Exception as e:
                 self.logger.warning(f"保存训练指标图表失败: {e}")
+            
+            # 保存动作分布图表
+            try:
+                action_dist_path = os.path.join(plot_dir, f"{self.training_id}_action_distribution.png")
+                self.trainer.plot_action_distribution(action_dist_path)
+                self.logger.info(f"动作分布图表已保存: {action_dist_path}")
+            except Exception as e:
+                self.logger.warning(f"保存动作分布图表失败: {e}")
+            
+            # 保存动作奖励分布图表
+            try:
+                action_reward_path = os.path.join(plot_dir, f"{self.training_id}_action_reward_distribution.png")
+                self.trainer.plot_action_reward_distribution(action_reward_path)
+                self.logger.info(f"动作奖励分布图表已保存: {action_reward_path}")
+            except Exception as e:
+                self.logger.warning(f"保存动作奖励分布图表失败: {e}")
 
             history_path = os.path.join(self.training_session_dir, "history")
             self.trainer.save_history(history_path)

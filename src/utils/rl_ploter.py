@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List
+from typing import List, Dict
 import numpy as np
 import matplotlib
 
@@ -362,3 +362,346 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         logger.info(f"Alpha图表已保存: {alpha_path}")
     
     return saved_plots
+
+
+def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> str:
+    """
+    绘制动作分布图，显示每种动作类型的valid/invalid统计
+    
+    Args:
+        action_counts_list: 包含多个episode的action count数据的列表
+                           每个元素是形如 {"type1": {"valid": 10, "invalid": 2}, ...} 的字典
+        save_path: 图表保存路径
+        
+    Returns:
+        str: 最终保存的文件路径
+    """
+    # 合并所有episodes的action count数据
+    combined_counts = {}
+    for episode_counts in action_counts_list:
+        if not episode_counts:
+            continue
+        for action_name, counts in episode_counts.items():
+            if action_name not in combined_counts:
+                combined_counts[action_name] = {"valid": 0, "invalid": 0}
+            combined_counts[action_name]["valid"] += counts.get("valid", 0)
+            combined_counts[action_name]["invalid"] += counts.get("invalid", 0)
+    
+    if not combined_counts:
+        logger.warning("没有动作统计数据可用于绘制分布图")
+        return save_path
+    
+    # 配色方案
+    bg_color = '#1a1a1a'
+    text_color = '#e8e8e8'
+    grid_color = '#333333'
+    card_bg = '#2a2a2a'
+    
+    # 准备数据
+    action_names = list(combined_counts.keys())
+    valid_counts = [combined_counts[name]["valid"] for name in action_names]
+    invalid_counts = [combined_counts[name]["invalid"] for name in action_names]
+    total_counts = [v + i for v, i in zip(valid_counts, invalid_counts)]
+    
+    # 创建统一的颜色调色板 - 每个动作类型使用不同的基色
+    action_base_colors = {
+        'type0_left': '#2196F3',    # 蓝色
+        'type0_right': '#4CAF50',   # 绿色
+        'type1': '#FF9800',         # 橙色
+        'type2': '#9C27B0',         # 紫色
+        'type3': '#F44336',         # 红色
+        'type4': '#00BCD4',         # 青色
+        'type5': '#795548',         # 棕色
+        'type6': '#607D8B'          # 蓝灰色
+    }
+    
+    # 为未定义的动作类型生成颜色
+    import matplotlib.cm as cm
+    base_cmap = cm.get_cmap('tab10')
+    for i, name in enumerate(action_names):
+        if name not in action_base_colors:
+            action_base_colors[name] = base_cmap(i % 10)
+    
+    # 计算总体统计
+    total_actions = sum(total_counts)
+    total_valid = sum(valid_counts)
+    success_rate = (total_valid / total_actions * 100) if total_actions > 0 else 0
+    
+    # 创建图表，在标题中包含统计信息
+    plt.style.use('default')
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7), facecolor=bg_color)
+    main_title = f'Action Distribution Analysis | Total Actions: {total_actions:,} ({success_rate:.1f}% Valid)'
+    fig.suptitle(main_title, fontsize=14, color=text_color, fontweight='600', y=0.98)
+    
+    # 左图：堆叠柱状图显示valid/invalid分布
+    ax1.set_facecolor(bg_color)
+    x_pos = np.arange(len(action_names))
+    
+    # 使用浅色和深色版本表示valid/invalid
+    def lighten_color(color, amount=0.3):
+        """将颜色变浅"""
+        import matplotlib.colors as mc
+        try:
+            c = mc.cnames[color]
+        except:
+            c = color
+        c = np.array(mc.to_rgb(c))
+        return tuple(c + (1 - c) * amount)
+    
+    def darken_color(color, amount=0.3):
+        """将颜色变深"""
+        import matplotlib.colors as mc
+        try:
+            c = mc.cnames[color]
+        except:
+            c = color
+        c = np.array(mc.to_rgb(c))
+        return tuple(c * (1 - amount))
+    
+    # 为每个动作类型创建颜色
+    valid_colors = [lighten_color(action_base_colors[name], 0.2) for name in action_names]
+    invalid_colors = [darken_color(action_base_colors[name], 0.3) for name in action_names]
+    
+    bars1 = ax1.bar(x_pos, valid_counts, color=valid_colors, alpha=0.9, label='Valid Actions')
+    bars2 = ax1.bar(x_pos, invalid_counts, bottom=valid_counts, color=invalid_colors, alpha=0.9, label='Invalid Actions')
+    
+    # 在柱状图上添加数值标签（仅显示段值，不显示总计）
+    for i, (valid, invalid, total) in enumerate(zip(valid_counts, invalid_counts, total_counts)):
+        if total > 0:
+            # Valid count label
+            if valid > 0:
+                ax1.text(i, valid/2, str(valid), ha='center', va='center', 
+                        color='white', fontweight='bold', fontsize=10)
+            # Invalid count label
+            if invalid > 0:
+                ax1.text(i, valid + invalid/2, str(invalid), ha='center', va='center',
+                        color='white', fontweight='bold', fontsize=10)
+    
+    ax1.set_xlabel('Action Types', fontsize=12, color=text_color, fontweight='500')
+    ax1.set_ylabel('Action Count', fontsize=12, color=text_color, fontweight='500')
+    ax1.set_title('Valid vs Invalid Actions by Type', fontsize=12, color=text_color, fontweight='600', pad=20)
+    ax1.set_xticks(x_pos)
+    ax1.set_xticklabels(action_names, rotation=45, ha='right', color=text_color)
+    ax1.tick_params(colors=text_color, labelsize=10)
+    
+    # 设置网格和样式
+    ax1.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0, axis='y')
+    ax1.set_axisbelow(True)
+    for spine in ['top', 'right']:
+        ax1.spines[spine].set_visible(False)
+    ax1.spines['left'].set_color(grid_color)
+    ax1.spines['bottom'].set_color(grid_color)
+    
+    # 图例
+    legend1 = ax1.legend(loc='upper right', fontsize=10)
+    legend1.get_frame().set_facecolor(card_bg)
+    legend1.get_frame().set_edgecolor(grid_color)
+    legend1.get_frame().set_alpha(0.95)
+    for txt in legend1.get_texts():
+        txt.set_color(text_color)
+    
+    # 右图：饼图显示总体动作分布
+    ax2.set_facecolor(bg_color)
+    
+    # 只显示总次数大于0的动作，使用统一的基色
+    pie_names = []
+    pie_counts = []
+    pie_colors = []
+    for name, count in zip(action_names, total_counts):
+        if count > 0:
+            pie_names.append(name)
+            pie_counts.append(count)
+            pie_colors.append(action_base_colors[name])
+    
+    if pie_counts:
+        wedges, texts, autotexts = ax2.pie(pie_counts, labels=pie_names, colors=pie_colors,
+                                          autopct='%1.1f%%', startangle=90, textprops={'color': text_color})
+        
+        # 设置百分比文字样式
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontweight('bold')
+            autotext.set_fontsize(10)
+    
+    ax2.set_title('Total Action Distribution', fontsize=12, color=text_color, fontweight='600', pad=20)
+    
+    # 保存图表
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.subplots_adjust(top=0.85, bottom=0.15, left=0.08, right=0.95, wspace=0.3)
+    plt.savefig(save_path, dpi=300, facecolor=bg_color, edgecolor='none', bbox_inches='tight')
+    plt.close(fig)
+    
+    logger.info(f"Action distribution图表已保存: {save_path}")
+    return save_path
+
+
+def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: str) -> str:
+    """
+    绘制动作奖励分布图，显示每种动作类型的奖励分布情况
+    
+    Args:
+        action_counts_list: 包含多个episode的action count数据的列表
+                           每个元素是形如 {"type1": {"valid": 10, "invalid": 2, "rewards": [...]}, ...} 的字典
+        save_path: 图表保存路径
+        
+    Returns:
+        str: 最终保存的文件路径
+    """
+    # 合并所有episodes的reward数据
+    combined_rewards = {}
+    for episode_counts in action_counts_list:
+        if not episode_counts:
+            continue
+        for action_name, counts in episode_counts.items():
+            if action_name not in combined_rewards:
+                combined_rewards[action_name] = []
+            # 获取奖励数据，确保是列表
+            rewards = counts.get("rewards", [])
+            if isinstance(rewards, list):
+                combined_rewards[action_name].extend(rewards)
+    
+    if not combined_rewards or not any(combined_rewards.values()):
+        logger.warning("没有奖励数据可用于绘制分布图")
+        return save_path
+    
+    # 配色方案
+    bg_color = '#1a1a1a'
+    text_color = '#e8e8e8'
+    grid_color = '#333333'
+    
+    # 动作类型颜色 - 与action distribution图保持一致
+    action_colors = {
+        'type0_left': '#2196F3',    # 蓝色
+        'type0_right': '#4CAF50',   # 绿色
+        'type1': '#FF9800',         # 橙色
+    }
+    
+    # 过滤出有数据的动作类型
+    valid_actions = {name: rewards for name, rewards in combined_rewards.items() if rewards}
+    
+    if not valid_actions:
+        logger.warning("没有有效的奖励数据")
+        return save_path
+    
+    # 创建图表
+    plt.style.use('default')
+    num_actions = len(valid_actions)
+    
+    if num_actions == 1:
+        fig, axes = plt.subplots(1, 1, figsize=(8, 7), facecolor=bg_color)
+        axes = [axes]
+    elif num_actions == 2:
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6), facecolor=bg_color)
+    else:
+        fig, axes = plt.subplots(1, 3, figsize=(15, 6), facecolor=bg_color)
+    
+    # 计算总体统计
+    total_rewards = []
+    for rewards in valid_actions.values():
+        total_rewards.extend(rewards)
+    
+    overall_mean = np.mean(total_rewards) if total_rewards else 0
+    overall_std = np.std(total_rewards) if total_rewards else 0
+    
+    # 清晰的标题层次结构
+    main_title = 'Reward Distribution by Action Type'
+    subtitle = f'Total Samples: {len(total_rewards):,} | Overall Mean: {overall_mean:.3f} ± {overall_std:.3f}'
+    
+    fig.suptitle(main_title, fontsize=16, color=text_color, fontweight='600', y=0.95)
+    fig.text(0.5, 0.90, subtitle, ha='center', fontsize=12, color=text_color, 
+             fontweight='400', transform=fig.transFigure)
+    
+    # 预先计算所有直方图以确定统一的Y轴范围
+    all_hist_data = []
+    for action_name, rewards in valid_actions.items():
+        if rewards:
+            n_bins = min(30, max(10, len(rewards) // 10))
+            counts, _ = np.histogram(rewards, bins=n_bins)
+            all_hist_data.extend(counts)
+    
+    # 设置统一的Y轴最大值
+    max_frequency = max(all_hist_data) if all_hist_data else 100
+    y_max = max_frequency * 1.1  # 添加10%的余量
+    
+    # 为每个动作类型绘制分布图
+    for idx, (action_name, rewards) in enumerate(valid_actions.items()):
+        ax = axes[idx] if num_actions > 1 else axes[0]
+        ax.set_facecolor(bg_color)
+        
+        if not rewards:
+            continue
+            
+        # 获取颜色
+        color = action_colors.get(action_name, '#666666')
+        
+        # 绘制直方图
+        n_bins = min(30, max(10, len(rewards) // 10))  # 自适应bin数量
+        counts, bins, patches = ax.hist(rewards, bins=n_bins, color=color, alpha=0.7, 
+                                       edgecolor='white', linewidth=0.8)
+        
+        # 绘制密度曲线
+        try:
+            from scipy import stats
+            if len(rewards) > 1:
+                # 计算核密度估计
+                kde = stats.gaussian_kde(rewards)
+                x_range = np.linspace(min(rewards), max(rewards), 100)
+                density = kde(x_range)
+                # 缩放密度以匹配直方图
+                density_scaled = density * len(rewards) * (bins[1] - bins[0])
+                ax.plot(x_range, density_scaled, color=color, linewidth=2, alpha=0.9)
+        except ImportError:
+            # 如果没有scipy，跳过密度曲线
+            pass
+        
+        # 添加统计线
+        mean_reward = np.mean(rewards)
+        median_reward = np.median(rewards)
+        
+        # 均值线
+        ax.axvline(mean_reward, color='red', linestyle='--', linewidth=2, alpha=0.8, 
+                  label=f'Mean: {mean_reward:.3f}')
+        # 中位数线  
+        ax.axvline(median_reward, color='orange', linestyle='--', linewidth=2, alpha=0.8,
+                  label=f'Median: {median_reward:.3f}')
+        
+        # 设置标题和标签
+        std_reward = np.std(rewards)
+        ax.set_title(f'{action_name}\n({len(rewards)} samples, σ={std_reward:.3f})', 
+                    fontsize=12, color=text_color, fontweight='600', pad=20)
+        ax.set_xlabel('Reward Value', fontsize=10, color=text_color)
+        ax.set_ylabel('Frequency', fontsize=10, color=text_color)
+        
+        # 设置统一的Y轴范围
+        ax.set_ylim(0, y_max)
+        
+        # 设置网格和样式
+        ax.grid(True, alpha=0.2, color=grid_color, linewidth=1)
+        ax.set_axisbelow(True)
+        for spine in ['top', 'right']:
+            ax.spines[spine].set_visible(False)
+        ax.spines['left'].set_color(grid_color)
+        ax.spines['bottom'].set_color(grid_color)
+        ax.tick_params(colors=text_color, labelsize=9)
+        
+        # 图例
+        legend = ax.legend(loc='upper right', fontsize=9)
+        legend.get_frame().set_facecolor('#2a2a2a')
+        legend.get_frame().set_edgecolor(grid_color)
+        legend.get_frame().set_alpha(0.9)
+        for txt in legend.get_texts():
+            txt.set_color(text_color)
+    
+    # 隐藏多余的子图
+    if num_actions < len(axes):
+        for idx in range(num_actions, len(axes)):
+            axes[idx].set_visible(False)
+    
+    # 保存图表
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.subplots_adjust(top=0.80, bottom=0.12, left=0.08, right=0.95, wspace=0.25)
+    plt.savefig(save_path, dpi=300, facecolor=bg_color, edgecolor='none', bbox_inches='tight')
+    plt.close(fig)
+    
+    logger.info(f"Action reward distribution图表已保存: {save_path}")
+    return save_path

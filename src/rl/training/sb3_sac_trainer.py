@@ -7,7 +7,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from src.rl.agent.sb3_sac_agent import SB3SACAgent
 from src.rl.config import load_config
-from src.utils.rl_ploter import plot_reward_change, plot_training_metrics
+from src.utils.rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution
 from src.rl.training.history_manager import save_episode_details
 
 
@@ -23,7 +23,8 @@ class _EpisodeCallback(BaseCallback):
                      "boundary_vertices_data": [],
                      "last_ref_point": [],
                      "is_completed": [],
-                     "generated_elements": []}
+                     "generated_elements": [],
+                     "action_counts": []}
         self._best_reward = -inf
         self._best_episode = 0
         
@@ -58,8 +59,9 @@ class _EpisodeCallback(BaseCallback):
             self.data['mesh_data'].append(detail['mesh_data'])
             self.data['boundary_vertices_data'].append(detail['boundary_vertices_data'])
             self.data['last_ref_point'].append(detail['last_ref_point'])
-            self.data['last_ref_point'].append(detail['last_ref_point'])
+            self.data['is_completed'].append(detail['is_completed'])
             self.data['generated_elements'].append(detail['generated_elements'])
+            self.data['action_counts'].append(detail.get('action_count', {}))
 
             if detail['r'] > self._best_reward:
                 self._best_reward = detail['r']
@@ -374,6 +376,32 @@ class SB3SACTrainer:
         )
         
         return saved_plots
+
+    def plot_action_distribution(self, save_path: str) -> str:
+        """
+        绘制动作分布图，显示每种动作类型的valid/invalid统计
+        
+        Args:
+            save_path: 图表保存路径
+            
+        Returns:
+            str: 最终保存的文件路径
+        """
+        action_counts_list = self._cb.get_data('action_counts')
+        return plot_action_distribution(action_counts_list, save_path)
+
+    def plot_action_reward_distribution(self, save_path: str) -> str:
+        """
+        绘制动作奖励分布图，显示每种动作类型的奖励分布情况
+        
+        Args:
+            save_path: 图表保存路径
+            
+        Returns:
+            str: 最终保存的文件路径
+        """
+        action_counts_list = self._cb.get_data('action_counts')
+        return plot_action_reward_distribution(action_counts_list, save_path)
 
     def save_history(self, path):
         details = self._cb.get_non_zero_generated_details()

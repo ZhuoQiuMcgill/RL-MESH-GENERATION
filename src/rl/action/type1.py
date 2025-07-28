@@ -74,8 +74,8 @@ class ActionType1(ActionType):
 
         quadrilateral = self.get_element(boundary, reference_vertex_idx, coords[0])
         v0, v3, v2, v1 = quadrilateral
-        if self.element_quality(quadrilateral) < self.QUALITY_THRESHOLD:
-            return False
+        # if self.element_quality(quadrilateral) < self.QUALITY_THRESHOLD:
+        #     return False
 
         if not boundary.vertex_inside_boundary(v2):
             return False

@@ -113,9 +113,9 @@ class ActionManager:
         action_instance = None
 
         if type_logit <= -0.5:
-            target_idx = 1  # type0_left
-        elif type_logit >= 0.5:
             target_idx = 0  # type0_right
+        elif type_logit >= 0.5:
+            target_idx = 1  # type0_left
         else:
             target_idx = 2  # type1
 

@@ -43,7 +43,7 @@ sb3_sac:
   learning_starts: 10000
 
   # 训练批次大小 - 每次从缓冲区采样的经验数量
-  batch_size: 128
+  batch_size: 100
 
   # 软更新系数 - 目标网络更新的速度
   tau: 0.005
