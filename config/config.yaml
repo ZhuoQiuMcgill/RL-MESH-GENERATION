@@ -49,7 +49,7 @@ sb3_sac:
   tau: 0.005
 
   # 折扣因子 - 未来奖励的重要性
-  gamma: 0.99
+  gamma: 0.5
 
   # 训练频率 - 每多少环境步进行一次训练
   train_freq: 1
@@ -61,12 +61,12 @@ sb3_sac:
   net_arch: [ 128, 128, 128 ]
 
   # 随机种子 - 保证实验可重现性
-  seed: 356
+  seed: 999
 
   # 详细输出级别 - 0:无输出, 1:基本信息, 2:详细信息
   verbose: 0
 
-  ent_coef: "auto_0.5"
+  ent_coef: "auto"
 
 # 环境配置
 environment:

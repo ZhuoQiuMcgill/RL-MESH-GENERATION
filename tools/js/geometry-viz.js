@@ -123,7 +123,7 @@ class GeometryViz {
         
         // Draw connecting lines
         if (this.points.length > 1) {
-            ctx.strokeStyle = '#6b7280';
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-connecting-line-color').trim() || '#718096';
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(this.points[0].x, this.points[0].y);
@@ -141,14 +141,14 @@ class GeometryViz {
             
             // Set colors
             if (index === refIndex) {
-                ctx.fillStyle = '#22c55e';
-                ctx.strokeStyle = '#16a34a';
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-point-color').trim() || '#22c55e';
+                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-point-stroke').trim() || '#16a34a';
             } else if (index === rightNeighborIndex && rightNeighborIndex >= 0) {
-                ctx.fillStyle = '#f59e0b';
-                ctx.strokeStyle = '#d97706';
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-neighbor-point-color').trim() || '#f59e0b';
+                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-neighbor-point-stroke').trim() || '#d97706';
             } else {
-                ctx.fillStyle = '#ef4444';
-                ctx.strokeStyle = '#dc2626';
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-normal-point-color').trim() || '#ef4444';
+                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-normal-point-stroke').trim() || '#dc2626';
             }
             
             ctx.lineWidth = 2;
@@ -156,7 +156,7 @@ class GeometryViz {
             ctx.stroke();
             
             // Draw point indices
-            ctx.fillStyle = 'white';
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-text-color').trim() || '#f7fafc';
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -173,7 +173,7 @@ class GeometryViz {
         
         if (!this.normalizedData || !this.normalizedData.normalized_coordinates) {
             // Draw waiting text
-            ctx.fillStyle = '#6b7280';
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text-tertiary').trim() || '#a0aec0';
             ctx.font = '16px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -203,7 +203,7 @@ class GeometryViz {
         }));
         
         if (cartesianPoints.length > 1) {
-            ctx.strokeStyle = '#6b7280';
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-connecting-line-color').trim() || '#718096';
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(cartesianPoints[0].x, cartesianPoints[0].y);
@@ -221,14 +221,14 @@ class GeometryViz {
             
             // Set colors
             if (index === refIndex) {
-                ctx.fillStyle = '#22c55e';
-                ctx.strokeStyle = '#16a34a';
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-point-color').trim() || '#22c55e';
+                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-point-stroke').trim() || '#16a34a';
             } else if (index === rightNeighborIndex) {
-                ctx.fillStyle = '#f59e0b';
-                ctx.strokeStyle = '#d97706';
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-neighbor-point-color').trim() || '#f59e0b';
+                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-neighbor-point-stroke').trim() || '#d97706';
             } else {
-                ctx.fillStyle = '#ef4444';
-                ctx.strokeStyle = '#dc2626';
+                ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-normal-point-color').trim() || '#ef4444';
+                ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-normal-point-stroke').trim() || '#dc2626';
             }
             
             ctx.lineWidth = 2;
@@ -236,7 +236,7 @@ class GeometryViz {
             ctx.stroke();
             
             // Draw point indices
-            ctx.fillStyle = 'white';
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-text-color').trim() || '#f7fafc';
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -246,12 +246,12 @@ class GeometryViz {
         // Draw origin point
         ctx.beginPath();
         ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
-        ctx.fillStyle = '#1f2937';
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-origin-color').trim() || '#343a4a';
         ctx.fill();
     }
     
     drawCoordinateAxes(ctx, centerX, centerY, maxRadius) {
-        ctx.strokeStyle = '#d1d5db';
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-axis-color').trim() || '#4a5568';
         ctx.lineWidth = 1;
         
         // X axis
@@ -267,7 +267,7 @@ class GeometryViz {
         ctx.stroke();
         
         // Draw circular grid
-        ctx.strokeStyle = '#e5e7eb';
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-grid-light-color').trim() || 'rgba(255, 255, 255, 0.15)';
         for (let r = maxRadius / 4; r <= maxRadius; r += maxRadius / 4) {
             ctx.beginPath();
             ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
@@ -275,7 +275,7 @@ class GeometryViz {
         }
         
         // Axis labels
-        ctx.fillStyle = '#6b7280';
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text-tertiary').trim() || '#a0aec0';
         ctx.font = '12px Arial';
         ctx.textAlign = 'center';
         ctx.fillText('0', centerX - 10, centerY + 15);

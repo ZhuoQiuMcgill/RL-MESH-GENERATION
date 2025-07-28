@@ -17,34 +17,15 @@ class ActionType1(ActionType):
         return [v0, v3, v2, v1]
 
     def execute(self, mesh, boundary, reference_vertex_idx, *coords):
-        """
-        执行Type 1动作的逻辑
-
-        直接修改输入的mesh和boundary对象，避免深拷贝的开销。
-
-        Args:
-            mesh: 网格对象（会被直接修改）
-            boundary: 边界对象（会被直接修改）
-            reference_vertex_idx: 参考顶点V0在边界中的索引
-            coords: 新顶点V2的坐标
-
-        Returns:
-            list: 生成的四边形元素（四个顶点的列表）
-        """
-
         quadrilateral = self.get_element(boundary, reference_vertex_idx, coords[0])
         v0, v3, v2, v1 = quadrilateral
 
-        # 创建四边形元素
         try:
-            # 向网格中添加新顶点
             mesh.add_vertex(v2)
 
-            # 在网格中添加新的边界边
             mesh.add_edge(v1, v2)
             mesh.add_edge(v2, v3)
 
-            # 移除V0（它变成内部点）
             boundary.remove_vertex(v0)
         except ValueError:
             return None
@@ -57,25 +38,15 @@ class ActionType1(ActionType):
 
         return quadrilateral
 
-    def is_valid(self, boundary, reference_vertex_idx, *coords):
-        """
-        检查Type 1动作的有效性
-
-        Args:
-            boundary: 边界对象
-            reference_vertex_idx: 参考顶点V0在边界中的索引
-            coords: 新顶点V2的坐标
-
-        Returns:
-            bool: 动作是否有效
-        """
+    def is_valid(self, boundary, reference_vertex_idx, *coords, alpha=2, n=2):
         if boundary.size() < 3:
             return False
 
         quadrilateral = self.get_element(boundary, reference_vertex_idx, coords[0])
         v0, v3, v2, v1 = quadrilateral
-        # if self.element_quality(quadrilateral) < self.QUALITY_THRESHOLD:
-        #     return False
+
+        if not boundary.vertex_inside_action_space(v2, reference_vertex_idx, alpha, n):
+            return False
 
         if not boundary.vertex_inside_boundary(v2):
             return False
@@ -100,11 +71,7 @@ class ActionType1(ActionType):
         return self.element_quality(quadrilateral)
 
     def get_boundary_quality(self, boundary, reference_vertex_idx, *coords, M_angle):
-        """
-        Quality of inserting a new vertex (v2) between boundary vertices v1 and v3.
-        The boundary **has NOT been updated yet**, so v2 is still virtual.
-        """
-        # existing neighbours on the boundary
+        # existing neighbors on the boundary
         v1 = boundary.get_vertex_by_index(reference_vertex_idx - 1)
         v3 = boundary.get_vertex_by_index(reference_vertex_idx + 1)
 
@@ -112,7 +79,7 @@ class ActionType1(ActionType):
         v2 = tuple(coords[0])
 
         # --- 1. angle‑quality term (q1) -----------------------------------------
-        # angles are measured at v1 and v3 – exactly与原作者一致
+        # angles are measured at v1 and v3
         angle_1 = get_interior_angle(v2, v3, boundary.get_vertex_by_index(reference_vertex_idx + 2))
         angle_2 = get_interior_angle(boundary.get_vertex_by_index(reference_vertex_idx - 2), v1, v2)
 

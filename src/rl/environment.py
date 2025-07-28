@@ -4,7 +4,6 @@ import numpy as np
 import copy
 from typing import Any
 
-# 导入几何模块和动作模块
 from src.geometry import Mesh, Boundary
 from src.rl.action.action_manager import ActionManager
 from .config import load_config

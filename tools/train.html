@@ -23,7 +23,7 @@
         }
     </script>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="min-h-screen">
     <!-- Navigation Header -->
     <div class="nav-header">
         <div class="nav-left">
@@ -39,33 +39,24 @@
         </div>
     </div>
     
-<!-- Compact Status Bar -->
+<!-- Training Control Bar - Fixed position with essential controls only -->
 <div class="compact-status-bar">
     <div class="status-group">
         <div class="status-item">
             <div id="status-indicator-dot" class="status-indicator-dot bg-gray-400"></div>
             <span id="compact-status-text">Idle</span>
         </div>
-        <div class="status-item">
-            <span>Episode: <span id="compact-episode">0</span></span>
-        </div>
-        <div class="status-item">
-            <span>Steps: <span id="compact-steps">0</span></span>
-        </div>
     </div>
     <div class="status-group">
-        <div class="status-item">
-            <span>Actor Loss: <span id="compact-actor-loss">0.000</span></span>
-        </div>
-        <div class="status-item">
-            <span>Critic Loss: <span id="compact-critic-loss">0.000</span></span>
-        </div>
-        <div class="status-item">
-            <span>Alpha: <span id="compact-alpha">0.000</span></span>
-        </div>
-        <div class="status-item">
-            <span>Reward (avg 100): <span id="compact-avg-reward">0.000</span></span>
-        </div>
+        <button id="start-btn" class="btn-primary px-4 py-1 text-sm">
+            Start Training
+        </button>
+        <button id="stop-btn" class="btn-secondary px-4 py-1 text-sm" disabled>
+            Stop Training
+        </button>
+        <button id="refresh-btn" class="btn-tertiary px-3 py-1 text-sm">
+            Refresh
+        </button>
     </div>
 </div>
 
@@ -83,187 +74,129 @@
         <div class="left-panel-content">
             <!-- Control Area -->
             <div class="left-panel-scroll custom-scrollbar">
-            <!-- Status Indicator -->
-            <div class="mb-6">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-700">Training Status</span>
-                    <div id="status-indicator" class="flex items-center">
-                        <div class="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
-                        <span id="status-text" class="text-sm text-gray-600">Idle</span>
+
+            <!-- Setup Configuration Card -->
+            <div class="panel-card">
+                <h3 class="panel-card-header">Setup Configuration</h3>
+                
+                <!-- Checkpoint Mode Selection -->
+                <div class="mb-4">
+                    <div class="flex items-center mb-3">
+                        <input id="checkpoint-mode" type="checkbox" class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
+                        <label for="checkpoint-mode" class="form-label ml-2 mb-0">Continue from Checkpoint</label>
+                    </div>
+
+                    <!-- Checkpoint Selection -->
+                    <div id="checkpoint-selection" style="display: none;">
+                        <label class="form-label">Select Checkpoint</label>
+                        <select id="checkpoint-select" class="form-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <div id="checkpoint-info" class="mt-2 typography-small hidden">
+                            <div id="checkpoint-details"></div>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Checkpoint Mode Selection - New -->
-            <div class="mb-6">
-                <div class="flex items-center mb-3">
-                    <input id="checkpoint-mode" type="checkbox"
-                           class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
-                    <label for="checkpoint-mode" class="ml-2 text-sm font-medium text-gray-700">
-                        Continue from Checkpoint
-                    </label>
-                </div>
-
-                <!-- Checkpoint Selection -->
-                <div id="checkpoint-selection" style="display: none;">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Select Checkpoint</label>
-                    <select id="checkpoint-select"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+                <!-- Mesh Selection -->
+                <div>
+                    <label class="form-label">Select Initial Mesh</label>
+                    <select id="mesh-select" class="form-select">
                         <option value="">Loading...</option>
                     </select>
-
-                    <!-- Checkpoint Info Display -->
-                    <div id="checkpoint-info" class="mt-2 text-xs text-gray-500 hidden">
-                        <div id="checkpoint-details">
-                            <!-- Checkpoint detailed info will be shown here -->
-                        </div>
+                    <div id="mesh-info" class="mt-2 typography-small hidden">
+                        <div>Vertices: <span id="mesh-vertices" class="data-placeholder">0</span></div>
+                        <div>File size: <span id="mesh-size" class="data-placeholder">0</span> bytes</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Mesh Selection -->
-            <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Select Initial Mesh</label>
-                <select id="mesh-select"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <option value="">Loading...</option>
-                </select>
-                <div id="mesh-info" class="mt-2 text-xs text-gray-500 hidden">
-                    <div>Vertices: <span id="mesh-vertices">0</span></div>
-                    <div>File size: <span id="mesh-size">0</span> bytes</div>
-                </div>
-            </div>
+            <!-- Training Parameters Card -->
+            <div class="panel-card">
+                <h3 class="panel-card-header">Training Parameters</h3>
 
-            <!-- Training Parameters -->
-            <div class="mb-6">
-                <h3 class="text-sm font-medium text-gray-700 mb-3">Training Parameters</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="form-label">Max Training Steps (Timesteps)</label>
+                        <input id="max-timesteps" type="number" value="1000000" min="1000" class="form-input">
+                        <p class="typography-small mt-1">Control parameter: total training steps</p>
+                    </div>
 
-                <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">Max Training Steps (Timesteps)</label>
-                    <input id="max-timesteps" type="number" value="1000000" min="1000"
-                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">Control parameter: total training steps</p>
-                </div>
+                    <div>
+                        <label class="form-label">Max Steps per Episode</label>
+                        <input id="max-steps" type="number" value="1000" min="1" class="form-input">
+                        <p class="typography-small mt-1">Step limit for a single episode</p>
+                    </div>
 
-                <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">Max Steps per Episode</label>
-                    <input id="max-steps" type="number" value="1000" min="1"
-                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">Step limit for a single episode</p>
-                </div>
+                    <div>
+                        <label class="form-label">Update Interval (seconds)</label>
+                        <input id="update-interval" type="number" value="10" min="1" class="form-input">
+                        <p class="typography-small mt-1">Frontend status update frequency</p>
+                    </div>
 
-                <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">Update Interval (s)</label>
-                    <input id="update-interval" type="number" value="10" min="1"
-                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">Frontend status update frequency</p>
-                </div>
-
-                <div class="mb-4">
-                    <label class="block text-xs text-gray-600 mb-1">Training Description (optional)</label>
-                    <input id="description" type="text" placeholder="e.g., test new reward function"
-                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
-                    <p class="text-xs text-gray-500 mt-1">Describe this training purpose or features</p>
-                </div>
-            </div>
-
-            <!-- Control Buttons -->
-            <div class="space-y-3">
-                <button id="start-btn"
-                        class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200">
-                    Start Training
-                </button>
-                <button id="stop-btn"
-                        class="w-full bg-danger hover:bg-red-600 text-white font-medium py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled>
-                    Stop Training
-                </button>
-                <button id="refresh-btn"
-                        class="w-full bg-gray-500 hover:bg-gray-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200">
-                    Refresh Status
-                </button>
-            </div>
-
-            </div>
-            
-            <!-- Training Status Panel - Fixed at bottom but more prominent -->
-            <div class="training-status-panel">
-                <h3 class="text-sm font-medium text-gray-800 mb-3 flex items-center">
-                    <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                    Live Training Status
-                </h3>
-                
-                <!-- Training Statistics -->
-                <div class="mb-4">
-                    <h4 class="text-xs font-medium text-gray-700 mb-2">Current Session</h4>
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Episode:</span>
-                            <span id="current-episode" class="font-medium">0</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Steps:</span>
-                            <span id="total-steps" class="font-medium">0</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Avg Reward:</span>
-                            <span id="avg-reward" class="font-medium">0.000</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Buffer:</span>
-                            <span id="buffer-size" class="font-medium">0</span>
-                        </div>
+                    <div>
+                        <label class="form-label">Training Description <span class="typography-small">(optional)</span></label>
+                        <input id="description" type="text" placeholder="e.g., test new reward function" class="form-input">
+                        <p class="typography-small mt-1">Describe this training purpose or features</p>
                     </div>
                 </div>
-                
-                <!-- Training Metrics -->
-                <div>
-                    <h4 class="text-xs font-medium text-gray-700 mb-2">Model Metrics</h4>
-                    <div class="grid grid-cols-1 gap-1 text-xs">
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Actor Loss:</span>
-                            <span id="actor-loss" class="font-medium text-red-600">0.000</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Critic Loss:</span>
-                            <span id="critic-loss" class="font-medium text-orange-600">0.000</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Alpha:</span>
-                            <span id="alpha-value" class="font-medium text-purple-600">0.000</span>
-                        </div>
-                    </div>
-                </div>
+            </div>
+
             </div>
         </div>
     </div>
 
     <!-- Right Main Content Area - Add responsive classes -->
     <div class="right-content">
-        <!-- Top Info Bar - More compact design -->
+        <!-- Training Metrics Bar - Comprehensive training data display -->
         <div class="top-info-bar shadow-sm">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between mb-3">
                 <div>
-                    <h2 class="text-base font-semibold text-gray-800">Mesh Visualization</h2>
-                </div>
-                <div class="text-sm text-gray-600">
-                    <span>Episode <span id="display-episode" class="font-semibold text-gray-800">0</span></span>
+                    <h2 class="text-base font-semibold text-gray-800">Training Progress & Visualization</h2>
                 </div>
             </div>
             
-            <!-- Compact info grid -->
+            <!-- Comprehensive training metrics -->
             <div class="info-grid">
                 <div class="info-item">
-                    <div class="info-label">Boundary Vertices</div>
-                    <div id="boundary-vertices" class="info-value">0</div>
+                    <div class="info-label">Episode</div>
+                    <div id="current-episode" class="info-value">0</div>
                 </div>
                 <div class="info-item">
-                    <div class="info-label">Episode Length</div>
+                    <div class="info-label">Total Steps</div>
+                    <div id="total-steps" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Episode Steps</div>
                     <div id="episode-length" class="info-value">0</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Episode Reward</div>
-                    <div id="episode-reward" class="info-value">0.000</div>
+                    <div id="episode-reward" class="info-value">0</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Avg Reward (100)</div>
+                    <div id="avg-reward" class="info-value">N/A</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Actor Loss</div>
+                    <div id="actor-loss" class="info-value">N/A</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Critic Loss</div>
+                    <div id="critic-loss" class="info-value">N/A</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Alpha Value</div>
+                    <div id="alpha-value" class="info-value">N/A</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Buffer Size</div>
+                    <div id="buffer-size" class="info-value">N/A</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Boundary Vertices</div>
+                    <div id="boundary-vertices" class="info-value">N/A</div>
                 </div>
                 <div class="info-item">
                     <div class="info-label">Reference Point</div>
@@ -271,33 +204,43 @@
                 </div>
                 <div class="info-item">
                     <div class="info-label">Click Coordinates</div>
-                    <div id="click-coordinates" class="info-value text-blue-600">Not clicked</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Total Steps</div>
-                    <div id="display-total-steps" class="info-value">0</div>
+                    <div id="click-coordinates" class="info-value">Not clicked</div>
                 </div>
             </div>
         </div>
 
-        <!-- Mesh Visualization Area - Add responsive classes -->
+        <!-- Mesh Visualization Area - Restored canvas functionality -->
         <div class="visualization-area">
-            <div class="h-full bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+            <div class="h-full rounded-lg shadow-sm border p-1" style="background: var(--color-bg-canvas); border-color: var(--color-border-primary);">
                 <div class="canvas-container">
-                    <canvas id="mesh-canvas" class="border border-gray-300 rounded"></canvas>
+                    <canvas id="mesh-canvas" class="rounded" style="border: 1px solid var(--color-border-primary);"></canvas>
+                    <!-- Empty state overlay - only shown when no mesh is loaded -->
+                    <div id="empty-state-overlay" class="empty-state" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-bg-canvas); display: flex;">
+                        <div style="margin: auto;">
+                            <div class="empty-state-icon"></div>
+                            <h3 class="empty-state-title">Ready to Start Training</h3>
+                            <p class="empty-state-description">
+                                Configure your training parameters and select a mesh to begin. 
+                                The mesh visualization will appear here during training.
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Bottom Log Area - Add responsive classes -->
+        <!-- Enhanced Training Log Area -->
         <div class="bottom-log-area">
-            <div class="flex items-center justify-between mb-2">
-                <h3 class="text-sm font-medium text-gray-700">Training Log</h3>
-                <button id="clear-log-btn" class="text-xs text-gray-500 hover:text-gray-700">Clear</button>
+            <div class="log-controls">
+                <h3 class="typography-h3 flex-1">Training Log</h3>
+                <div class="auto-scroll-toggle">
+                    <input type="checkbox" id="auto-scroll-checkbox" checked>
+                    <label for="auto-scroll-checkbox">Auto-scroll</label>
+                </div>
+                <button id="clear-log-btn" class="btn-tertiary">Clear</button>
             </div>
-            <div id="log-container"
-                 class="h-20 overflow-y-auto bg-gray-50 rounded px-3 py-2 text-xs font-mono custom-scrollbar">
-                <div class="text-gray-500">Waiting for training to start...</div>
+            <div id="log-container" class="log-container">
+                <div class="log-entry log-info">System initialization completed. Ready to start training.</div>
             </div>
         </div>
     </div>
@@ -305,7 +248,7 @@
 
 <!-- Loading Indicator -->
 <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+    <div class="rounded-lg p-6 flex items-center space-x-3" style="background: var(--color-bg-card); border: 1px solid var(--color-border-primary);">
         <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
         <span class="text-gray-700">Processing...</span>
     </div>

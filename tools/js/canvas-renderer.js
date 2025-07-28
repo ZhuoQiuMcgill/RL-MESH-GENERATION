@@ -160,7 +160,7 @@ export class CanvasRenderer {
         const displayHeight = this.canvas.height / (window.devicePixelRatio || 1);
 
         const gridSize = CONSTANTS.GRID_SIZE;
-        this.ctx.strokeStyle = '#F3F4F6';
+        this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-grid-color').trim() || 'rgba(255, 255, 255, 0.08)';
         this.ctx.lineWidth = 0.5;
 
         // Vertical lines
@@ -187,7 +187,7 @@ export class CanvasRenderer {
         const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
         const displayHeight = this.canvas.height / (window.devicePixelRatio || 1);
 
-        this.ctx.fillStyle = '#9CA3AF';
+        this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text-tertiary').trim() || '#a0aec0';
         this.ctx.font = '16px sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.fillText(
@@ -242,7 +242,7 @@ export class CanvasRenderer {
     drawPreviewTitle(meshName, vertexCount) {
         const displayWidth = this.canvas.width / (window.devicePixelRatio || 1);
 
-        this.ctx.fillStyle = '#374151';
+        this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text-secondary').trim() || '#cbd5e0';
         this.ctx.font = 'bold 14px sans-serif';
         this.ctx.textAlign = 'center';
         this.ctx.fillText(
@@ -374,7 +374,7 @@ export class CanvasRenderer {
      */
     renderMeshWithTransform(meshData, transform) {
         // Draw mesh edges
-        this.ctx.strokeStyle = '#6366F1';
+        this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-mesh-edge-color').trim() || '#6366F1';
         this.ctx.lineWidth = 2;
 
         Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
@@ -407,8 +407,8 @@ export class CanvasRenderer {
     drawMeshVertices(meshData, transform) {
         const drawn = new Set();
 
-        this.ctx.fillStyle = '#3B82F6';
-        this.ctx.strokeStyle = '#1E40AF';
+        this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-mesh-vertex-color').trim() || '#3B82F6';
+        this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-mesh-vertex-stroke').trim() || '#1E40AF';
         this.ctx.lineWidth = 1.5;
 
         Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
@@ -453,7 +453,7 @@ export class CanvasRenderer {
         }
 
         // Draw boundary lines
-        this.ctx.strokeStyle = '#EF4444';
+        this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-boundary-color').trim() || '#EF4444';
         this.ctx.lineWidth = 3;
         this.ctx.beginPath();
 
@@ -472,7 +472,7 @@ export class CanvasRenderer {
         this.ctx.stroke();
 
         // Draw boundary vertices
-        this.ctx.fillStyle = '#DC2626';
+        this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-boundary-vertex-color').trim() || '#DC2626';
         boundaryVertices.forEach(vertex => {
             if (isValidCoordinate(vertex)) {
                 const screenPos = this.worldToScreen(vertex, transform);
@@ -495,7 +495,7 @@ export class CanvasRenderer {
 
         // Draw local environment edges
         if (Array.isArray(local_env_vertices) && local_env_vertices.length > 1) {
-            this.ctx.strokeStyle = '#F59E0B';
+            this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-local-env-color').trim() || '#F59E0B';
             this.ctx.lineWidth = 4;
             this.ctx.lineCap = 'round';
             this.ctx.beginPath();
@@ -515,8 +515,8 @@ export class CanvasRenderer {
         // Highlight reference point
         if (isValidCoordinate(ref_vertex)) {
             const refScreenPos = this.worldToScreen(ref_vertex, transform);
-            this.ctx.fillStyle = '#10B981';
-            this.ctx.strokeStyle = '#FFFFFF';
+            this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-color').trim() || '#10B981';
+            this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-white').trim() || '#FFFFFF';
             this.ctx.lineWidth = 2;
             this.drawVertex(refScreenPos, 8);
         }

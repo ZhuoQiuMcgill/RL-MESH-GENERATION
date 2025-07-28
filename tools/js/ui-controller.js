@@ -21,20 +21,18 @@ export class UIController {
      */
     initializeElements() {
         const elementIds = [
-            'status-indicator', 'status-text', 'mesh-select', 'mesh-info',
-            'mesh-vertices', 'mesh-size', 'start-btn', 'stop-btn',
-            'refresh-btn', 'clear-log-btn', 'max-timesteps', 'max-steps',
-            'update-interval', 'description', 'current-episode', 'total-steps', 'avg-reward',
-            'buffer-size', 'episode-reward', 'episode-length', 'ref-point',
-            'click-coordinates', 'display-episode', 'display-total-steps', 'boundary-vertices',
-            'log-container', 'loading-overlay',
-            // New checkpoint-related elements
+            'mesh-select', 'mesh-info', 'mesh-vertices', 'mesh-size', 
+            'start-btn', 'stop-btn', 'refresh-btn', 'clear-log-btn', 
+            'max-timesteps', 'max-steps', 'update-interval', 'description', 
+            'current-episode', 'total-steps', 'avg-reward', 'buffer-size', 
+            'episode-reward', 'episode-length', 'ref-point', 'click-coordinates', 
+            'boundary-vertices', 'log-container', 'loading-overlay',
+            // Checkpoint-related elements
             'checkpoint-mode', 'checkpoint-select', 'checkpoint-info', 'checkpoint-details',
             // Training metrics elements
             'actor-loss', 'critic-loss', 'alpha-value',
-            // Compact status bar elements
-            'compact-status-text', 'compact-episode', 'compact-steps', 'compact-actor-loss', 
-            'compact-critic-loss', 'compact-alpha', 'compact-avg-reward', 'status-indicator-dot'
+            // Status bar elements (simplified)
+            'compact-status-text', 'status-indicator-dot'
         ];
 
         const elements = {};
@@ -50,32 +48,20 @@ export class UIController {
      * @param {string} status - Status value
      */
     updateStatusIndicator(status) {
-        const indicator = this.elements['status-indicator']?.querySelector('div');
-        const text = this.elements['status-text'];
-        
-        // Also update compact status bar elements
         const compactIndicator = this.elements['status-indicator-dot'];
         const compactText = this.elements['compact-status-text'];
 
-        if (!indicator || !text) return;
-
-        // Remove all status classes
-        indicator.className = 'w-2 h-2 rounded-full mr-2';
-
         const statusConfig = {
-            [STATUS.RUNNING]: {class: 'status-running', text: 'Running'},
+            [STATUS.RUNNING]: {class: 'status-running', text: 'Training...'},
             [STATUS.STOPPED]: {class: 'status-stopped', text: 'Stopped'},
             [STATUS.COMPLETED]: {class: 'status-success', text: 'Completed'},
-            [STATUS.STOPPING]: {class: 'status-loading', text: 'Stopping'},
+            [STATUS.STOPPING]: {class: 'status-loading', text: 'Stopping...'},
             [STATUS.ERROR]: {class: 'status-stopped', text: 'Error'},
-            [STATUS.IDLE]: {class: 'status-idle', text: 'Idle'}
+            [STATUS.IDLE]: {class: 'status-idle', text: 'Ready'}
         };
 
         const config = statusConfig[status] || statusConfig[STATUS.IDLE];
-        indicator.classList.add(config.class);
-        text.textContent = config.text;
         
-        // Update compact status bar
         if (compactIndicator) {
             compactIndicator.className = 'status-indicator-dot ' + config.class;
         }
@@ -91,34 +77,18 @@ export class UIController {
     updateTrainingStats(stats) {
         if (!stats) return;
 
-        // Update basic statistics
+        // Update comprehensive training metrics display
         this.updateElement('current-episode', stats.episode || 0);
-        this.updateElement('display-episode', stats.episode || 0);
         this.updateElement('total-steps', stats.total_steps || 0);
-        this.updateElement('display-total-steps', stats.total_steps || 0);
         this.updateElement('avg-reward', formatNumber(stats.average_reward));
         this.updateElement('buffer-size', stats.buffer_size || 0);
         this.updateElement('episode-reward', formatNumber(stats.episode_reward));
         this.updateElement('episode-length', stats.episode_length || 0);
         this.updateElement('boundary-vertices', stats.boundary_vertices || 0);
-
-        // Update training metrics (new) - simplified for debugging
-        console.log('DEBUG: Raw stats object:', stats);
-        console.log('DEBUG: recent_actor_loss:', stats.recent_actor_loss);
-        console.log('DEBUG: recent_critic_loss:', stats.recent_critic_loss);
-        console.log('DEBUG: current_alpha:', stats.current_alpha);
         
         this.updateElement('actor-loss', formatNumber(stats.recent_actor_loss, 4));
         this.updateElement('critic-loss', formatNumber(stats.recent_critic_loss, 4));
         this.updateElement('alpha-value', formatNumber(stats.current_alpha, 4));
-        
-        // Also update compact status bar elements
-        this.updateElement('compact-episode', stats.episode || 0);
-        this.updateElement('compact-steps', stats.total_steps || 0);
-        this.updateElement('compact-actor-loss', formatNumber(stats.recent_actor_loss, 4));
-        this.updateElement('compact-critic-loss', formatNumber(stats.recent_critic_loss, 4));
-        this.updateElement('compact-alpha', formatNumber(stats.current_alpha, 4));
-        this.updateElement('compact-avg-reward', formatNumber(stats.average_reward, 3));
 
         // Update reference point information
         if (stats.reference_point_info && stats.reference_point_info.ref_vertex) {

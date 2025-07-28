@@ -15,7 +15,7 @@ class ActionType(ABC):
         pass
 
     @abstractmethod
-    def is_valid(self, boundary, reference_vertex_idx, *coords):
+    def is_valid(self, boundary, reference_vertex_idx, *coords, alpha=2, n=2):
         """
         检查动作在当前边界下是否有效。
         """

@@ -23,7 +23,7 @@
         }
     </script>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="min-h-screen">
     <!-- Navigation Header -->
     <div class="nav-header">
         <div class="nav-left">
@@ -77,7 +77,7 @@
             <!-- Current Selected Training Info -->
             <div id="current-training-info" class="hidden">
                 <h3 class="text-sm font-medium text-gray-700 mb-3">Training Summary</h3>
-                <div class="bg-white rounded-lg p-4 border border-gray-200 space-y-2">
+                <div class="rounded-lg p-4 border space-y-2" style="background: var(--color-bg-card); border-color: var(--color-border-primary);">
                     <div class="flex justify-between text-sm">
                         <span class="text-gray-600">Training ID:</span>
                         <span id="training-id-display" class="font-medium text-gray-800 text-xs">-</span>
@@ -108,11 +108,11 @@
                     <div class="quick-nav-grid">
                         <button id="goto-best-episode-btn"
                                 class="bg-success hover:bg-green-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
-                            🏆 Best Episode
+                            Best Episode
                         </button>
                         <button id="goto-last-episode-btn"
                                 class="bg-warning hover:bg-orange-600 text-white font-medium py-2 px-3 rounded-lg transition-colors duration-200 text-sm">
-                            📍 Last Episode
+                            Last Episode
                         </button>
                     </div>
                     <div class="nav-control-grid">
@@ -170,9 +170,9 @@
 
         <!-- Visualization Area -->
         <div class="history-visualization-area">
-            <div class="h-full bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+            <div class="h-full rounded-lg shadow-sm border p-1" style="background: var(--color-bg-canvas); border-color: var(--color-border-primary);">
                 <div class="canvas-container">
-                    <canvas id="history-canvas" class="border border-gray-300 rounded"></canvas>
+                    <canvas id="history-canvas" class="rounded" style="border: 1px solid var(--color-border-primary);"></canvas>
                 </div>
             </div>
         </div>
@@ -181,7 +181,7 @@
         <div class="history-bottom-info-area">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 h-full">
                 <!-- Episode Data -->
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="rounded-lg shadow-sm border p-4" style="background: var(--color-bg-card); border-color: var(--color-border-primary);">
                     <h3 class="text-sm font-medium text-gray-700 mb-3">Episode Data</h3>
                     <div id="episode-data-container"
                          class="text-xs space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
@@ -191,7 +191,7 @@
 
 
                 <!-- Log/Operation History -->
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div class="rounded-lg shadow-sm border p-4" style="background: var(--color-bg-card); border-color: var(--color-border-primary);">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-sm font-medium text-gray-700">Operation Log</h3>
                         <button id="clear-history-log-btn" class="text-xs text-gray-500 hover:text-gray-700">Clear
@@ -210,7 +210,7 @@
 <!-- Loading Indicator -->
 <div id="history-loading-overlay"
      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
-    <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+    <div class="rounded-lg p-6 flex items-center space-x-3" style="background: var(--color-bg-card); border: 1px solid var(--color-border-primary);">
         <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
         <span class="text-gray-700">Loading...</span>
     </div>

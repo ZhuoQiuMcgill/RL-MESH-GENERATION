@@ -20,30 +20,31 @@
 }
 
 .status-running {
-    background-color: #10B981;
+    background-color: var(--color-success);
     animation: pulse-success 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    box-shadow: 0 0 8px var(--color-success-light);
 }
 
 .status-stopped {
-    background-color: #EF4444;
+    background-color: var(--color-error);
+    box-shadow: 0 0 8px var(--color-error-light);
 }
 
 .status-idle {
-    background-color: #6B7280;
+    background-color: var(--color-text-muted);
+    box-shadow: 0 0 6px rgba(113, 128, 150, 0.3);
 }
 
 .status-loading {
-    background-color: #F59E0B;
+    background-color: var(--color-warning);
     animation: pulse-warning 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    box-shadow: 0 0 8px var(--color-warning-light);
 }
 
 /* Canvas样式 - 修复响应式和居中问题 */
 #mesh-canvas {
     cursor: crosshair;
-    background: linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc),
-    linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc);
-    background-size: 20px 20px;
-    background-position: 0 0, 10px 10px;
+    background: var(--color-bg-canvas);
     /* 修复Canvas居中问题 */
     display: block;
     margin: 0 auto;
@@ -51,6 +52,7 @@
     max-width: 100%;
     max-height: 100%;
     box-sizing: border-box;
+    border: 1px solid var(--color-border-primary);
 }
 
 /* 修复Canvas容器的响应式和居中问题 */
@@ -67,6 +69,17 @@
     box-sizing: border-box;
 }
 
+/* Empty state overlay positioning */
+#empty-state-overlay {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    border-radius: inherit;
+    z-index: 10;
+}
+
 /* 主容器响应式修复 - 调整为考虑导航头部的高度 */
 .main-container {
     display: flex;
@@ -79,8 +92,8 @@
 
 /* 紧凑的顶部状态栏 */
 .compact-status-bar {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--color-primary-gradient);
+    color: var(--color-white);
     padding: 8px 16px;
     display: flex;
     justify-content: space-between;
@@ -120,8 +133,8 @@
     min-width: 280px;
     max-width: 400px;
     flex-shrink: 0;
-    background: white;
-    border-right: 1px solid #e5e7eb;
+    background: var(--color-bg-secondary);
+    border-right: 1px solid var(--color-border-primary);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -134,22 +147,444 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background: var(--color-bg-secondary);
 }
 
 .left-panel-scroll {
     flex: 1;
     overflow-y: auto;
+    padding: 1rem;
+    gap: 1rem;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Card-based design for panel sections */
+.panel-card {
+    background: var(--color-bg-card);
+    border-radius: 12px;
     padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--color-border-primary);
+    transition: all 0.2s ease;
+    color: var(--color-text-primary);
+}
+
+.panel-card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--color-border-secondary);
+    background: var(--color-bg-hover);
+}
+
+.panel-card-header {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.panel-card-header::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: var(--color-primary-gradient);
+    border-radius: 2px;
+}
+
+/* Button hierarchy uses shared color variables */
+
+/* Button hierarchy */
+.btn-primary {
+    background: var(--color-primary-gradient);
+    color: var(--color-white);
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+    filter: brightness(1.1);
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--color-error);
+    border: 2px solid var(--color-error);
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background: var(--color-error);
+    color: var(--color-white);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn-secondary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-tertiary {
+    background: var(--color-bg-card);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border-primary);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.btn-tertiary:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+    border-color: var(--color-border-secondary);
+}
+
+/* Typography improvements */
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+}
+
+.typography-h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-text-primary);
+}
+
+.typography-h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--color-text-primary);
+}
+
+.typography-h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+}
+
+.typography-body {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--color-text-tertiary);
+}
+
+.typography-small {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+}
+
+/* Enhanced form styling */
+.form-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--color-border-primary);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: var(--color-primary-start);
+    box-shadow: 0 0 0 3px var(--color-primary-alpha-10);
+}
+
+.form-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.form-select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--color-border-primary);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    transition: all 0.2s ease;
+}
+
+.form-select:focus {
+    outline: none;
+    border-color: var(--color-primary-start);
+    box-shadow: 0 0 0 3px var(--color-primary-alpha-10);
+}
+
+/* Status indicators with semantic colors */
+.status-success {
+    color: var(--color-success);
+    background-color: var(--color-success-light);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-error {
+    color: var(--color-error);
+    background-color: var(--color-error-light);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-warning {
+    color: var(--color-warning);
+    background-color: var(--color-warning-light);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Empty state styling */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 3rem 2rem;
+    text-align: center;
+    background: var(--color-bg-canvas);
+    border: 2px dashed var(--color-border-primary);
+    border-radius: 12px;
+    color: var(--color-text-primary);
+}
+
+.empty-state-icon {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 1rem;
+    opacity: 0.4;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 17V7m0 10v2a2 2 0 01-2 2H4a2 2 0 01-2-2v-2m2 0V7a2 2 0 012-2h3m0 0V3a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10l4 4v6a2 2 0 01-2 2H7a2 2 0 01-2-2V7z"/></svg>') no-repeat center;
+    background-size: contain;
+}
+
+.empty-state-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.empty-state-description {
+    font-size: 0.875rem;
+    color: var(--color-text-tertiary);
+    line-height: 1.5;
+    max-width: 320px;
+}
+
+/* Data placeholder styling */
+.data-placeholder {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+/* Enhanced training log styling */
+.log-container {
+    background: var(--color-bg-canvas);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 8px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 0.75rem;
+    color: var(--color-text-primary);
+}
+
+.log-entry {
+    margin-bottom: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.log-entry:last-child {
+    margin-bottom: 0;
+}
+
+/* Log level styling with icons */
+.log-entry.log-info {
+    background: var(--color-info-light);
+    border-left: 3px solid var(--color-info);
+    color: var(--color-info);
+}
+
+.log-entry.log-info::before {
+    content: "";
+    flex-shrink: 0;
+}
+
+.log-entry.log-success {
+    background: var(--color-success-light);
+    border-left: 3px solid var(--color-success);
+    color: var(--color-success);
+}
+
+.log-entry.log-success::before {
+    content: "";
+    flex-shrink: 0;
+}
+
+.log-entry.log-warning {
+    background: var(--color-warning-light);
+    border-left: 3px solid var(--color-warning);
+    color: var(--color-warning);
+}
+
+.log-entry.log-warning::before {
+    content: "";
+    flex-shrink: 0;
+}
+
+.log-entry.log-error {
+    background: var(--color-error-light);
+    border-left: 3px solid var(--color-error);
+    color: var(--color-error);
+}
+
+.log-entry.log-error::before {
+    content: "";
+    flex-shrink: 0;
+}
+
+/* Log controls */
+.log-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    align-items: center;
+}
+
+.log-controls .btn-tertiary {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+/* Auto-scroll toggle */
+.auto-scroll-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-text-tertiary);
+}
+
+.auto-scroll-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+
+/* Metric cards with sparklines */
+.metric-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 8px;
+    padding: 1rem;
+    position: relative;
+    overflow: hidden;
+    color: var(--color-text-primary);
+}
+
+.metric-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.metric-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+.metric-trend {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.125rem 0.375rem;
+    border-radius: 12px;
+}
+
+.metric-trend.positive {
+    background: var(--color-success-light);
+    color: var(--color-success);
+}
+
+.metric-trend.negative {
+    background: var(--color-error-light);
+    color: var(--color-error);
+}
+
+.metric-trend.neutral {
+    background: var(--color-bg-canvas);
+    color: var(--color-text-muted);
 }
 
 /* 训练状态信息面板 - 固定在左侧底部但更显眼 */
 .training-status-panel {
     flex-shrink: 0;
-    background: #f8fafc;
-    border-top: 2px solid #e2e8f0;
+    background: var(--color-bg-canvas);
+    border-top: 2px solid var(--color-border-primary);
     padding: 1rem;
     max-height: 200px;
     overflow-y: auto;
+    color: var(--color-text-primary);
 }
 
 /* 右侧内容区域响应式修复 */
@@ -166,9 +601,10 @@
 /* 顶部信息栏响应式修复 - 更紧凑设计 */
 .top-info-bar {
     flex-shrink: 0;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border-primary);
     padding: 12px 16px;
+    color: var(--color-text-primary);
 }
 
 /* 信息展示网格 */
@@ -182,21 +618,22 @@
 .info-item {
     text-align: center;
     padding: 4px 8px;
-    background: #f8fafc;
+    background: var(--color-bg-canvas);
     border-radius: 6px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-border-primary);
+    color: var(--color-text-primary);
 }
 
 .info-label {
     font-size: 0.75rem;
-    color: #64748b;
+    color: var(--color-text-tertiary);
     font-weight: 500;
 }
 
 .info-value {
     font-size: 0.875rem;
     font-weight: 600;
-    color: #1e293b;
+    color: var(--color-text-primary);
     margin-top: 2px;
 }
 
@@ -212,12 +649,13 @@
 /* 底部日志区域响应式修复 - 优化高度 */
 .bottom-log-area {
     flex-shrink: 0;
-    background: white;
-    border-top: 1px solid #e5e7eb;
+    background: var(--color-bg-secondary);
+    border-top: 1px solid var(--color-border-primary);
     padding: 12px 16px;
     height: 6rem;
     min-height: 5rem;
     max-height: 8rem;
+    color: var(--color-text-primary);
 }
 
 /* 日志容器滚动条样式 */
@@ -226,17 +664,17 @@
 }
 
 #log-container::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--color-bg-canvas);
     border-radius: 3px;
 }
 
 #log-container::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--color-border-secondary);
     border-radius: 3px;
 }
 
 #log-container::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--color-text-tertiary);
 }
 
 /* 平滑过渡效果 */
@@ -256,13 +694,13 @@ button:active {
 
 /* 输入框焦点效果 */
 input:focus, select:focus {
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px var(--color-primary-alpha-10);
 }
 
 /* 统计数据卡片效果 */
 .stat-card {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--color-primary-gradient);
+    color: var(--color-white);
     border-radius: 8px;
     padding: 12px;
     margin-bottom: 8px;
@@ -282,20 +720,20 @@ input:focus, select:focus {
 
 /* 网格渲染相关样式 */
 .mesh-point {
-    fill: #3B82F6;
-    stroke: #1E40AF;
+    fill: var(--color-primary-end);
+    stroke: var(--color-primary-start);
     stroke-width: 1;
 }
 
 .mesh-edge {
-    stroke: #6366F1;
+    stroke: var(--color-primary-start);
     stroke-width: 1.5;
     fill: none;
 }
 
 .mesh-element {
-    fill: rgba(59, 130, 246, 0.1);
-    stroke: #3B82F6;
+    fill: var(--color-primary-alpha-10);
+    stroke: var(--color-primary-start);
     stroke-width: 1;
 }
 
@@ -527,17 +965,17 @@ input:focus, select:focus {
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--color-bg-canvas);
     border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--color-border-secondary);
     border-radius: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--color-text-tertiary);
 }
 
 /* 工具提示样式 */
@@ -580,38 +1018,39 @@ input:focus, select:focus {
 
 .progress-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #3B82F6, #6366F1);
+    background: linear-gradient(90deg, var(--color-primary-start), var(--color-primary-end));
     border-radius: 4px;
     transition: width 0.3s ease;
 }
 
 /* 数据显示卡片 */
 .data-card {
-    background: white;
-    border: 1px solid #e5e7eb;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-primary);
     border-radius: 8px;
     padding: 16px;
     margin-bottom: 16px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
+    color: var(--color-text-primary);
 }
 
 .data-card-header {
     font-weight: 600;
-    color: #374151;
+    color: var(--color-text-secondary);
     margin-bottom: 8px;
 }
 
 .data-card-value {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #1f2937;
+    color: var(--color-text-primary);
 }
 
 /* 错误状态样式 */
 .error-state {
-    color: #DC2626;
-    background-color: #FEF2F2;
-    border: 1px solid #FECACA;
+    color: var(--color-error);
+    background-color: var(--color-error-light);
+    border: 1px solid var(--color-error-dark);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 14px;
@@ -619,9 +1058,9 @@ input:focus, select:focus {
 
 /* 成功状态样式 */
 .success-state {
-    color: #065F46;
-    background-color: #ECFDF5;
-    border: 1px solid #A7F3D0;
+    color: var(--color-success);
+    background-color: var(--color-success-light);
+    border: 1px solid var(--color-success-dark);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 14px;

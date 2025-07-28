@@ -58,8 +58,20 @@ export class TrainingManager {
         const canvas = document.getElementById('mesh-canvas');
         if (canvas) {
             this.canvasRenderer = new CanvasRenderer(canvas);
+            // Initially show empty state
+            this.showEmptyState(true);
         } else {
             console.error('Canvas element not found');
+        }
+    }
+
+    /**
+     * Show or hide empty state overlay
+     */
+    showEmptyState(show = true) {
+        const overlay = document.getElementById('empty-state-overlay');
+        if (overlay) {
+            overlay.style.display = show ? 'flex' : 'none';
         }
     }
 
@@ -189,6 +201,8 @@ export class TrainingManager {
             // Clear canvas and show default prompt
             if (this.canvasRenderer) {
                 this.canvasRenderer.clearCanvas();
+                // Show empty state when canvas is cleared
+                this.showEmptyState(true);
             }
             return;
         }
@@ -212,6 +226,8 @@ export class TrainingManager {
                     boundaryData.boundary_vertices,
                     meshName
                 );
+                // Hide empty state when mesh data is rendered
+                this.showEmptyState(false);
                 this.uiController.logMessage(
                     `Loaded boundary preview: ${boundaryData.vertex_count} vertices`,
                     LOG_TYPES.SUCCESS
@@ -231,6 +247,8 @@ export class TrainingManager {
             // Clear canvas
             if (this.canvasRenderer) {
                 this.canvasRenderer.clearCanvas();
+                // Show empty state when canvas is cleared due to error
+                this.showEmptyState(true);
             }
         } finally {
             this.uiController.showLoading(false);
@@ -510,6 +528,11 @@ export class TrainingManager {
                 renderData.boundaryData,
                 renderData.refPointInfo
             );
+            // Hide empty state when mesh data is being rendered
+            this.showEmptyState(false);
+        } else {
+            // Show empty state when no data to render
+            this.showEmptyState(true);
         }
     }
 

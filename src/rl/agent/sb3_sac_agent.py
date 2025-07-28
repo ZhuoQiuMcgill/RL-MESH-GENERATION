@@ -63,8 +63,7 @@ class SB3SACAgent:
         seed = sb3_config.get("seed", 998)
         ent_coef = sb3_config.get("ent_coef", "auto")
 
-        # 记录使用的参数
-        print(f"SAC Agent配置:")
+        print(f"SAC Agent Config:")
         print(f"  learning_rate: {learning_rate}")
         print(f"  buffer_size: {buffer_size}")
         print(f"  learning_starts: {learning_starts}")
@@ -77,78 +76,39 @@ class SB3SACAgent:
         print(f"  seed: {seed}")
         print(f"  device: {device}")
 
-        # 创建SAC模型，使用从config读取的所有参数
         self.model = SAC(
             policy='MlpPolicy',
             env=env,
+            seed=seed,
+            policy_kwargs=policy_kwargs,
             learning_rate=learning_rate,
-            buffer_size=buffer_size,
             learning_starts=learning_starts,
             batch_size=batch_size,
-            tau=tau,
-            gamma=gamma,
-            train_freq=train_freq,
-            gradient_steps=gradient_steps,
-            policy_kwargs=policy_kwargs,
-            verbose=verbose,
-            seed=seed,
-            ent_coef=ent_coef,
-            device=device
+            device=device,
+            # buffer_size=buffer_size,
+            # tau=tau,
+            # gamma=gamma,
+            # train_freq=train_freq,
+            # gradient_steps=gradient_steps,
+            # verbose=verbose,
+            # ent_coef=ent_coef,
         )
 
     def predict(self, state, deterministic=True):
-        """
-        预测动作
-
-        Args:
-            state: 状态
-            deterministic: 是否使用确定性策略
-
-        Returns:
-            action: 预测的动作
-        """
         action, _ = self.model.predict(state, deterministic=deterministic)
         return action
 
     def save(self, path):
-        """
-        保存模型
-
-        Args:
-            path: 保存路径
-        """
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.model.save(path)
 
     def load(self, path):
-        """
-        加载模型
-
-        Args:
-            path: 模型路径
-        """
         self.model = SAC.load(path, env=self.env)
 
     def learn(self, total_timesteps, callback=None):
-        """
-        开始学习
-
-        Args:
-            total_timesteps: 总时间步数
-            callback: 回调函数
-
-        Returns:
-            学习后的模型
-        """
         return self.model.learn(total_timesteps=total_timesteps, callback=callback)
 
     def get_parameters(self):
-        """
-        获取模型参数
-
-        Returns:
-            dict: 模型参数字典
-        """
         return {
             'policy': self.model.policy.state_dict() if self.model.policy else None,
             'learning_rate': self.model.learning_rate,
@@ -157,27 +117,10 @@ class SB3SACAgent:
         }
 
     def set_parameters(self, parameters):
-        """
-        设置模型参数
-
-        Args:
-            parameters: 参数字典
-        """
         if 'policy' in parameters and parameters['policy'] is not None:
             self.model.policy.load_state_dict(parameters['policy'])
 
     def evaluate(self, eval_env, n_eval_episodes=10, deterministic=True):
-        """
-        评估智能体
-
-        Args:
-            eval_env: 评估环境
-            n_eval_episodes: 评估episodes数量
-            deterministic: 是否使用确定性策略
-
-        Returns:
-            tuple: (平均奖励, 奖励标准差)
-        """
         mean_reward, std_reward = evaluate_policy(
             self.model,
             eval_env,
@@ -188,16 +131,6 @@ class SB3SACAgent:
         return mean_reward, std_reward
 
     def get_action_probabilities(self, state):
-        """
-        获取动作概率分布
-
-        Args:
-            state: 状态
-
-        Returns:
-            动作概率分布
-        """
-        # SB3的SAC是连续动作空间，返回动作分布的参数
         obs_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
         with torch.no_grad():
             actions, log_probs = self.model.policy.actor.get_action_log_prob(obs_tensor)

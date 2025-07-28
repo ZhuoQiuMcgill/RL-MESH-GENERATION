@@ -2,18 +2,19 @@
 
 /* Quality score display */
 .quality-score-display {
-    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-    border: 2px solid #e5e7eb;
+    background: var(--color-bg-card);
+    border: 2px solid var(--color-border-primary);
     border-radius: 12px;
     padding: 16px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
+    color: var(--color-text-primary);
 }
 
 .quality-score-number {
     font-size: 1.5rem;
     font-weight: 700;
-    color: #3b82f6;
-    text-shadow: 0 1px 3px rgba(59, 130, 246, 0.2);
+    color: var(--color-primary-start);
+    text-shadow: 0 1px 3px var(--color-primary-alpha-20);
 }
 
 /* Quality bar animations */
@@ -47,24 +48,25 @@
 }
 
 .method-selector select {
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-color: var(--color-bg-primary);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23a0aec0' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
     background-position: right 8px center;
     background-repeat: no-repeat;
     background-size: 16px;
     padding-right: 32px;
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border-primary);
 }
 
 /* Canvas specific styles */
 #quality-canvas {
     cursor: crosshair;
-    background: linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc),
-                linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc);
-    background-size: 20px 20px;
-    background-position: 0 0, 10px 10px;
+    background: var(--color-bg-canvas);
     display: block;
     margin: 0 auto;
     border-radius: inherit;
     transition: opacity 0.3s ease;
+    border: 1px solid var(--color-border-primary);
 }
 
 #quality-canvas:hover {
@@ -73,12 +75,13 @@
 
 /* Vertex display styling */
 .vertex-list {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
+    background: var(--color-bg-canvas);
+    border: 1px solid var(--color-border-primary);
     border-radius: 8px;
     padding: 12px;
     max-height: 120px;
     overflow-y: auto;
+    color: var(--color-text-primary);
 }
 
 .vertex-item {
@@ -86,7 +89,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 4px 0;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-border-light);
 }
 
 .vertex-item:last-child {
@@ -96,34 +99,36 @@
 .vertex-coordinates {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 0.75rem;
-    color: #6b7280;
+    color: var(--color-text-tertiary);
 }
 
 /* Example buttons styling */
 .example-btn {
-    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
-    border: 1px solid #d1d5db;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-primary);
     transition: all 0.2s ease;
+    color: var(--color-text-primary);
 }
 
 .example-btn:hover {
-    background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
-    border-color: #9ca3af;
+    background: var(--color-bg-hover);
+    border-color: var(--color-border-secondary);
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-md);
 }
 
 .example-btn:active {
     transform: translateY(0);
-    box-shadow: 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
 }
 
 /* Instructions section styling */
 .instructions {
-    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-    border: 1px solid #bfdbfe;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-primary);
     border-radius: 8px;
     padding: 12px;
+    color: var(--color-text-primary);
 }
 
 .instruction-item {
@@ -140,7 +145,7 @@
     width: 16px;
     height: 16px;
     margin-right: 8px;
-    color: #3b82f6;
+    color: var(--color-primary-start);
 }
 
 /* Loading overlay for quality calculation */
@@ -150,7 +155,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(15, 20, 25, 0.9);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -160,8 +165,8 @@
 .quality-spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid #e5e7eb;
-    border-top: 3px solid #3b82f6;
+    border: 3px solid var(--color-border-primary);
+    border-top: 3px solid var(--color-primary-start);
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
@@ -175,17 +180,18 @@
 .mouse-coords {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 0.875rem;
-    color: #374151;
-    background: #f3f4f6;
+    color: var(--color-text-primary);
+    background: var(--color-bg-card);
     padding: 2px 8px;
     border-radius: 4px;
+    border: 1px solid var(--color-border-primary);
 }
 
 /* Canvas size display */
 .canvas-size-display {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 0.75rem;
-    color: #6b7280;
+    color: var(--color-text-tertiary);
 }
 
 /* Activity log styling */
@@ -226,21 +232,39 @@
     }
 }
 
+/* Override main-container height for quality page (no status bar) */
+.main-container {
+    height: calc(100vh - 60px) !important; /* Only nav-header (60px), no status bar */
+    min-height: calc(100vh - 60px) !important;
+}
+
+/* Ensure body takes full height for quality page */
+body {
+    min-height: 100vh !important;
+    overflow-x: hidden !important;
+}
+
+/* Override bottom-log-area for quality page */
+.bottom-log-area {
+    background: var(--color-bg-primary) !important;
+    border-top: 1px solid var(--color-border-primary) !important;
+}
+
 /* Custom scrollbar for quality test */
 .quality-scrollbar::-webkit-scrollbar {
     width: 6px;
 }
 
 .quality-scrollbar::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--color-bg-canvas);
     border-radius: 3px;
 }
 
 .quality-scrollbar::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--color-border-secondary);
     border-radius: 3px;
 }
 
 .quality-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--color-text-tertiary);
 }

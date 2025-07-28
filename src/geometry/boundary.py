@@ -35,7 +35,7 @@ class Boundary:
     # ------------------------------------------------------------
     # 只读辅助方法
     # ------------------------------------------------------------
-    def get_vertices(self) -> List[Tuple[float, float]]:
+    def get_vertices(self):
         """
         返回顶点的副本作为元组列表
 
@@ -234,12 +234,6 @@ class Boundary:
         return min_area, critical_area
 
     def size(self) -> int:
-        """
-        返回当前边界中顶点的数量
-
-        Returns:
-            int: 边界中顶点的数量
-        """
         return len(self._verts)
 
     # ------------------------------------------------------------
@@ -299,185 +293,75 @@ class Boundary:
             raise IndexError("position out of range")
         self._verts = np.insert(self._verts, position, vertex, axis=0)
 
-    def part_of_boundary(self, vertex: Tuple[float, float]) -> bool:
-        """
-        查找该点是否存在为当前的边界组成点
-
-        Args:
-            vertex: 要检查的点坐标(x, y)
-
-        Returns:
-            bool: 如果点是边界组成点返回True，否则返回False
-        """
+    def part_of_boundary(self, vertex: Tuple[float, float]):
         vertex_array = np.array(vertex, dtype=float)
-        # 检查是否与任何顶点匹配（考虑浮点数精度）
+
         distances = np.linalg.norm(self._verts - vertex_array, axis=1)
         return np.any(distances < 1e-10)
 
     def vertex_inside_boundary(self, vertex: Tuple[float, float]) -> bool:
-        """
-        严格判定点是否处于多边形边界的内部
-
-        判断条件：
-        - 点为边界组成点 -> False
-        - 点位于边界的某个边上 -> False
-        - 点位于边界内部 -> True
-        - 点位于边界外部 -> False
-
-        注意：边界self._verts为顺时针顺序，即(self._verts[n], self._verts[n+1])的右侧为内部
-
-        Args:
-            vertex: 要检查的点坐标(x, y)
-
-        Returns:
-            bool: 如果点在边界内部返回True，否则返回False
-        """
-        # 首先检查是否是边界组成点
         if self.part_of_boundary(vertex):
             return False
 
-        # 检查是否在边界的某个边上
         if self._point_on_boundary_edge(vertex):
             return False
 
-        # 使用射线投射算法判断点是否在多边形内部
         return self._point_in_polygon(vertex)
 
-    def edge_cross(self, edge: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
-        """
-        严格判定输入的边是否与任意边界的边有相交
+    def vertex_inside_action_space(self, vertex: Tuple[float, float], ref_index, alpha, n) -> bool:
+        ref_point = self.get_vertex_by_index(ref_index)
+        ref_right = self.get_vertex_by_index(ref_index - 1)
+        ref_left = self.get_vertex_by_index(ref_index + 1)
+        r = self.get_avg_neighbor_length(ref_index, n) * alpha
 
-        判断条件：
-        - 输入边与任意一个边界的边相交 -> True
-        - 输入边的任意一个点位于边界的某一个边上 (但不是其端点) -> True
-
-        Args:
-            edge: 输入的边((x1, y1), (x2, y2))
-
-        Returns:
-            bool: 如果边与边界相交返回True，否则返回False
-        """
-        p1, p2 = edge
-
-        # [FIXED] The original check here was flawed and has been removed.
-        # The intersection logic itself is now robust enough.
-
-        # 检查输入边的点是否在边界的某个边上
-        if self._point_on_boundary_edge(p1) or self._point_on_boundary_edge(p2):
-            # This check is now implicitly handled by the robust _edge_intersects_boundary
-            # which correctly checks for touching/collinear cases.
-            pass
-
-        # 检查输入边是否与任何边界边相交
-        return self._edge_intersects_boundary(edge)
-
-    def edge_inside_boundary(self, edge: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
-        """
-        严格判定输入的边是否完整位于边界内
-
-        判断条件：
-        - 输入边的两个点都位于边界内 -> True
-        - 输入边与边界相交 -> False
-        - 输入边的一个点为边界组成点，另一个点位于边界内 -> True
-        - 输入边的一个点为边界组成点，另一个点位于边界外 -> False
-
-        Args:
-            edge: 输入的边((x1, y1), (x2, y2))
-
-        Returns:
-            bool: 如果边完整位于边界内返回True，否则返回False
-        """
-        p1, p2 = edge
-
-        # 检查边是否与边界相交
-        if self.edge_cross(edge):
+        if euclidean_distance(ref_point, vertex) > r:
             return False
 
-        p1_on_boundary = self.part_of_boundary(p1)
-        p2_on_boundary = self.part_of_boundary(p2)
-        p1_inside = self.vertex_inside_boundary(p1) if not p1_on_boundary else False
-        p2_inside = self.vertex_inside_boundary(p2) if not p2_on_boundary else False
+        def _vec(a, b):
+            return b[0] - a[0], b[1] - a[1]
 
-        # 两个点都在边界内
-        if p1_inside and p2_inside:
-            return True
+        def _norm(v):
+            return math.hypot(v[0], v[1])
 
-        # 一个点在边界上，另一个点在边界内
-        if (p1_on_boundary and p2_inside) or (p2_on_boundary and p1_inside):
-            return True
+        def _unit(v):
+            l = _norm(v)
+            return v[0] / l, v[1] / l
 
-        # 其他情况都返回False
-        return False
+        v_r = _vec(ref_point, ref_right)
+        v_l = _vec(ref_point, ref_left)
+        v_c = _vec(ref_point, vertex)
 
-    def get_neighbor_info(self, vertex: tuple, n: int) -> dict:
-        """
-        本函数旨在获取指定顶点(vertex)在边界上的一个完整局部片段信息。
-        一个局部片段被定义为该顶点本身，以及其沿边界前后各n个邻居点，总共2n+1个点。
-        函数将返回这个片段的有序坐标列表，以及由这些点构成的局部线段的平均长度。
-        """
-        # 1. 定位顶点
-        vertex_array = np.array(vertex, dtype=float)
-        # 找到匹配的顶点索引（考虑浮点数精度）
-        distances = np.linalg.norm(self._verts - vertex_array, axis=1)
-        matches = np.where(distances < 1e-10)[0]
+        if _norm(v_c) == 0:
+            return False
 
-        if len(matches) == 0:
-            raise ValueError(f"Vertex {vertex} not found in boundary")
+        u_r = _unit(v_r)
+        u_l = _unit(v_l)
+        u_c = _unit(v_c)
 
-        idx = matches[0]  # 取第一个匹配的索引
+        def _clamp(x):
+            return max(-1.0, min(1.0, x))
 
-        # 2. 处理边界大小
-        boundary_size = self.size()
-        if boundary_size < 2 * n + 1:
-            raise ValueError(f"Boundary has only {boundary_size} vertices, need at least {2 * n + 1} for n={n}")
+        interior = math.acos(_clamp(u_r[0] * u_l[0] + u_r[1] * u_l[1]))
+        a_rc = math.acos(_clamp(u_r[0] * u_c[0] + u_r[1] * u_c[1]))
+        a_lc = math.acos(_clamp(u_l[0] * u_c[0] + u_l[1] * u_c[1]))
 
-        # 3. 构建局部片段列表
-        local_segment_coords = []
-        for i in range(-n, n + 1):
-            # 使用模运算处理环形边界的索引
-            neighbor_idx = (idx + i) % boundary_size
-            local_segment_coords.append(tuple(self._verts[neighbor_idx]))
+        if abs((a_rc + a_lc) - interior) <= 1e-6 and a_rc <= interior and a_lc <= interior:
+            return False
 
-        # 4. 计算局部平均边长
-        total_length = 0.0
-        num_edges = 2 * n  # 2n条边（2n+1个点之间有2n条边）
+        return True
 
-        for i in range(num_edges):
-            current_point = np.array(local_segment_coords[i])
-            next_point = np.array(local_segment_coords[i + 1])
-            # 计算欧几里得距离
-            edge_length = np.linalg.norm(next_point - current_point)
-            total_length += edge_length
-
-        local_avg_edge_length = total_length / num_edges
-
-        # 5. 构建并返回结果
-        return {
-            "local_segment_coords": local_segment_coords,
-            "local_avg_edge_length": local_avg_edge_length
-        }
+    def edge_cross(self, edge: Tuple[Tuple[float, float], Tuple[float, float]]) -> bool:
+        return self._edge_intersects_boundary(edge)
 
     def get_area(self) -> float:
-        """
-        本函数旨在计算当前边界所围成多边形的面积。
-        这个面积值是计算网格化进度指标 ρ_t (rho_t) 的基础。
-        """
         if len(self._verts) < 3:
             return 0.0
 
-        # 1. 获取顶点坐标
         x = self._verts[:, 0]
         y = self._verts[:, 1]
-
-        # 2. 应用鞋带公式
-        # 使用numpy.roll获取下一个顶点的坐标，形成闭环
         x_next = np.roll(x, -1)
         y_next = np.roll(y, -1)
-
-        # 计算交叉乘积：Σ(x_i * y_{i+1} - x_{i+1} * y_i)
         cross_product = x * y_next - x_next * y
-
-        # 3. 返回结果：Area = 0.5 * |Σ(cross_product)|
         area = 0.5 * abs(np.sum(cross_product))
 
         return area
@@ -584,33 +468,3 @@ class Boundary:
                 return True
 
         return False
-
-    def _find_bisector_boundary_intersection(self, origin, bisector_angle: float, max_distance: float) -> \
-            Tuple[float, float]:
-        """找到角平分线与边界的最近交点"""
-        # 角平分线方向向量
-        direction = np.array([np.cos(bisector_angle), np.sin(bisector_angle)])
-
-        closest_intersection = None
-        min_distance = float('inf')
-
-        # 检查与每条边界边的交点
-        for i in range(len(self._verts)):
-            edge_start = self._verts[i]
-            edge_end = self._verts[(i + 1) % len(self._verts)]
-
-            # 计算射线与线段的交点
-            intersection = ray_segment_intersection(origin, direction, edge_start, edge_end)
-
-            if intersection is not None:
-                distance = np.linalg.norm(intersection - origin)
-                if max_distance >= distance > 1e-10 and distance < min_distance:
-                    min_distance = distance
-                    closest_intersection = intersection
-
-        if closest_intersection is not None:
-            return tuple(closest_intersection)
-        else:
-            # 如果没有找到交点，返回射线上的最远点
-            farthest_point = origin + direction * max_distance
-            return tuple(farthest_point)

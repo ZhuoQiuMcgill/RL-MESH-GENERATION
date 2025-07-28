@@ -1,8 +1,230 @@
+/* Unified Color System - Dark Theme Optimized */
+:root {
+    /* Primary gradient colors - Enhanced for dark theme */
+    --color-primary-start: #030067;
+    --color-primary-end: #57007c;
+    --color-primary-gradient: linear-gradient(135deg, var(--color-primary-start) 0%, var(--color-primary-end) 100%);
+    --color-primary-soft: linear-gradient(135deg, rgb(3, 0, 103) 0%, rgb(87, 0, 124) 100%);
+    
+    /* Semantic colors - Dark theme friendly */
+    --color-success: #34d399;
+    --color-success-light: rgba(52, 211, 153, 0.1);
+    --color-success-dark: rgba(52, 211, 153, 0.2);
+    --color-error: #f87171; 
+    --color-error-light: rgba(248, 113, 113, 0.1);
+    --color-error-dark: rgba(248, 113, 113, 0.2);
+    --color-warning: #fbbf24;
+    --color-warning-light: rgba(251, 191, 36, 0.1);
+    --color-warning-dark: rgba(251, 191, 36, 0.2);
+    --color-info: #60a5fa;
+    --color-info-light: rgba(96, 165, 250, 0.1);
+    --color-info-dark: rgba(96, 165, 250, 0.2);
+    
+    /* Dark theme neutral colors */
+    --color-white: #ffffff;
+    --color-gray-50: #0f1419;
+    --color-gray-100: #1a1f2e;
+    --color-gray-200: #252a3a;
+    --color-gray-300: #343a4a;
+    --color-gray-400: #4a5568;
+    --color-gray-500: #718096;
+    --color-gray-600: #a0aec0;
+    --color-gray-700: #cbd5e0;
+    --color-gray-800: #e2e8f0;
+    --color-gray-900: #f7fafc;
+    
+    /* Dark theme background colors */
+    --color-bg-primary: #0f1419;
+    --color-bg-secondary: #1a1f2e;
+    --color-bg-canvas: #1a1f28;
+    --color-bg-card: #343a4a;
+    --color-bg-hover: rgba(255, 255, 255, 0.05);
+    --color-bg-active: rgba(255, 255, 255, 0.1);
+    
+    /* Border colors */
+    --color-border-primary: #343a4a;
+    --color-border-secondary: #4a5568;
+    --color-border-light: rgba(255, 255, 255, 0.1);
+    
+    /* Text colors */
+    --color-text-primary: #f7fafc;
+    --color-text-secondary: #cbd5e0;
+    --color-text-tertiary: #a0aec0;
+    --color-text-muted: #718096;
+    
+    /* Alpha variations for overlays */
+    --color-primary-alpha-10: rgba(8, 1, 158, 0.1);
+    --color-primary-alpha-20: rgba(8, 1, 158, 0.2);
+    --color-primary-alpha-30: rgba(8, 1, 158, 0.3);
+    
+    /* Canvas drawing colors - Unified across all pages */
+    --canvas-grid-color: rgba(255, 255, 255, 0.08);
+    --canvas-mesh-edge-color: #6366F1;
+    --canvas-mesh-vertex-color: #3B82F6;
+    --canvas-mesh-vertex-stroke: #1E40AF;
+    --canvas-boundary-color: #EF4444;
+    --canvas-boundary-vertex-color: #DC2626;
+    --canvas-reference-color: #10B981;
+    --canvas-local-env-color: #F59E0B;
+    --canvas-user-shape-color: #6366F1;
+    --canvas-user-shape-fill: rgba(99, 102, 241, 0.1);
+    --canvas-text-color: #f7fafc;
+    --canvas-connecting-line-color: #718096;
+    --canvas-normal-point-color: #EF4444;
+    --canvas-normal-point-stroke: #DC2626;
+    --canvas-reference-point-color: #22c55e;
+    --canvas-reference-point-stroke: #16a34a;
+    --canvas-neighbor-point-color: #f59e0b;
+    --canvas-neighbor-point-stroke: #d97706;
+    --canvas-axis-color: #4a5568;
+    --canvas-grid-light-color: rgba(255, 255, 255, 0.15);
+    --canvas-origin-color: #343a4a;
+    
+    /* Shadow colors for dark theme */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6);
+}
+
+/* Global dark theme styles */
+body {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Override Tailwind text colors for dark theme */
+.text-gray-900 {
+    color: var(--color-text-primary) !important;
+}
+
+.text-gray-800 {
+    color: var(--color-text-primary) !important;
+}
+
+.text-gray-700 {
+    color: var(--color-text-secondary) !important;
+}
+
+.text-gray-600 {
+    color: var(--color-text-tertiary) !important;
+}
+
+.text-gray-500 {
+    color: var(--color-text-muted) !important;
+}
+
+.text-black {
+    color: var(--color-text-primary) !important;
+}
+
+/* Override dark theme utility classes */
+.dark\:text-white {
+    color: var(--color-text-primary) !important;
+}
+
+.dark\:text-gray-400 {
+    color: var(--color-text-tertiary) !important;
+}
+
+/* Override Tailwind background colors for dark theme */
+.bg-gray-50 {
+    background-color: var(--color-bg-canvas) !important;
+}
+
+.bg-gray-100 {
+    background-color: var(--color-bg-card) !important;
+}
+
+.bg-gray-200 {
+    background-color: var(--color-border-primary) !important;
+}
+
+.bg-gray-400 {
+    background-color: var(--color-text-muted) !important;
+}
+
+.bg-gray-500 {
+    background-color: var(--color-text-tertiary) !important;
+}
+
+.bg-gray-600 {
+    background-color: var(--color-text-secondary) !important;
+}
+
+.bg-gray-700 {
+    background-color: var(--color-bg-card) !important;
+}
+
+/* Hover states */
+.hover\:bg-gray-600:hover {
+    background-color: var(--color-bg-hover) !important;
+}
+
+.hover\:bg-gray-700:hover {
+    background-color: var(--color-bg-hover) !important;
+}
+
+/* Override Tailwind border colors for dark theme */
+.border-gray-200 {
+    border-color: var(--color-border-primary) !important;
+}
+
+.border-gray-300 {
+    border-color: var(--color-border-primary) !important;
+}
+
+/* Dark theme utilities */
+.dark\:bg-gray-700 {
+    background-color: var(--color-bg-card) !important;
+}
+
+/* Form elements dark theme */
+select, input[type="text"], input[type="number"], textarea {
+    background-color: var(--color-bg-primary) !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border-primary) !important;
+}
+
+select:focus, input:focus, textarea:focus {
+    border-color: var(--color-primary-start) !important;
+    box-shadow: 0 0 0 3px var(--color-primary-alpha-10) !important;
+}
+
+/* Select dropdown options */
+select option {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+}
+
+/* Dark theme class utilities */
+.bg-dark-card {
+    background-color: var(--color-bg-card);
+    border: 1px solid var(--color-border-primary);
+}
+
+.bg-dark-canvas {
+    background-color: var(--color-bg-canvas);
+}
+
+.text-dark-primary {
+    color: var(--color-text-primary);
+}
+
+.text-dark-secondary {
+    color: var(--color-text-secondary);
+}
+
+.text-dark-tertiary {
+    color: var(--color-text-tertiary);
+}
+
 /* Shared Navigation Styles */
 .nav-header {
-    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    background: var(--color-primary-gradient);
     padding: 12px 24px;
-    color: white;
+    color: var(--color-white);
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     position: sticky;
     top: 0;
@@ -22,8 +244,8 @@
 }
 
 .nav-header .back-btn {
-    background: rgba(255,255,255,0.2);
-    border: none;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.2);
     color: white;
     padding: 8px 15px;
     border-radius: 20px;
@@ -34,11 +256,14 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
+    backdrop-filter: blur(10px);
 }
 
 .nav-header .back-btn:hover {
-    background: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.25);
+    border-color: rgba(255,255,255,0.4);
     transform: translateX(-2px);
+    box-shadow: var(--shadow-md);
 }
 
 .nav-header .tool-title {

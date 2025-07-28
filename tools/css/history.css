@@ -16,8 +16,8 @@
     min-width: 300px;
     max-width: 450px;
     flex-shrink: 0;
-    background: white;
-    border-right: 1px solid #e5e7eb;
+    background: var(--color-bg-secondary);
+    border-right: 1px solid var(--color-border-primary);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -38,11 +38,12 @@
 /* 顶部信息栏 */
 .history-top-info-bar {
     flex-shrink: 0;
-    background: white;
-    border-bottom: 1px solid #e5e7eb;
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border-primary);
     padding: 12px 16px;
     max-width: 100%;
     box-sizing: border-box;
+    color: var(--color-text-primary);
 }
 
 /* 可视化区域 */
@@ -58,27 +59,26 @@
 /* 底部信息区域 */
 .history-bottom-info-area {
     flex-shrink: 0;
-    background: white;
-    border-top: 1px solid #e5e7eb;
+    background: var(--color-bg-secondary);
+    border-top: 1px solid var(--color-border-primary);
     padding: 1rem;
     height: 12rem;
     min-height: 8rem;
     max-height: 16rem;
+    color: var(--color-text-primary);
 }
 
 /* Canvas样式 */
 #history-canvas {
     cursor: crosshair;
-    background: linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc),
-    linear-gradient(45deg, #f8fafc 25%, transparent 25%, transparent 75%, #f8fafc 75%, #f8fafc);
-    background-size: 20px 20px;
-    background-position: 0 0, 10px 10px;
+    background: var(--color-bg-canvas);
     display: block;
     margin: 0 auto;
     border-radius: inherit;
     max-width: 100%;
     max-height: 100%;
     box-sizing: border-box;
+    border: 1px solid var(--color-border-primary);
 }
 
 /* Canvas容器 */
@@ -103,28 +103,31 @@
 
 /* 训练会话列表项 */
 .training-item {
-    background: white;
-    border: 1px solid #e5e7eb;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-primary);
     border-radius: 8px;
     padding: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
+    color: var(--color-text-primary);
 }
 
 .training-item:hover {
-    border-color: #3B82F6;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+    border-color: var(--color-primary-start);
+    box-shadow: var(--shadow-md);
+    background: var(--color-bg-hover);
 }
 
 .training-item.active {
-    border-color: #3B82F6;
-    background: #EFF6FF;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+    border-color: var(--color-primary-start);
+    background: var(--color-primary-alpha-10);
+    box-shadow: var(--shadow-lg);
+    color: var(--color-text-primary);
 }
 
 .training-item .training-name {
     font-weight: 600;
-    color: #1f2937;
+    color: var(--color-text-primary);
     font-size: 0.875rem;
     word-break: break-word;
     overflow-wrap: break-word;
@@ -137,7 +140,7 @@
 
 .training-item .training-meta {
     font-size: 0.75rem;
-    color: #6b7280;
+    color: var(--color-text-tertiary);
     line-height: 1.2;
 }
 
@@ -151,24 +154,29 @@
 }
 
 .status-healthy {
-    background-color: #10B981;
+    background-color: var(--color-success);
+    box-shadow: 0 0 6px var(--color-success-light);
 }
 
 .status-unhealthy {
-    background-color: #EF4444;
+    background-color: var(--color-error);
+    box-shadow: 0 0 6px var(--color-error-light);
 }
 
 .status-loading {
-    background-color: #F59E0B;
+    background-color: var(--color-warning);
     animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    box-shadow: 0 0 6px var(--color-warning-light);
 }
 
 /* 数据显示容器 */
 .data-container {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    background: #f9fafb;
+    background: var(--color-bg-canvas);
     border-radius: 6px;
     padding: 8px;
+    border: 1px solid var(--color-border-primary);
+    color: var(--color-text-primary);
 }
 
 .data-container pre {
@@ -183,7 +191,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 4px 0;
-    border-bottom: 1px solid #f3f4f6;
+    border-bottom: 1px solid var(--color-border-light);
 }
 
 .episode-data-item:last-child {
@@ -191,12 +199,12 @@
 }
 
 .episode-data-key {
-    color: #6b7280;
+    color: var(--color-text-tertiary);
     font-weight: 500;
 }
 
 .episode-data-value {
-    color: #1f2937;
+    color: var(--color-text-primary);
     font-weight: 600;
 }
 
@@ -208,19 +216,19 @@
 }
 
 .log-entry.log-success {
-    color: #059669;
+    color: var(--color-success);
 }
 
 .log-entry.log-error {
-    color: #DC2626;
+    color: var(--color-error);
 }
 
 .log-entry.log-warning {
-    color: #D97706;
+    color: var(--color-warning);
 }
 
 .log-entry.log-info {
-    color: #6B7280;
+    color: var(--color-info);
 }
 
 /* 按钮悬停效果增强 */
@@ -246,17 +254,17 @@ button:disabled {
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: var(--color-bg-canvas);
     border-radius: 3px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
+    background: var(--color-border-secondary);
     border-radius: 3px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: var(--color-text-tertiary);
 }
 
 /* 动画 */
@@ -495,15 +503,15 @@ html, body {
 
 /* 增强的导航按钮区域 */
 #episode-navigation {
-    background: #f8fafc;
+    background: var(--color-bg-card);
     border-radius: 8px;
     padding: 12px;
     margin-top: 16px;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-border-primary);
 }
 
 #episode-navigation h3 {
-    color: #1e293b;
+    color: var(--color-text-primary);
     font-weight: 600;
     margin-bottom: 12px;
     display: flex;
@@ -511,8 +519,8 @@ html, body {
 }
 
 #episode-navigation h3::before {
-    content: "🧭";
-    margin-right: 8px;
+    content: "";
+    margin-right: 0px;
 }
 
 /* 导航按钮样式增强 */
@@ -535,14 +543,15 @@ html, body {
 #episode-index-input {
     font-weight: 600;
     text-align: center;
-    background: white;
-    border: 2px solid #e2e8f0;
+    background: var(--color-bg-primary);
+    border: 2px solid var(--color-border-primary);
     transition: border-color 0.2s ease;
+    color: var(--color-text-primary);
 }
 
 #episode-index-input:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--color-primary-start);
+    box-shadow: 0 0 0 3px var(--color-primary-alpha-10);
 }
 
 /* 快速访问按钮网格 */
@@ -562,26 +571,26 @@ html, body {
 
 /* 特殊效果 */
 .highlight-episode {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: var(--color-primary-gradient);
+    color: var(--color-white);
     border-radius: 6px;
     padding: 8px;
     margin: 4px 0;
 }
 
 .error-state {
-    color: #DC2626;
-    background-color: #FEF2F2;
-    border: 1px solid #FECACA;
+    color: var(--color-error);
+    background-color: var(--color-error-light);
+    border: 1px solid var(--color-error-dark);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 0.875rem;
 }
 
 .success-state {
-    color: #065F46;
-    background-color: #ECFDF5;
-    border: 1px solid #A7F3D0;
+    color: var(--color-success);
+    background-color: var(--color-success-light);
+    border: 1px solid var(--color-success-dark);
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 0.875rem;

@@ -172,9 +172,9 @@ class ActionManager:
         """
         try:
             if action_name in ["type0_left", "type0_right"]:
-                return action_instance.is_valid(boundary, reference_vertex_idx)
+                return action_instance.is_valid(boundary, reference_vertex_idx, alpha=self.alpha, n=self.n)
             elif action_name == "type1":
-                return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0])
+                return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0], alpha=self, n=self.n)
             else:
                 return False
         except Exception:

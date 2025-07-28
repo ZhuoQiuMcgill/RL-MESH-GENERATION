@@ -23,6 +23,10 @@ export class QualityTester {
     async init() {
         this.setupCanvas();
         this.setupEventListeners();
+        
+        // Ensure loading overlay is hidden on initialization
+        this.hideLoadingOverlay();
+        
         await this.loadQualityMethods();
         this.log('Quality tester initialized', LOG_TYPES.SUCCESS);
     }
@@ -230,8 +234,7 @@ export class QualityTester {
             return;
         }
         
-        const loadingOverlay = safeGetElement('loading-overlay');
-        if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+        this.showLoadingOverlay();
         
         const wrappedRequest = withErrorHandling(async () => {
             const requestBody = {
@@ -264,7 +267,7 @@ export class QualityTester {
         } catch (error) {
             this.log(`Error calculating quality: ${error.message}`, LOG_TYPES.ERROR);
         } finally {
-            if (loadingOverlay) loadingOverlay.classList.add('hidden');
+            this.hideLoadingOverlay();
         }
     }
     
@@ -341,13 +344,14 @@ export class QualityTester {
         this.updateVertexDisplay();
         this.updateCalculateButton();
         this.clearQualityDisplay();
+        this.hideLoadingOverlay(); // Ensure overlay is hidden when clearing
         this.log('Cleared all vertices', LOG_TYPES.INFO);
     }
     
     drawGrid() {
         if (!this.ctx) return;
         
-        this.ctx.strokeStyle = '#f0f0f0';
+        this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-grid-color').trim() || 'rgba(255, 255, 255, 0.08)';
         this.ctx.lineWidth = 1;
         
         const gridSize = CONSTANTS.GRID_SIZE;
@@ -381,7 +385,7 @@ export class QualityTester {
         if (this.vertices.length === 0) return;
         
         // Draw lines connecting vertices
-        this.ctx.strokeStyle = '#3B82F6';
+        this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-user-shape-color').trim() || '#08019e';
         this.ctx.lineWidth = 2;
         
         if (this.vertices.length > 1) {
@@ -396,7 +400,7 @@ export class QualityTester {
             if (this.vertices.length === 4) {
                 this.ctx.closePath();
                 // Fill with transparent color
-                this.ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+                this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-user-shape-fill').trim() || 'rgba(8, 1, 158, 0.1)';
                 this.ctx.fill();
             }
             
@@ -404,17 +408,17 @@ export class QualityTester {
         }
         
         // Draw vertices
-        this.ctx.fillStyle = '#3B82F6';
+        this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-user-shape-color').trim() || '#08019e';
         this.vertices.forEach((vertex, index) => {
             this.ctx.beginPath();
             this.ctx.arc(vertex[0], vertex[1], 6, 0, 2 * Math.PI);
             this.ctx.fill();
             
             // Draw vertex label
-            this.ctx.fillStyle = '#1F2937';
+            this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-text-color').trim() || '#f7fafc';
             this.ctx.font = '12px sans-serif';
             this.ctx.fillText(`${index + 1}`, vertex[0] + 10, vertex[1] - 10);
-            this.ctx.fillStyle = '#3B82F6';
+            this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-user-shape-color').trim() || '#08019e';
         });
     }
     
@@ -542,6 +546,26 @@ export class QualityTester {
         const logContainer = safeGetElement('log-container');
         if (logContainer) {
             logContainer.innerHTML = '<div class="text-gray-500">Ready to draw quadrilateral...</div>';
+        }
+    }
+    
+    /**
+     * Show loading overlay
+     */
+    showLoadingOverlay() {
+        const loadingOverlay = safeGetElement('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.classList.remove('hidden');
+        }
+    }
+    
+    /**
+     * Hide loading overlay
+     */
+    hideLoadingOverlay() {
+        const loadingOverlay = safeGetElement('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
         }
     }
 }
