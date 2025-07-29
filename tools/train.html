@@ -146,74 +146,17 @@
         </div>
     </div>
 
-    <!-- Right Main Content Area - Add responsive classes -->
+    <!-- Right Main Content Area - New horizontal layout with canvas and metrics -->
     <div class="right-content">
-        <!-- Training Metrics Bar - Comprehensive training data display -->
-        <div class="top-info-bar shadow-sm">
-            <div class="flex items-center justify-between mb-3">
-                <div>
-                    <h2 class="text-base font-semibold text-gray-800">Training Progress & Visualization</h2>
+        <!-- Main Content Container - Canvas and Info Panel side by side -->
+        <div class="main-content-container">
+            <!-- Mesh Visualization Area - Left side, takes most space -->
+            <div class="visualization-area-new">
+                <div class="canvas-header">
+                    <h2 class="text-base font-semibold text-gray-800">Mesh Visualization</h2>
                 </div>
-            </div>
-            
-            <!-- Comprehensive training metrics -->
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="info-label">Episode</div>
-                    <div id="current-episode" class="info-value">0</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Total Steps</div>
-                    <div id="total-steps" class="info-value">0</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Episode Steps</div>
-                    <div id="episode-length" class="info-value">0</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Episode Reward</div>
-                    <div id="episode-reward" class="info-value">0</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Avg Reward (100)</div>
-                    <div id="avg-reward" class="info-value">N/A</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Actor Loss</div>
-                    <div id="actor-loss" class="info-value">N/A</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Critic Loss</div>
-                    <div id="critic-loss" class="info-value">N/A</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Alpha Value</div>
-                    <div id="alpha-value" class="info-value">N/A</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Buffer Size</div>
-                    <div id="buffer-size" class="info-value">N/A</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Boundary Vertices</div>
-                    <div id="boundary-vertices" class="info-value">N/A</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Reference Point</div>
-                    <div id="ref-point" class="info-value">N/A</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Click Coordinates</div>
-                    <div id="click-coordinates" class="info-value">Not clicked</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Mesh Visualization Area - Restored canvas functionality -->
-        <div class="visualization-area">
-            <div class="h-full rounded-lg shadow-sm border p-1" style="background: var(--color-bg-canvas); border-color: var(--color-border-primary);">
-                <div class="canvas-container">
-                    <canvas id="mesh-canvas" class="rounded" style="border: 1px solid var(--color-border-primary);"></canvas>
+                <div class="canvas-wrapper-new">
+                    <canvas id="mesh-canvas" class="rounded"></canvas>
                     <!-- Empty state overlay - only shown when no mesh is loaded -->
                     <div id="empty-state-overlay" class="empty-state" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-bg-canvas); display: flex;">
                         <div style="margin: auto;">
@@ -223,6 +166,88 @@
                                 Configure your training parameters and select a mesh to begin. 
                                 The mesh visualization will appear here during training.
                             </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Progress Panel - Right side -->
+            <div class="training-metrics-panel">
+                <div class="metrics-header">
+                    <h3 class="text-sm font-semibold text-gray-800">Training Progress</h3>
+                </div>
+                
+                <!-- Training metrics in vertical layout -->
+                <div class="metrics-content">
+                    <!-- Episode Information -->
+                    <div class="metric-section">
+                        <h4 class="metric-section-title">Episode Info</h4>
+                        <div class="metric-row">
+                            <span class="metric-label">Episode</span>
+                            <span id="current-episode" class="metric-value">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Episode Steps</span>
+                            <span id="episode-length" class="metric-value">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Episode Reward</span>
+                            <span id="episode-reward" class="metric-value">0</span>
+                        </div>
+                    </div>
+
+                    <!-- Training Progress -->
+                    <div class="metric-section">
+                        <h4 class="metric-section-title">Training Progress</h4>
+                        <div class="metric-row">
+                            <span class="metric-label">Total Steps</span>
+                            <span id="total-steps" class="metric-value">0</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Avg Reward (100)</span>
+                            <span id="avg-reward" class="metric-value">N/A</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Est. Finish Time</span>
+                            <span id="estimated-finish-time" class="metric-value">N/A</span>
+                        </div>
+                    </div>
+
+                    <!-- Model Metrics -->
+                    <div class="metric-section">
+                        <h4 class="metric-section-title">Model Metrics</h4>
+                        <div class="metric-row">
+                            <span class="metric-label">Actor Loss</span>
+                            <span id="actor-loss" class="metric-value">N/A</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Critic Loss</span>
+                            <span id="critic-loss" class="metric-value">N/A</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Alpha Value</span>
+                            <span id="alpha-value" class="metric-value">N/A</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Buffer Size</span>
+                            <span id="buffer-size" class="metric-value">N/A</span>
+                        </div>
+                    </div>
+
+                    <!-- Environment Info -->
+                    <div class="metric-section">
+                        <h4 class="metric-section-title">Environment</h4>
+                        <div class="metric-row">
+                            <span class="metric-label">Boundary Vertices</span>
+                            <span id="boundary-vertices" class="metric-value">N/A</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Reference Point</span>
+                            <span id="ref-point" class="metric-value">N/A</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Click Coordinates</span>
+                            <span id="click-coordinates" class="metric-value">Not clicked</span>
                         </div>
                     </div>
                 </div>

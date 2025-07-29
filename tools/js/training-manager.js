@@ -365,6 +365,9 @@ export class TrainingManager {
             this.isTraining = true;
             this.uiController.updateButtonStates(true);
             this.uiController.updateStatusIndicator(STATUS.RUNNING);
+            
+            // Reset estimation tracking when training starts
+            this.uiController.resetEstimationTracking();
 
             this.startPeriodicUpdate();
             this.scheduleImmediateUpdate();

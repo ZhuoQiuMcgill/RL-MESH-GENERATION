@@ -16,6 +16,15 @@ export class CanvasRenderer {
         this.resizeDebounceTimer = null;
         this.lastRenderData = null; // Cache last render data
 
+        // Dynamic sizing state
+        this.adaptiveSizes = {
+            vertexRadius: CONSTANTS.VERTEX_RADIUS,
+            boundaryVertexRadius: 4,
+            boundaryLineWidth: 3,
+            meshVertexLineWidth: 1.5,
+            referencePointRadius: 8
+        };
+
         this.setupCanvas();
         this.bindResizeEvent();
     }
@@ -67,11 +76,18 @@ export class CanvasRenderer {
 
             // If there is cached render data, re-render
             if (this.lastRenderData) {
-                this.renderScene(
-                    this.lastRenderData.meshData,
-                    this.lastRenderData.boundaryVertices,
-                    this.lastRenderData.refPointInfo
-                );
+                if (this.lastRenderData.isPreview) {
+                    this.renderBoundaryPreview(
+                        this.lastRenderData.boundaryVertices,
+                        this.lastRenderData.meshName || ''
+                    );
+                } else {
+                    this.renderScene(
+                        this.lastRenderData.meshData,
+                        this.lastRenderData.boundaryVertices,
+                        this.lastRenderData.refPointInfo
+                    );
+                }
             } else {
                 this.clearCanvas();
             }
@@ -227,6 +243,9 @@ export class CanvasRenderer {
         const transform = this.calculateTransform(boundaryVertices);
         this.currentTransform = transform;
 
+        // Calculate adaptive sizes for boundary preview
+        this.calculateAdaptiveSizes(boundaryVertices, transform);
+
         // Draw boundary
         this.renderBoundaryWithTransform(boundaryVertices, transform);
 
@@ -288,6 +307,9 @@ export class CanvasRenderer {
         // Calculate transformation parameters
         const transform = this.calculateTransform(allVertices);
         this.currentTransform = transform;
+
+        // Calculate adaptive sizes based on data density
+        this.calculateAdaptiveSizes(allVertices, transform);
 
         // Render in layers
         if (meshData && Object.keys(meshData).length > 0) {
@@ -409,7 +431,7 @@ export class CanvasRenderer {
 
         this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-mesh-vertex-color').trim() || '#3B82F6';
         this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-mesh-vertex-stroke').trim() || '#1E40AF';
-        this.ctx.lineWidth = 1.5;
+        this.ctx.lineWidth = this.adaptiveSizes.meshVertexLineWidth;
 
         Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
             try {
@@ -418,7 +440,7 @@ export class CanvasRenderer {
                     const center = JSON.parse(vertexStr);
                     if (isValidCoordinate(center)) {
                         const pos = this.worldToScreen(center, transform);
-                        this.drawVertex(pos, CONSTANTS.VERTEX_RADIUS);
+                        this.drawVertex(pos, this.adaptiveSizes.vertexRadius);
                         drawn.add(vertexStr);
                     }
                 }
@@ -430,7 +452,7 @@ export class CanvasRenderer {
                             const key = JSON.stringify(vertex);
                             if (!drawn.has(key)) {
                                 const pos = this.worldToScreen(vertex, transform);
-                                this.drawVertex(pos, CONSTANTS.VERTEX_RADIUS);
+                                this.drawVertex(pos, this.adaptiveSizes.vertexRadius);
                                 drawn.add(key);
                             }
                         }
@@ -454,7 +476,7 @@ export class CanvasRenderer {
 
         // Draw boundary lines
         this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-boundary-color').trim() || '#EF4444';
-        this.ctx.lineWidth = 3;
+        this.ctx.lineWidth = this.adaptiveSizes.boundaryLineWidth;
         this.ctx.beginPath();
 
         const firstPoint = this.worldToScreen(boundaryVertices[0], transform);
@@ -476,7 +498,7 @@ export class CanvasRenderer {
         boundaryVertices.forEach(vertex => {
             if (isValidCoordinate(vertex)) {
                 const screenPos = this.worldToScreen(vertex, transform);
-                this.drawVertex(screenPos, 4);
+                this.drawVertex(screenPos, this.adaptiveSizes.boundaryVertexRadius);
             }
         });
     }
@@ -496,7 +518,7 @@ export class CanvasRenderer {
         // Draw local environment edges
         if (Array.isArray(local_env_vertices) && local_env_vertices.length > 1) {
             this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-local-env-color').trim() || '#F59E0B';
-            this.ctx.lineWidth = 4;
+            this.ctx.lineWidth = Math.max(2, this.adaptiveSizes.boundaryLineWidth * 1.33);
             this.ctx.lineCap = 'round';
             this.ctx.beginPath();
 
@@ -517,8 +539,8 @@ export class CanvasRenderer {
             const refScreenPos = this.worldToScreen(ref_vertex, transform);
             this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-color').trim() || '#10B981';
             this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-white').trim() || '#FFFFFF';
-            this.ctx.lineWidth = 2;
-            this.drawVertex(refScreenPos, 8);
+            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.meshVertexLineWidth);
+            this.drawVertex(refScreenPos, this.adaptiveSizes.referencePointRadius);
         }
 
         // Draw clicked point for Type1 actions
@@ -526,14 +548,14 @@ export class CanvasRenderer {
             const clickedScreenPos = this.worldToScreen(clicked_point, transform);
             this.ctx.fillStyle = '#FF6B6B'; // Red color for clicked point
             this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = 2;
-            this.drawVertex(clickedScreenPos, 6);
+            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.meshVertexLineWidth);
+            this.drawVertex(clickedScreenPos, Math.max(3, this.adaptiveSizes.referencePointRadius * 0.75));
             
             // Draw connection line from reference point to clicked point
             if (isValidCoordinate(ref_vertex)) {
                 const refScreenPos = this.worldToScreen(ref_vertex, transform);
                 this.ctx.strokeStyle = '#FF6B6B';
-                this.ctx.lineWidth = 2;
+                this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.boundaryLineWidth * 0.67);
                 this.ctx.setLineDash([5, 5]); // Dashed line
                 this.drawLine(refScreenPos, clickedScreenPos);
                 this.ctx.setLineDash([]); // Reset line dash
@@ -544,7 +566,7 @@ export class CanvasRenderer {
         if (new_element && Array.isArray(new_element) && new_element.length >= 3) {
             this.ctx.strokeStyle = '#00D2FF'; // Cyan color for new element
             this.ctx.fillStyle = 'rgba(0, 210, 255, 0.1)';
-            this.ctx.lineWidth = 3;
+            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.boundaryLineWidth);
             
             // Draw element outline
             this.ctx.beginPath();
@@ -564,11 +586,11 @@ export class CanvasRenderer {
             // Draw vertices of new element
             this.ctx.fillStyle = '#00D2FF';
             this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = 2;
+            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.meshVertexLineWidth);
             new_element.forEach(vertex => {
                 if (isValidCoordinate(vertex)) {
                     const vertexScreenPos = this.worldToScreen(vertex, transform);
-                    this.drawVertex(vertexScreenPos, 5);
+                    this.drawVertex(vertexScreenPos, Math.max(2, this.adaptiveSizes.boundaryVertexRadius * 1.25));
                 }
             });
         }
@@ -596,6 +618,125 @@ export class CanvasRenderer {
         this.ctx.moveTo(start[0], start[1]);
         this.ctx.lineTo(end[0], end[1]);
         this.ctx.stroke();
+    }
+
+    /**
+     * Calculate adaptive sizes based on data density and canvas scale
+     * @param {Array} allVertices - All vertices to analyze
+     * @param {Object} transform - Transformation parameters
+     */
+    calculateAdaptiveSizes(allVertices, transform) {
+        if (!allVertices || allVertices.length === 0 || !transform) {
+            // Use default sizes
+            this.adaptiveSizes = {
+                vertexRadius: CONSTANTS.VERTEX_RADIUS,
+                boundaryVertexRadius: 4,
+                boundaryLineWidth: 3,
+                meshVertexLineWidth: 1.5,
+                referencePointRadius: 8
+            };
+            return;
+        }
+
+        const vertexCount = allVertices.length;
+        const canvasArea = this.canvas.width * this.canvas.height / Math.pow(window.devicePixelRatio || 1, 2);
+        const scale = transform.scale;
+
+        // Calculate average distance between adjacent vertices
+        const avgDistance = this.calculateAverageVertexDistance(allVertices);
+        const screenAvgDistance = avgDistance * scale;
+
+        // Density factor: higher values mean denser mesh
+        const densityFactor = Math.max(0.1, Math.min(2.0, 
+            Math.sqrt(vertexCount) / Math.sqrt(canvasArea / 10000)
+        ));
+
+        // Scale factor: how zoomed in/out we are
+        const scaleFactor = Math.max(0.3, Math.min(3.0, scale / 100));
+
+        // Distance factor: how close vertices are on screen
+        const distanceFactor = Math.max(0.2, Math.min(2.0, screenAvgDistance / 20));
+
+        // Base sizes that will be adjusted
+        const baseSizes = {
+            vertexRadius: CONSTANTS.VERTEX_RADIUS,
+            boundaryVertexRadius: 4,
+            boundaryLineWidth: 3,
+            meshVertexLineWidth: 1.5,
+            referencePointRadius: 8
+        };
+
+        // Apply adaptive scaling
+        const adaptiveMultiplier = Math.min(2.0, 
+            (distanceFactor * scaleFactor) / Math.sqrt(densityFactor)
+        );
+
+        // Ensure minimum sizes for visibility
+        this.adaptiveSizes = {
+            vertexRadius: Math.max(1.5, Math.min(12, baseSizes.vertexRadius * adaptiveMultiplier)),
+            boundaryVertexRadius: Math.max(1.5, Math.min(8, baseSizes.boundaryVertexRadius * adaptiveMultiplier)),
+            boundaryLineWidth: Math.max(1, Math.min(8, baseSizes.boundaryLineWidth * adaptiveMultiplier)),
+            meshVertexLineWidth: Math.max(0.5, Math.min(4, baseSizes.meshVertexLineWidth * adaptiveMultiplier)),
+            referencePointRadius: Math.max(3, Math.min(16, baseSizes.referencePointRadius * adaptiveMultiplier))
+        };
+
+        // Debug logging (can be removed in production)
+        console.debug('Adaptive sizing:', {
+            vertexCount,
+            avgDistance: avgDistance.toFixed(2),
+            screenAvgDistance: screenAvgDistance.toFixed(2),
+            densityFactor: densityFactor.toFixed(2),
+            scaleFactor: scaleFactor.toFixed(2),
+            distanceFactor: distanceFactor.toFixed(2),
+            adaptiveMultiplier: adaptiveMultiplier.toFixed(2),
+            sizes: this.adaptiveSizes
+        });
+    }
+
+    /**
+     * Calculate average distance between adjacent vertices
+     * @param {Array} vertices - Array of vertices
+     * @returns {number} Average distance
+     */
+    calculateAverageVertexDistance(vertices) {
+        if (vertices.length < 2) return 50; // Default distance
+
+        let totalDistance = 0;
+        let count = 0;
+
+        // Calculate distances between consecutive vertices
+        for (let i = 0; i < vertices.length - 1; i++) {
+            const v1 = vertices[i];
+            const v2 = vertices[i + 1];
+            
+            if (isValidCoordinate(v1) && isValidCoordinate(v2)) {
+                const dx = v2[0] - v1[0];
+                const dy = v2[1] - v1[1];
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    totalDistance += distance;
+                    count++;
+                }
+            }
+        }
+
+        // Also check distance from last to first vertex for closed shapes
+        if (count > 0) {
+            const first = vertices[0];
+            const last = vertices[vertices.length - 1];
+            if (isValidCoordinate(first) && isValidCoordinate(last)) {
+                const dx = last[0] - first[0];
+                const dy = last[1] - first[1];
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance > 0 && distance < totalDistance / count * 2) { // Only if it's reasonable
+                    totalDistance += distance;
+                    count++;
+                }
+            }
+        }
+
+        return count > 0 ? totalDistance / count : 50;
     }
 
     /**
@@ -642,6 +783,45 @@ export class CanvasRenderer {
      */
     onResize() {
         this.handleResize();
+    }
+
+    /**
+     * Get current adaptive sizes for debugging/inspection
+     * @returns {Object} Current adaptive sizes
+     */
+    getCurrentSizes() {
+        return {
+            ...this.adaptiveSizes,
+            isAdaptive: true,
+            timestamp: Date.now()
+        };
+    }
+
+    /**
+     * Set manual size overrides (useful for testing)
+     * @param {Object} sizeOverrides - Size overrides
+     */
+    setSizeOverrides(sizeOverrides) {
+        this.adaptiveSizes = {
+            ...this.adaptiveSizes,
+            ...sizeOverrides
+        };
+        
+        // Re-render if we have cached data
+        if (this.lastRenderData) {
+            if (this.lastRenderData.isPreview) {
+                this.renderBoundaryPreview(
+                    this.lastRenderData.boundaryVertices,
+                    this.lastRenderData.meshName || ''
+                );
+            } else {
+                this.renderScene(
+                    this.lastRenderData.meshData,
+                    this.lastRenderData.boundaryVertices,
+                    this.lastRenderData.refPointInfo
+                );
+            }
+        }
     }
 
     /**

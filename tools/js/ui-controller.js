@@ -13,6 +13,11 @@ export class UIController {
         this.boundaryData = null;
         this.refPointInfo = null;
         this.checkpoints = []; // Store checkpoint list
+        
+        // Time estimation tracking
+        this.progressHistory = [];
+        this.maxTimesteps = null;
+        this.trainingStartTime = null;
     }
 
     /**
@@ -26,7 +31,7 @@ export class UIController {
             'max-timesteps', 'max-steps', 'update-interval', 'description', 
             'current-episode', 'total-steps', 'avg-reward', 'buffer-size', 
             'episode-reward', 'episode-length', 'ref-point', 'click-coordinates', 
-            'boundary-vertices', 'log-container', 'loading-overlay',
+            'boundary-vertices', 'log-container', 'loading-overlay', 'estimated-finish-time',
             // Checkpoint-related elements
             'checkpoint-mode', 'checkpoint-select', 'checkpoint-info', 'checkpoint-details',
             // Training metrics elements
@@ -142,6 +147,9 @@ export class UIController {
             this.updateElement('total-steps', progress.total_steps);
             this.updateElement('display-total-steps', progress.total_steps);
             this.updateElement('compact-steps', progress.total_steps);
+            
+            // Update estimated finish time
+            this.updateEstimatedFinishTime(progress.total_steps);
         }
 
         if (progress.average_reward !== undefined) {
@@ -167,6 +175,124 @@ export class UIController {
         if (progress.current_alpha !== undefined) {
             this.updateElement('compact-alpha', formatNumber(progress.current_alpha, 4));
         }
+    }
+
+    /**
+     * Update estimated finish time based on current progress
+     * @param {number} currentSteps - Current total steps completed
+     */
+    updateEstimatedFinishTime(currentSteps) {
+        // Initialize training start time if not set
+        if (this.trainingStartTime === null && currentSteps > 0) {
+            this.trainingStartTime = Date.now();
+        }
+
+        // Get max timesteps from configuration
+        if (this.maxTimesteps === null) {
+            this.maxTimesteps = this.getMaxTimestepsFromConfig();
+        }
+
+        // Update progress history for rate calculation
+        const now = Date.now();
+        this.progressHistory.push({
+            timestamp: now,
+            steps: currentSteps
+        });
+
+        // Keep only recent history (last 10 entries to smooth out noise)
+        if (this.progressHistory.length > 10) {
+            this.progressHistory.shift();
+        }
+
+        const estimatedTime = this.calculateEstimatedFinishTime(currentSteps);
+        this.updateElement('estimated-finish-time', estimatedTime);
+    }
+
+    /**
+     * Calculate estimated finish time based on progress rate
+     * @param {number} currentSteps - Current total steps
+     * @returns {string} Formatted estimated finish time or status
+     */
+    calculateEstimatedFinishTime(currentSteps) {
+        // Return N/A if we don't have enough data
+        if (!this.maxTimesteps || currentSteps <= 0 || this.progressHistory.length < 2) {
+            return 'N/A';
+        }
+
+        // If training is complete
+        if (currentSteps >= this.maxTimesteps) {
+            return 'Completed';
+        }
+
+        // Calculate rate using recent progress
+        const recentProgress = this.progressHistory.slice(-5); // Use last 5 data points
+        if (recentProgress.length < 2) {
+            return 'Calculating...';
+        }
+
+        const firstPoint = recentProgress[0];
+        const lastPoint = recentProgress[recentProgress.length - 1];
+        
+        const timeElapsed = (lastPoint.timestamp - firstPoint.timestamp) / 1000; // seconds
+        const stepsProgress = lastPoint.steps - firstPoint.steps;
+
+        // Avoid division by zero or negative rates
+        if (timeElapsed <= 0 || stepsProgress <= 0) {
+            return 'Calculating...';
+        }
+
+        const stepsPerSecond = stepsProgress / timeElapsed;
+        const remainingSteps = this.maxTimesteps - currentSteps;
+        const estimatedSecondsRemaining = remainingSteps / stepsPerSecond;
+
+        // Format the estimated time
+        return this.formatDuration(estimatedSecondsRemaining);
+    }
+
+    /**
+     * Format duration in seconds to human readable format
+     * @param {number} seconds - Duration in seconds
+     * @returns {string} Formatted duration string
+     */
+    formatDuration(seconds) {
+        if (isNaN(seconds) || seconds < 0) {
+            return 'N/A';
+        }
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${secs}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${secs}s`;
+        } else {
+            return `${secs}s`;
+        }
+    }
+
+    /**
+     * Get max timesteps from the training configuration
+     * @returns {number|null} Max timesteps or null if not available
+     */
+    getMaxTimestepsFromConfig() {
+        const maxTimestepsInput = this.elements['max-timesteps'];
+        if (maxTimestepsInput && maxTimestepsInput.value) {
+            const value = parseInt(maxTimestepsInput.value);
+            return isNaN(value) ? null : value;
+        }
+        return null;
+    }
+
+    /**
+     * Reset estimation tracking (call when training starts)
+     */
+    resetEstimationTracking() {
+        this.progressHistory = [];
+        this.trainingStartTime = null;
+        this.maxTimesteps = null;
+        this.updateElement('estimated-finish-time', 'N/A');
     }
 
     /**
@@ -641,5 +767,6 @@ export class UIController {
         this.clearLogs();
         this.updateClickCoordinates(null);
         this.hideCheckpointInfo();
+        this.resetEstimationTracking();
     }
 }

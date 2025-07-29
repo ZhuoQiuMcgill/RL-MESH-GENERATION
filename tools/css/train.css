@@ -613,8 +613,8 @@ body {
     box-sizing: border-box;
 }
 
-/* Canvas和信息面板并排布局 */
-.canvas-info-container {
+/* 新的主内容容器 - 水平布局 */
+.main-content-container {
     flex: 1;
     display: flex;
     gap: 1rem;
@@ -623,63 +623,69 @@ body {
     min-height: 0;
 }
 
-/* Canvas区域 - 主要显示区域 */
-.canvas-section {
+/* 新的可视化区域 - 左侧，占据大部分空间 */
+.visualization-area-new {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
-}
-
-/* Canvas上方的紧凑状态栏 */
-.canvas-status-bar {
-    flex-shrink: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0;
-    margin-bottom: 0.5rem;
-    border-bottom: 1px solid var(--color-border-primary);
-}
-
-.status-quick-info {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-.status-badge {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    background: var(--color-bg-card);
+    background: var(--color-bg-secondary);
+    border-radius: 8px;
     border: 1px solid var(--color-border-primary);
-    color: var(--color-text-secondary);
-    font-weight: 500;
+    box-shadow: var(--shadow-sm);
 }
 
-/* Canvas包装器 - 用于控制长宽比 */
-.canvas-wrapper {
+.canvas-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border-primary);
+    background: var(--color-bg-card);
+    border-radius: 8px 8px 0 0;
+}
+
+.canvas-wrapper-new {
     flex: 1;
+    position: relative;
+    padding: 0.5rem;
+    background: var(--color-bg-canvas);
+    border-radius: 0 0 8px 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-bg-canvas);
-    border: 1px solid var(--color-border-primary);
-    border-radius: 8px;
-    overflow: hidden;
     min-height: 0;
-    position: relative;
 }
 
-/* 右侧信息面板 */
-.info-panel {
+.canvas-wrapper-new #mesh-canvas {
+    max-width: 100%;
+    max-height: 100%;
+    border: 1px solid var(--color-border-primary);
+    border-radius: 4px;
+    background: var(--color-bg-canvas);
+    cursor: crosshair;
+}
+
+/* 训练指标面板 - 右侧 */
+.training-metrics-panel {
     width: 300px;
     flex-shrink: 0;
     background: var(--color-bg-secondary);
-    border: 1px solid var(--color-border-primary);
     border-radius: 8px;
+    border: 1px solid var(--color-border-primary);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.metrics-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border-primary);
+    background: var(--color-bg-card);
+    border-radius: 8px 8px 0 0;
+}
+
+.metrics-content {
+    flex: 1;
     padding: 1rem;
     overflow-y: auto;
     display: flex;
@@ -687,103 +693,52 @@ body {
     gap: 1rem;
 }
 
-.info-section {
+/* 指标分组 */
+.metric-section {
     background: var(--color-bg-card);
     border-radius: 6px;
     padding: 0.75rem;
     border: 1px solid var(--color-border-primary);
 }
 
-.info-section-title {
-    font-size: 0.875rem;
+.metric-section-title {
+    font-size: 0.75rem;
     font-weight: 600;
-    color: var(--color-text-primary);
-    margin-bottom: 0.75rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.info-section-title::before {
-    content: '';
-    width: 3px;
-    height: 12px;
-    background: var(--color-primary-gradient);
-    border-radius: 2px;
-}
-
-.info-items {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.details-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-/* 顶部信息栏响应式修复 - 更紧凑设计 */
-.top-info-bar {
-    flex-shrink: 0;
-    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.25rem;
     border-bottom: 1px solid var(--color-border-primary);
-    padding: 12px 16px;
-    color: var(--color-text-primary);
 }
 
-/* 信息展示网格 */
-.info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 12px;
-    margin-top: 8px;
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.25rem 0;
 }
 
-.info-item {
-    text-align: center;
-    padding: 4px 8px;
-    background: var(--color-bg-canvas);
-    border-radius: 6px;
-    border: 1px solid var(--color-border-primary);
-    color: var(--color-text-primary);
+.metric-row:not(:last-child) {
+    border-bottom: 1px solid var(--color-border-primary);
 }
 
-.info-label {
+.metric-label {
     font-size: 0.75rem;
     color: var(--color-text-tertiary);
     font-weight: 500;
 }
 
-.info-value {
+.metric-value {
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--color-text-primary);
-    margin-top: 2px;
+    text-align: right;
+    min-width: 0;
+    word-break: break-all;
 }
 
-/* 可视化区域响应式修复 - 减少padding以获得更多空间 */
-.visualization-area {
-    flex: 1;
-    padding: 1rem;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-/* 修复Canvas容器的响应式和居中问题 */
-.canvas-container {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-}
+/* 保留用于兼容性的空样式块 */
 
 /* 底部日志区域响应式修复 - 优化高度 */
 .bottom-log-area {
@@ -883,11 +838,11 @@ input:focus, select:focus {
         min-width: 260px;
     }
 
-    .info-panel {
+    .training-metrics-panel {
         width: 280px;
     }
 
-    .canvas-info-container {
+    .main-content-container {
         gap: 0.75rem;
         padding: 0.75rem;
     }
@@ -938,20 +893,21 @@ input:focus, select:focus {
     }
 
     /* Canvas和信息面板在小屏幕上竖直排列 */
-    .canvas-info-container {
+    .main-content-container {
         flex-direction: column;
         gap: 0.5rem;
         padding: 0.75rem;
     }
     
-    .info-panel {
+    .training-metrics-panel {
         width: 100%;
         max-height: 200px;
         overflow-y: auto;
     }
 
-    .visualization-area {
-        padding: 0.75rem;
+    .visualization-area-new {
+        flex: 1;
+        min-height: 300px;
     }
 
     .bottom-log-area {
