@@ -48,6 +48,10 @@
         </div>
     </div>
     <div class="status-group">
+        <button id="log-toggle-btn" class="btn-log relative px-3 py-1 text-sm mr-2" title="Toggle Training Log">
+            <span class="log-icon">📋</span>
+            <div id="log-status-indicator" class="log-status-indicator"></div>
+        </button>
         <button id="start-btn" class="btn-primary px-4 py-1 text-sm">
             Start Training
         </button>
@@ -246,6 +250,10 @@
                             <span id="ref-point" class="metric-value">N/A</span>
                         </div>
                         <div class="metric-row">
+                            <span class="metric-label">Avg Element Quality</span>
+                            <span id="avg-element-quality" class="metric-value">N/A</span>
+                        </div>
+                        <div class="metric-row">
                             <span class="metric-label">Click Coordinates</span>
                             <span id="click-coordinates" class="metric-value">Not clicked</span>
                         </div>
@@ -254,19 +262,25 @@
             </div>
         </div>
 
-        <!-- Enhanced Training Log Area -->
-        <div class="bottom-log-area">
-            <div class="log-controls">
-                <h3 class="typography-h3 flex-1">Training Log</h3>
+    </div>
+</div>
+
+<!-- Collapsible Log Overlay -->
+<div id="log-overlay" class="log-overlay hidden">
+    <div class="log-panel">
+        <div class="log-panel-header">
+            <h3 class="log-panel-title">Training Log</h3>
+            <div class="log-panel-controls">
                 <div class="auto-scroll-toggle">
                     <input type="checkbox" id="auto-scroll-checkbox" checked>
                     <label for="auto-scroll-checkbox">Auto-scroll</label>
                 </div>
-                <button id="clear-log-btn" class="btn-tertiary">Clear</button>
+                <button id="clear-log-btn" class="btn-tertiary text-xs">Clear</button>
+                <button id="close-log-btn" class="btn-close" title="Close Log">×</button>
             </div>
-            <div id="log-container" class="log-container">
-                <div class="log-entry log-info">System initialization completed. Ready to start training.</div>
-            </div>
+        </div>
+        <div id="log-container" class="log-container">
+            <div class="log-entry log-info">System initialization completed. Ready to start training.</div>
         </div>
     </div>
 </div>
@@ -313,6 +327,98 @@
                 }
             }, 150);
         });
+
+        // Log System Functionality
+        const logToggleBtn = document.getElementById('log-toggle-btn');
+        const logOverlay = document.getElementById('log-overlay');
+        const closeLogBtn = document.getElementById('close-log-btn');
+        const logStatusIndicator = document.getElementById('log-status-indicator');
+        
+        let isLogOpen = false;
+        let lastLogType = 'info';
+
+        // Toggle log display
+        function toggleLog() {
+            isLogOpen = !isLogOpen;
+            logOverlay.classList.toggle('show', isLogOpen);
+            logToggleBtn.classList.toggle('active', isLogOpen);
+            
+            if (isLogOpen) {
+                // Focus on log overlay to enable click-outside detection
+                logOverlay.focus();
+            }
+        }
+
+        // Close log display
+        function closeLog() {
+            isLogOpen = false;
+            logOverlay.classList.remove('show');
+            logToggleBtn.classList.remove('active');
+        }
+
+        // Update log status indicator
+        function updateLogStatus(logType) {
+            lastLogType = logType;
+            logStatusIndicator.className = `log-status-indicator log-${logType}`;
+        }
+
+        // Event listeners
+        if (logToggleBtn) {
+            logToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleLog();
+            });
+        }
+
+        if (closeLogBtn) {
+            closeLogBtn.addEventListener('click', closeLog);
+        }
+
+        // Click outside to close
+        document.addEventListener('click', (e) => {
+            if (isLogOpen && logOverlay && !logOverlay.contains(e.target) && e.target !== logToggleBtn) {
+                closeLog();
+            }
+        });
+
+        // Prevent log panel clicks from closing the overlay
+        const logPanel = document.querySelector('.log-panel');
+        if (logPanel) {
+            logPanel.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        }
+
+        // Hook into the training manager's log system
+        window.updateLogStatus = updateLogStatus;
+        
+        // Monitor log container for new entries and update status
+        const logContainer = document.getElementById('log-container');
+        if (logContainer) {
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                        // Find the last log entry
+                        const logEntries = logContainer.querySelectorAll('.log-entry');
+                        if (logEntries.length > 0) {
+                            const lastEntry = logEntries[logEntries.length - 1];
+                            let logType = 'info';
+                            
+                            if (lastEntry.classList.contains('log-success')) logType = 'success';
+                            else if (lastEntry.classList.contains('log-error')) logType = 'error';
+                            else if (lastEntry.classList.contains('log-warning')) logType = 'warning';
+                            
+                            updateLogStatus(logType);
+                        }
+                    }
+                });
+            });
+            
+            observer.observe(logContainer, {
+                childList: true,
+                subtree: true
+            });
+        }
     });
 </script>
 </body>

@@ -24,7 +24,7 @@
     box-sizing: border-box;
 }
 
-/* 右侧内容区域 */
+/* 右侧内容区域 - 旧版本 */
 .history-right-content {
     flex: 1;
     display: flex;
@@ -32,6 +32,42 @@
     min-width: 0;
     overflow: hidden;
     width: 0; /* 强制flex计算 */
+    box-sizing: border-box;
+}
+
+/* 新的主内容容器布局 */
+.history-main-content-container {
+    flex: 1;
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+    gap: 16px;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+/* 新的Canvas可视化区域 */
+.history-visualization-area-new {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* 右侧数据面板 */
+.history-data-panel {
+    width: 320px;
+    min-width: 280px;
+    max-width: 400px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 12px;
+    overflow: hidden;
     box-sizing: border-box;
 }
 
@@ -594,4 +630,171 @@ html, body {
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 0.875rem;
+}
+
+/* 新布局的数据面板样式 */
+.history-episode-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border-primary);
+    background: var(--color-bg-primary);
+    flex-shrink: 0;
+}
+
+.history-episode-header h2 {
+    margin: 0 0 4px 0;
+    color: var(--color-text-primary);
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.history-episode-header p {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+}
+
+/* 数据部分通用样式 */
+.data-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--color-border-light);
+    flex-shrink: 0;
+}
+
+.data-section:last-child {
+    border-bottom: none;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.data-section.flex-1 {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.section-title {
+    margin: 0 0 12px 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+/* 统计数据网格 */
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 0.75rem;
+    color: var(--color-text-primary);
+    font-weight: 600;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+/* 数据内容和交互内容 */
+.data-content {
+    background: var(--color-bg-canvas);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 0.75rem;
+    color: var(--color-text-primary);
+    min-height: 60px;
+}
+
+.interaction-content {
+    font-size: 0.75rem;
+}
+
+/* 可滚动内容 */
+.scrollable-content {
+    max-height: 120px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* 新布局的响应式设计 */
+@media (max-width: 1400px) {
+    .history-data-panel {
+        width: 300px;
+        min-width: 260px;
+    }
+}
+
+@media (max-width: 1200px) {
+    .history-main-content-container {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .history-data-panel {
+        width: 100%;
+        max-width: none;
+        flex-direction: row;
+        overflow-x: auto;
+        height: 200px;
+    }
+    
+    .data-section {
+        min-width: 250px;
+        border-right: 1px solid var(--color-border-light);
+        border-bottom: none;
+    }
+    
+    .data-section:last-child {
+        border-right: none;
+        min-width: 300px;
+    }
+}
+
+@media (max-width: 768px) {
+    .history-main-content-container {
+        padding: 8px;
+        gap: 8px;
+    }
+    
+    .history-data-panel {
+        flex-direction: column;
+        height: auto;
+        max-height: 250px;
+        overflow-y: auto;
+    }
+    
+    .data-section {
+        padding: 12px;
+        min-width: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--color-border-light);
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 8px;
+    }
+    
+    .stat-item {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 3px 0;
+    }
 }

@@ -74,7 +74,7 @@ export class CanvasRenderer {
         try {
             this.resizeCanvas();
 
-            // If there is cached render data, re-render
+            // If there is cached render data, re-render  
             if (this.lastRenderData) {
                 if (this.lastRenderData.isPreview) {
                     this.renderBoundaryPreview(
@@ -244,7 +244,11 @@ export class CanvasRenderer {
         this.currentTransform = transform;
 
         // Calculate adaptive sizes for boundary preview
-        this.calculateAdaptiveSizes(boundaryVertices, transform);
+        this.calculateAdaptiveSizes(boundaryVertices, transform, {
+            meshData: null,
+            boundaryVertices: boundaryVertices,
+            context: 'boundary_preview'
+        });
 
         // Draw boundary
         this.renderBoundaryWithTransform(boundaryVertices, transform);
@@ -308,8 +312,12 @@ export class CanvasRenderer {
         const transform = this.calculateTransform(allVertices);
         this.currentTransform = transform;
 
-        // Calculate adaptive sizes based on data density
-        this.calculateAdaptiveSizes(allVertices, transform);
+        // Calculate adaptive sizes based on data density and context
+        this.calculateAdaptiveSizes(allVertices, transform, {
+            meshData: meshData,
+            boundaryVertices: boundaryVertices,
+            context: 'training'
+        });
 
         // Render in layers
         if (meshData && Object.keys(meshData).length > 0) {
@@ -622,10 +630,11 @@ export class CanvasRenderer {
 
     /**
      * Calculate adaptive sizes based on data density and canvas scale
-     * @param {Array} allVertices - All vertices to analyze
+     * @param {Array} allVertices - All vertices to analyze  
      * @param {Object} transform - Transformation parameters
+     * @param {Object} context - Context information {meshData, boundaryVertices, context}
      */
-    calculateAdaptiveSizes(allVertices, transform) {
+    calculateAdaptiveSizes(allVertices, transform, context = {}) {
         if (!allVertices || allVertices.length === 0 || !transform) {
             // Use default sizes
             this.adaptiveSizes = {
@@ -638,26 +647,42 @@ export class CanvasRenderer {
             return;
         }
 
-        const vertexCount = allVertices.length;
-        const canvasArea = this.canvas.width * this.canvas.height / Math.pow(window.devicePixelRatio || 1, 2);
-        const scale = transform.scale;
+        const {meshData, boundaryVertices, context: scenarioType} = context;
+        
+        // Calculate mesh vertex count
+        let meshVertexCount = 0;
+        if (meshData && typeof meshData === 'object') {
+            // Count unique vertices in mesh data
+            const uniqueMeshVertices = new Set();
+            Object.entries(meshData).forEach(([vertexStr, adjacentVertices]) => {
+                uniqueMeshVertices.add(vertexStr);
+                if (Array.isArray(adjacentVertices)) {
+                    adjacentVertices.forEach(vertex => {
+                        uniqueMeshVertices.add(JSON.stringify(vertex));
+                    });
+                }
+            });
+            meshVertexCount = uniqueMeshVertices.size;
+        }
 
-        // Calculate average distance between adjacent vertices
-        const avgDistance = this.calculateAverageVertexDistance(allVertices);
-        const screenAvgDistance = avgDistance * scale;
+        const boundaryVertexCount = boundaryVertices ? boundaryVertices.length : 0;
+        const totalVertexCount = allVertices.length;
 
-        // Density factor: higher values mean denser mesh
-        const densityFactor = Math.max(0.1, Math.min(2.0, 
-            Math.sqrt(vertexCount) / Math.sqrt(canvasArea / 10000)
-        ));
+        // Determine scenario and primary vertex count for sizing
+        let primaryVertexCount = totalVertexCount;
+        let scenario = 'mixed';
+        
+        if (meshVertexCount > 50 && meshVertexCount > boundaryVertexCount * 3) {
+            // Mesh-heavy scenario (like history page with lots of mesh data)
+            scenario = 'mesh_heavy';
+            primaryVertexCount = meshVertexCount;
+        } else if (boundaryVertexCount > 0 && meshVertexCount < boundaryVertexCount) {
+            // Boundary-heavy scenario (like boundary preview)
+            scenario = 'boundary_heavy';
+            primaryVertexCount = boundaryVertexCount;
+        }
 
-        // Scale factor: how zoomed in/out we are
-        const scaleFactor = Math.max(0.3, Math.min(3.0, scale / 100));
-
-        // Distance factor: how close vertices are on screen
-        const distanceFactor = Math.max(0.2, Math.min(2.0, screenAvgDistance / 20));
-
-        // Base sizes that will be adjusted
+        // Base sizes
         const baseSizes = {
             vertexRadius: CONSTANTS.VERTEX_RADIUS,
             boundaryVertexRadius: 4,
@@ -666,29 +691,46 @@ export class CanvasRenderer {
             referencePointRadius: 8
         };
 
-        // Apply adaptive scaling
-        const adaptiveMultiplier = Math.min(2.0, 
-            (distanceFactor * scaleFactor) / Math.sqrt(densityFactor)
-        );
+        // Point-count-based sizing (simpler and more reliable)
+        let sizeMultiplier = 1.0;
+        
+        if (primaryVertexCount > 500) {
+            sizeMultiplier = 0.4;  // Very dense
+        } else if (primaryVertexCount > 200) {
+            sizeMultiplier = 0.6;  // Dense
+        } else if (primaryVertexCount > 100) {
+            sizeMultiplier = 0.8;  // Medium dense
+        } else if (primaryVertexCount > 50) {
+            sizeMultiplier = 0.9;  // Slightly dense
+        } else if (primaryVertexCount < 20) {
+            sizeMultiplier = 1.3;  // Sparse, make larger
+        }
 
-        // Ensure minimum sizes for visibility
+        // Scale factor adjustment
+        const scale = transform.scale;
+        const scaleFactor = Math.max(0.5, Math.min(2.0, scale / 100));
+        sizeMultiplier *= scaleFactor;
+
+        // Apply sizing with bounds
         this.adaptiveSizes = {
-            vertexRadius: Math.max(1.5, Math.min(12, baseSizes.vertexRadius * adaptiveMultiplier)),
-            boundaryVertexRadius: Math.max(1.5, Math.min(8, baseSizes.boundaryVertexRadius * adaptiveMultiplier)),
-            boundaryLineWidth: Math.max(1, Math.min(8, baseSizes.boundaryLineWidth * adaptiveMultiplier)),
-            meshVertexLineWidth: Math.max(0.5, Math.min(4, baseSizes.meshVertexLineWidth * adaptiveMultiplier)),
-            referencePointRadius: Math.max(3, Math.min(16, baseSizes.referencePointRadius * adaptiveMultiplier))
+            vertexRadius: Math.max(1.0, Math.min(12, baseSizes.vertexRadius * sizeMultiplier)),
+            boundaryVertexRadius: Math.max(1.0, Math.min(8, baseSizes.boundaryVertexRadius * sizeMultiplier)),
+            boundaryLineWidth: Math.max(0.5, Math.min(8, baseSizes.boundaryLineWidth * sizeMultiplier)),
+            meshVertexLineWidth: Math.max(0.3, Math.min(4, baseSizes.meshVertexLineWidth * sizeMultiplier)),
+            referencePointRadius: Math.max(2, Math.min(16, baseSizes.referencePointRadius * sizeMultiplier))
         };
 
-        // Debug logging (can be removed in production)
+        // Debug logging
         console.debug('Adaptive sizing:', {
-            vertexCount,
-            avgDistance: avgDistance.toFixed(2),
-            screenAvgDistance: screenAvgDistance.toFixed(2),
-            densityFactor: densityFactor.toFixed(2),
+            scenario,
+            scenarioType,
+            totalVertexCount,
+            meshVertexCount,
+            boundaryVertexCount,
+            primaryVertexCount,
+            scale: scale.toFixed(2),
             scaleFactor: scaleFactor.toFixed(2),
-            distanceFactor: distanceFactor.toFixed(2),
-            adaptiveMultiplier: adaptiveMultiplier.toFixed(2),
+            sizeMultiplier: sizeMultiplier.toFixed(2),
             sizes: this.adaptiveSizes
         });
     }

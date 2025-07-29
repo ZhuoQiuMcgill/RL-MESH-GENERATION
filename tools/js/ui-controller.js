@@ -30,7 +30,7 @@ export class UIController {
             'start-btn', 'stop-btn', 'refresh-btn', 'clear-log-btn', 
             'max-timesteps', 'max-steps', 'update-interval', 'description', 
             'current-episode', 'total-steps', 'avg-reward', 'buffer-size', 
-            'episode-reward', 'episode-length', 'ref-point', 'click-coordinates', 
+            'episode-reward', 'episode-length', 'ref-point', 'avg-element-quality', 'click-coordinates', 
             'boundary-vertices', 'log-container', 'loading-overlay', 'estimated-finish-time',
             // Checkpoint-related elements
             'checkpoint-mode', 'checkpoint-select', 'checkpoint-info', 'checkpoint-details',
@@ -104,6 +104,13 @@ export class UIController {
             this.updateElement('ref-point', 'N/A');
         }
 
+        // Update average element quality
+        if (stats.avg_element_quality !== undefined && stats.avg_element_quality !== null) {
+            this.updateElement('avg-element-quality', formatNumber(stats.avg_element_quality, 4));
+        } else {
+            this.updateElement('avg-element-quality', 'N/A');
+        }
+
         // Update detailed statistics (if statsContainer exists)
         const statsContainer = document.getElementById('stats-container');
         if (statsContainer) {
@@ -114,6 +121,7 @@ export class UIController {
                 <span>Average Reward: ${formatNumber(stats.average_reward)}</span>
                 <span>Episode Length: ${stats.episode_length || 'N/A'}</span>
                 <span>Boundary Vertices: ${stats.boundary_vertices || 'N/A'}</span>
+                <span>Avg Element Quality: ${formatNumber(stats.avg_element_quality, 4)}</span>
                 <span>Buffer Size: ${stats.buffer_size || 'N/A'}</span>
                 <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
                 <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
@@ -182,9 +190,15 @@ export class UIController {
      * @param {number} currentSteps - Current total steps completed
      */
     updateEstimatedFinishTime(currentSteps) {
-        // Initialize training start time if not set
-        if (this.trainingStartTime === null && currentSteps > 0) {
-            this.trainingStartTime = Date.now();
+        const now = Date.now();
+        
+        // Handle mid-training refresh scenario
+        if (this.trainingStartTime === null && currentSteps > 0 && this.progressHistory.length === 0) {
+            // This appears to be a mid-training refresh - estimate when training started
+            this.adjustForMidTrainingRefresh(currentSteps, now);
+        } else if (this.trainingStartTime === null && currentSteps > 0) {
+            // Normal case - training just started from frontend
+            this.trainingStartTime = now;
         }
 
         // Get max timesteps from configuration
@@ -193,14 +207,13 @@ export class UIController {
         }
 
         // Update progress history for rate calculation
-        const now = Date.now();
         this.progressHistory.push({
             timestamp: now,
             steps: currentSteps
         });
 
-        // Keep only recent history (last 10 entries to smooth out noise)
-        if (this.progressHistory.length > 10) {
+        // Keep only recent history (last 15 entries to get better trend data)
+        if (this.progressHistory.length > 15) {
             this.progressHistory.shift();
         }
 
@@ -215,7 +228,7 @@ export class UIController {
      */
     calculateEstimatedFinishTime(currentSteps) {
         // Return N/A if we don't have enough data
-        if (!this.maxTimesteps || currentSteps <= 0 || this.progressHistory.length < 2) {
+        if (!this.maxTimesteps || currentSteps <= 0 || this.progressHistory.length < 1) {
             return 'N/A';
         }
 
@@ -224,26 +237,66 @@ export class UIController {
             return 'Completed';
         }
 
-        // Calculate rate using recent progress
-        const recentProgress = this.progressHistory.slice(-5); // Use last 5 data points
-        if (recentProgress.length < 2) {
+        // For first update, just return "Calculating..."
+        if (this.progressHistory.length < 2) {
             return 'Calculating...';
         }
 
-        const firstPoint = recentProgress[0];
-        const lastPoint = recentProgress[recentProgress.length - 1];
+        // Calculate rate using different strategies based on progress pattern
+        let stepsPerSecond = 0;
+        const now = Date.now();
         
-        const timeElapsed = (lastPoint.timestamp - firstPoint.timestamp) / 1000; // seconds
-        const stepsProgress = lastPoint.steps - firstPoint.steps;
-
-        // Avoid division by zero or negative rates
-        if (timeElapsed <= 0 || stepsProgress <= 0) {
+        // Strategy 1: Try to use recent progress (last few data points)
+        const recentProgress = this.progressHistory.slice(-Math.min(5, this.progressHistory.length));
+        if (recentProgress.length >= 2) {
+            const recentFirst = recentProgress[0];
+            const recentLast = recentProgress[recentProgress.length - 1];
+            const recentTimeElapsed = (recentLast.timestamp - recentFirst.timestamp) / 1000;
+            const recentStepsProgress = recentLast.steps - recentFirst.steps;
+            
+            if (recentTimeElapsed > 0 && recentStepsProgress > 0) {
+                stepsPerSecond = recentStepsProgress / recentTimeElapsed;
+            }
+        }
+        
+        // Strategy 2: If recent progress shows no step increase, use overall progress rate
+        if (stepsPerSecond <= 0 && this.progressHistory.length >= 2) {
+            const firstPoint = this.progressHistory[0];
+            const lastPoint = this.progressHistory[this.progressHistory.length - 1];
+            const totalTimeElapsed = (lastPoint.timestamp - firstPoint.timestamp) / 1000;
+            const totalStepsProgress = lastPoint.steps - firstPoint.steps;
+            
+            if (totalTimeElapsed > 0 && totalStepsProgress > 0) {
+                stepsPerSecond = totalStepsProgress / totalTimeElapsed;
+            }
+        }
+        
+        // Strategy 3: If we still have no progress but have training start time, calculate from beginning
+        if (stepsPerSecond <= 0 && this.trainingStartTime !== null) {
+            const totalTrainingTime = (now - this.trainingStartTime) / 1000;
+            if (totalTrainingTime > 0 && currentSteps > 0) {
+                stepsPerSecond = currentSteps / totalTrainingTime;
+            }
+        }
+        
+        // If still no valid rate can be calculated
+        if (stepsPerSecond <= 0) {
             return 'Calculating...';
         }
 
-        const stepsPerSecond = stepsProgress / timeElapsed;
         const remainingSteps = this.maxTimesteps - currentSteps;
         const estimatedSecondsRemaining = remainingSteps / stepsPerSecond;
+
+        // Debug logging for timing calculations
+        console.debug('Time estimation:', {
+            currentSteps,
+            maxTimesteps: this.maxTimesteps,
+            remainingSteps,
+            stepsPerSecond: stepsPerSecond.toFixed(4),
+            estimatedSecondsRemaining: estimatedSecondsRemaining.toFixed(2),
+            progressHistoryLength: this.progressHistory.length,
+            trainingStartTime: this.trainingStartTime ? new Date(this.trainingStartTime).toLocaleTimeString() : 'null'
+        });
 
         // Format the estimated time
         return this.formatDuration(estimatedSecondsRemaining);
@@ -293,6 +346,34 @@ export class UIController {
         this.trainingStartTime = null;
         this.maxTimesteps = null;
         this.updateElement('estimated-finish-time', 'N/A');
+    }
+    
+    /**
+     * Handle mid-training refresh scenario by adjusting start time estimation
+     * This method is called when we detect that the frontend was refreshed during training
+     * @param {number} currentSteps - Current steps when frontend was refreshed
+     * @param {number} refreshTime - Time when frontend was refreshed (timestamp)
+     */
+    adjustForMidTrainingRefresh(currentSteps, refreshTime) {
+        // If we have a reasonable assumption about training speed, we can estimate when training actually started
+        // This is a heuristic approach for when user refreshes frontend mid-training
+        
+        if (currentSteps > 0 && refreshTime) {
+            // Assume a reasonable average training speed (steps per second) to backtrack start time
+            // This is just an initial estimate that will be refined as we get more data points
+            const assumedAverageStepsPerSecond = 2; // Conservative estimate
+            const estimatedElapsedSeconds = currentSteps / assumedAverageStepsPerSecond;
+            const estimatedStartTime = refreshTime - (estimatedElapsedSeconds * 1000);
+            
+            // Set the estimated training start time
+            this.trainingStartTime = estimatedStartTime;
+            
+            // Add the current point as the first data point
+            this.progressHistory = [{
+                timestamp: refreshTime,
+                steps: currentSteps
+            }];
+        }
     }
 
     /**

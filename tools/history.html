@@ -130,46 +130,10 @@
         </div>
     </div>
 
-    <!-- Right Main Content Area -->
-    <div class="history-right-content">
-        <!-- Top Info Bar -->
-        <div class="history-top-info-bar shadow-sm">
-            <div class="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-800">Episode Details</h2>
-                    <p class="text-sm text-gray-600">
-                        <span id="current-episode-display">No Episode Selected</span>
-                        <span id="episode-meta-info" class="hidden">
-                            - Actual Episode: <span id="actual-episode-number-display">N/A</span>
-                            - Reward: <span id="episode-reward-display">0.000</span>
-                            - Length: <span id="episode-length-display">0</span> steps
-                            - Status: <span id="episode-status-display">Unknown</span>
-                        </span>
-                    </p>
-                </div>
-                <div class="flex items-center space-x-4 flex-wrap">
-                    <div class="text-sm">
-                        <span class="text-gray-600">Boundary Vertices:</span>
-                        <span id="boundary-vertices-count" class="font-semibold text-gray-800">0</span>
-                    </div>
-                    <div class="text-sm">
-                        <span class="text-gray-600">Mesh Vertices:</span>
-                        <span id="mesh-vertices-count" class="font-semibold text-gray-800">0</span>
-                    </div>
-                    <div class="text-sm">
-                        <span class="text-gray-600">Reference Point:</span>
-                        <span id="ref-point-display" class="font-semibold text-gray-800">N/A</span>
-                    </div>
-                    <div class="text-sm">
-                        <span class="text-gray-600">Click Coordinates:</span>
-                        <span id="click-coordinates-display" class="font-semibold text-blue-600">Not clicked</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Visualization Area -->
-        <div class="history-visualization-area">
+    <!-- Main Content Container -->
+    <div class="history-main-content-container">
+        <!-- Canvas Visualization Area -->
+        <div class="history-visualization-area-new">
             <div class="h-full rounded-lg shadow-sm border p-1" style="background: var(--color-bg-canvas); border-color: var(--color-border-primary);">
                 <div class="canvas-container">
                     <canvas id="history-canvas" class="rounded" style="border: 1px solid var(--color-border-primary);"></canvas>
@@ -177,30 +141,83 @@
             </div>
         </div>
 
-        <!-- Bottom Detail Info Area -->
-        <div class="history-bottom-info-area">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 h-full">
-                <!-- Episode Data -->
-                <div class="rounded-lg shadow-sm border p-4" style="background: var(--color-bg-card); border-color: var(--color-border-primary);">
-                    <h3 class="text-sm font-medium text-gray-700 mb-3">Episode Data</h3>
-                    <div id="episode-data-container"
-                         class="text-xs space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
-                        <div class="text-gray-500">Select an episode to view details</div>
+        <!-- Right Data Panel -->
+        <div class="history-data-panel">
+            <!-- Episode Details Header -->
+            <div class="history-episode-header">
+                <h2 class="text-lg font-semibold text-gray-800">Episode Details</h2>
+                <p class="text-sm text-gray-600">
+                    <span id="current-episode-display">No Episode Selected</span>
+                    <span id="episode-meta-info" class="hidden">
+                        - Actual Episode #<span id="actual-episode-number-display-header">N/A</span>
+                    </span>
+                </p>
+            </div>
+
+            <!-- Episode Information Section -->
+            <div class="data-section">
+                <h3 class="section-title">Episode Information</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Index:</span>
+                        <span id="episode-index-display" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Actual Episode:</span>
+                        <span id="actual-episode-number-display" class="stat-value">N/A</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Reward:</span>
+                        <span id="episode-reward-display" class="stat-value">0.000</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Length:</span>
+                        <span id="episode-length-display" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Status:</span>
+                        <span id="episode-status-display" class="stat-value">Unknown</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Boundary Vertices:</span>
+                        <span id="boundary-vertices-count" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Mesh Vertices:</span>
+                        <span id="mesh-vertices-count" class="stat-value">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Reference Point:</span>
+                        <span id="ref-point-display" class="stat-value">N/A</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Avg Element Quality:</span>
+                        <span id="avg-element-quality-display" class="stat-value">N/A</span>
                     </div>
                 </div>
+            </div>
 
+            <!-- Canvas Interaction Section -->
+            <div class="data-section">
+                <h3 class="section-title">Canvas Interaction</h3>
+                <div class="interaction-content">
+                    <div class="text-sm">
+                        <span class="text-gray-600">Click Coordinates:</span>
+                        <span id="click-coordinates-display" class="font-semibold text-blue-600">Not clicked</span>
+                    </div>
+                </div>
+            </div>
 
-                <!-- Log/Operation History -->
-                <div class="rounded-lg shadow-sm border p-4" style="background: var(--color-bg-card); border-color: var(--color-border-primary);">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-sm font-medium text-gray-700">Operation Log</h3>
-                        <button id="clear-history-log-btn" class="text-xs text-gray-500 hover:text-gray-700">Clear
-                        </button>
-                    </div>
-                    <div id="history-log-container"
-                         class="text-xs font-mono max-h-32 overflow-y-auto custom-scrollbar">
-                        <div class="text-gray-500">System ready, waiting for actions...</div>
-                    </div>
+            <!-- Operation Log Section -->
+            <div class="data-section flex-1">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="section-title">Operation Log</h3>
+                    <button id="clear-history-log-btn" class="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100">
+                        Clear
+                    </button>
+                </div>
+                <div id="history-log-container" class="data-content scrollable-content font-mono text-xs flex-1">
+                    <div class="text-gray-500">System ready, waiting for actions...</div>
                 </div>
             </div>
         </div>

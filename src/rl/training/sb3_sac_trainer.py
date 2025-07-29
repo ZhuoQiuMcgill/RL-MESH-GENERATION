@@ -333,6 +333,7 @@ class SB3SACTrainer:
             "latest_ref_point": last_detail.get('last_ref_point'),
             "avg_reward_100": self._cb.avg_reward_100(),
             "is_completed": last_detail.get('is_completed'),
+            "avg_element_quality": last_detail.get('avg_element_quality', 0.0),
             # 新增：训练指标
             "recent_actor_loss": latest_metrics.get("actor_loss", 0.0),
             "recent_critic_loss": latest_metrics.get("critic_loss", 0.0),

@@ -435,7 +435,36 @@ export class TrainingManager {
      * Refresh training status
      */
     async refreshStatus() {
-        await this.updateTrainingStatus();
+        // When user manually refreshes status, we need to check if this is a mid-training scenario
+        try {
+            const status = await this.apiClient.getTrainingStatus();
+            
+            // If training is running and we don't have any progress history, this might be a mid-training refresh
+            if (status.running && status.progress && status.progress.total_steps > 0) {
+                // Check if we need to initialize timing for mid-training scenario
+                if (this.uiController.progressHistory.length === 0 && this.uiController.trainingStartTime === null) {
+                    // This is likely a mid-training refresh scenario
+                    this.uiController.adjustForMidTrainingRefresh(status.progress.total_steps, Date.now());
+                    this.uiController.logMessage('Detected mid-training refresh - adjusting time estimation', LOG_TYPES.INFO);
+                }
+                
+                // Update training state
+                this.isTraining = true;
+                this.uiController.updateButtonStates(true);
+                
+                // Start periodic updates if not already running
+                if (!this.updateInterval) {
+                    this.startPeriodicUpdate();
+                }
+            }
+            
+            // Handle the status update normally
+            this.handleStatusUpdate(status);
+            
+        } catch (error) {
+            console.error('Failed to refresh training status:', error);
+            this.uiController.logMessage('Failed to refresh training status: ' + error.message, LOG_TYPES.ERROR);
+        }
     }
 
     /**

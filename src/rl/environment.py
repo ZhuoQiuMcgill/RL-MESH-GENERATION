@@ -64,12 +64,12 @@ class MeshEnv(gym.Env):
         self.generated_elements = 0
         self.first_invalid_action = True
 
-        # SB3兼容的episode统计属性
         self.episode_reward = 0.0
         self.episode_length = 0
         self.episode_count = 0
 
         self.invalid_action_count = 0
+        self.total_element_quality = 0.0
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
         self.action_count = {}
 
@@ -90,12 +90,12 @@ class MeshEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # 创建边界和网格的深拷贝
         self.boundary = copy.deepcopy(self.initial_boundary)
         self.mesh = Mesh(self.boundary)
         self.total_initial_area = self.boundary.get_area()
         self.current_step = 0
         self.generated_elements = 0
+        self.total_element_quality = 0.0
         self.invalid_action_count = 0
         self.action_count = {}
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
@@ -139,6 +139,7 @@ class MeshEnv(gym.Env):
                     + self.speed_penalty(generated_element)
             )
             self.generated_elements += 1
+            self.total_element_quality += element_quality_reward
             terminated = self._is_terminated()
             complete = terminated
             truncated = self.current_step >= self.max_steps
@@ -171,6 +172,10 @@ class MeshEnv(gym.Env):
         }
 
         if terminated or truncated:
+            avg_element_quality = 0
+            if self.generated_elements > 0:
+                avg_element_quality = self.total_element_quality / self.generated_elements
+
             info["episode"] = {"r": float(self.episode_reward),
                                "l": int(self.current_step)}
             info["detail"] = {"r": float(self.episode_reward),
@@ -180,7 +185,8 @@ class MeshEnv(gym.Env):
                               "last_ref_point": self.get_last_reference_info(),
                               "is_completed": complete,
                               "generated_elements": self.generated_elements,
-                              "action_count": self.action_count}
+                              "action_count": self.action_count,
+                              "avg_element_quality": avg_element_quality}
 
         return observation, reward, terminated, truncated, info
 

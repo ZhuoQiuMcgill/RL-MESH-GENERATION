@@ -39,8 +39,8 @@ export class HistoryManager {
             'training-list', 'current-training-info', 'episode-navigation',
             'training-id-display', 'detail-length-display', 'best-episode-display',
             'episode-index-input', 'current-episode-display', 'episode-meta-info',
-            'episode-reward-display', 'episode-length-display', 'episode-status-display',
-            'actual-episode-number-display', 'boundary-vertices-count', 'mesh-vertices-count', 'ref-point-display',
+            'episode-index-display', 'episode-reward-display', 'episode-length-display', 'episode-status-display',
+            'actual-episode-number-display', 'actual-episode-number-display-header', 'boundary-vertices-count', 'mesh-vertices-count', 'ref-point-display', 'avg-element-quality-display',
             'click-coordinates-display', 'episode-data-container',
             'history-log-container', 'history-loading-overlay',
             // Buttons
@@ -265,25 +265,20 @@ export class HistoryManager {
 
         // Sort training sessions by timestamp, newest first
         const sortedTrainingList = [...this.trainingList].sort((a, b) => {
-            const aDisplayName = this.formatTrainingDisplayName(a);
-            const bDisplayName = this.formatTrainingDisplayName(b);
+            // Extract timestamp directly from training ID
+            const aTimestamp = this.extractTimestampFromTrainingId(a);
+            const bTimestamp = this.extractTimestampFromTrainingId(b);
             
-            // Extract timestamps for comparison
-            const aTimestamp = aDisplayName.timestamp;
-            const bTimestamp = bDisplayName.timestamp;
-            
-            // If both have timestamps, sort in reverse chronological order (newest first)
-            if (aTimestamp && bTimestamp && aTimestamp.includes('_') && bTimestamp.includes('_')) {
-                const aTime = aTimestamp.replace(/[^0-9]/g, ''); // Remove non-numeric characters
-                const bTime = bTimestamp.replace(/[^0-9]/g, ''); // Remove non-numeric characters
-                return bTime.localeCompare(aTime); // Reverse comparison
+            // If both have valid timestamps, sort in reverse chronological order (newest first)
+            if (aTimestamp && bTimestamp) {
+                return bTimestamp.localeCompare(aTimestamp); // Newer first
             }
             
             // If only one has timestamp, the one with timestamp comes first
             if (aTimestamp && !bTimestamp) return -1;
             if (!aTimestamp && bTimestamp) return 1;
             
-            // If neither has timestamp, sort by ID string in reverse order
+            // If neither has timestamp, sort by ID string in reverse order (newer first)
             return b.localeCompare(a);
         });
 
@@ -313,6 +308,33 @@ export class HistoryManager {
                 this.selectTraining(trainingId);
             }
         };
+    }
+
+    /**
+     * Extract timestamp from training ID for sorting purposes
+     * @param {string} trainingId - Training ID like "sac_20250729_143022_mesh1" or "continue_checkpoint_20250729_143022_mesh1"
+     * @returns {string|null} Timestamp in format "YYYYMMDD_HHMMSS" or null if not found
+     */
+    extractTimestampFromTrainingId(trainingId) {
+        if (!trainingId || typeof trainingId !== 'string') {
+            return null;
+        }
+
+        const parts = trainingId.split('_');
+        
+        // Look for consecutive parts that match date (8 digits) and time (6 digits) pattern
+        for (let i = 0; i < parts.length - 1; i++) {
+            const datePart = parts[i];
+            const timePart = parts[i + 1];
+            
+            // Check if current part is 8-digit date and next part is 6-digit time
+            if (datePart && datePart.length === 8 && /^\d{8}$/.test(datePart) &&
+                timePart && timePart.length === 6 && /^\d{6}$/.test(timePart)) {
+                return `${datePart}_${timePart}`;
+            }
+        }
+        
+        return null;
     }
 
     /**
@@ -469,8 +491,14 @@ export class HistoryManager {
 
         const {r: reward, l: length, is_completed, episode_number} = this.currentEpisodeData;
 
+        // Debug: Log episode data to understand the structure
+        console.log('Episode data structure:', this.currentEpisodeData);
+        console.log('Episode number from data:', episode_number);
+
         this.updateElement('current-episode-display', `Episode ${this.currentEpisodeIndex}`);
+        this.updateElement('episode-index-display', this.currentEpisodeIndex);
         this.updateElement('actual-episode-number-display', episode_number || 'N/A');
+        this.updateElement('actual-episode-number-display-header', episode_number || 'N/A');
         this.updateElement('episode-reward-display', formatNumber(reward));
         this.updateElement('episode-length-display', length);
         this.updateElement('episode-status-display', is_completed ? 'Completed' : 'Incomplete');
@@ -496,47 +524,25 @@ export class HistoryManager {
         } else {
             this.updateElement('ref-point-display', 'N/A');
         }
+
+        // Update average element quality
+        const avgElementQuality = this.currentEpisodeData.avg_element_quality;
+        if (avgElementQuality !== undefined && avgElementQuality !== null) {
+            this.updateElement('avg-element-quality-display', formatNumber(avgElementQuality, 4));
+        } else {
+            this.updateElement('avg-element-quality-display', 'N/A');
+        }
     }
 
     /**
      * Update episode detailed data display
+     * Note: Basic episode data is now handled by updateEpisodeInfo()
+     * This method is kept for any future additional data display needs
      */
     updateEpisodeData() {
-        if (!this.currentEpisodeData) return;
-
-        // Update episode data container
-        const episodeContainer = this.elements['episode-data-container'];
-        if (episodeContainer) {
-            const {r: reward, l: length, is_completed} = this.currentEpisodeData;
-
-            const episode_number = this.currentEpisodeData.episode_number;
-
-            episodeContainer.innerHTML = `
-                <div class="episode-data-item">
-                    <span class="episode-data-key">Index:</span>
-                    <span class="episode-data-value">${this.currentEpisodeIndex}</span>
-                </div>
-                <div class="episode-data-item">
-                    <span class="episode-data-key">Actual Episode:</span>
-                    <span class="episode-data-value">${episode_number || 'N/A'}</span>
-                </div>
-                <div class="episode-data-item">
-                    <span class="episode-data-key">Reward:</span>
-                    <span class="episode-data-value">${formatNumber(reward)}</span>
-                </div>
-                <div class="episode-data-item">
-                    <span class="episode-data-key">Steps:</span>
-                    <span class="episode-data-value">${length}</span>
-                </div>
-                <div class="episode-data-item">
-                    <span class="episode-data-key">Status:</span>
-                    <span class="episode-data-value ${is_completed ? 'text-green-600' : 'text-orange-600'}">
-                        ${is_completed ? 'Completed' : 'Incomplete'}
-                    </span>
-                </div>
-            `;
-        }
-
+        // Episode data is now integrated into the Episode Information section
+        // and handled by updateEpisodeInfo(). This method is kept for future use.
+        return;
     }
 
     /**

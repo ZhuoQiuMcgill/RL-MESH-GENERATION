@@ -79,6 +79,7 @@ class TrainingManager:
             "recent_actor_loss": 0.0,
             "recent_critic_loss": 0.0,
             "current_alpha": 0.0,
+            "avg_element_quality": 0.0,
             "mesh_data": {},
             "boundary_vertices_data": [],
             "reference_point_info": None
@@ -829,6 +830,7 @@ class TrainingManager:
                 "recent_actor_loss": trainer_status.get("recent_actor_loss", 0.0),
                 "recent_critic_loss": trainer_status.get("recent_critic_loss", 0.0),
                 "current_alpha": trainer_status.get("current_alpha", 0.0),
+                "avg_element_quality": trainer_status.get("avg_element_quality", 0.0) or 0.0,
             })
 
             mesh_data = trainer_status.get("latest_mesh")
