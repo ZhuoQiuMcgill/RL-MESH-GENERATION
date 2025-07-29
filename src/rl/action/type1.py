@@ -1,6 +1,7 @@
 from .action import ActionType
 from src.utils import get_interior_angle, euclidean_distance, valid_element_angle
 import math
+import logging
 
 
 class ActionType1(ActionType):
@@ -46,25 +47,24 @@ class ActionType1(ActionType):
         v0, v3, v2, v1 = quadrilateral
 
         if not valid_element_angle(quadrilateral):
+            # logging.warning("Invalid element angle!")
             return False
 
         # if not boundary.vertex_inside_action_space(v2, reference_vertex_idx, alpha, n):
         #     return False
 
         if not boundary.vertex_inside_boundary(v2):
+            # logging.warning("Vertex not inside boundary.")
             return False
 
         edge_V1_V2 = (v1, v2)
         edge_V2_V3 = (v2, v3)
 
-        if not boundary.edge_inside_boundary(edge_V1_V2):
-            return False
-        if not boundary.edge_inside_boundary(edge_V2_V3):
-            return False
-
         if boundary.edge_cross(edge_V1_V2):
+            # logging.warning("Edge V1-V2 crosses existing boundary edge.")
             return False
         if boundary.edge_cross(edge_V2_V3):
+            # logging.warning("Edge V2-V3 crosses existing boundary edge.")
             return False
 
         return True

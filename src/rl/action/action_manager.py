@@ -1,5 +1,6 @@
 import math
 import numpy as np
+import traceback
 from gymnasium import spaces
 from .type0_left import ActionType0Left
 from .type0_right import ActionType0Right
@@ -174,10 +175,13 @@ class ActionManager:
             if action_name in ["type0_left", "type0_right"]:
                 return action_instance.is_valid(boundary, reference_vertex_idx, alpha=self.alpha, n=self.n)
             elif action_name == "type1":
-                return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0], alpha=self, n=self.n)
+                return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0], alpha=self.alpha, n=self.n)
             else:
                 return False
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.warning(f"Action validation failed for {action_name}: {str(e)}")
+            logging.debug(f"Action validation exception details: {traceback.format_exc()}")
             return False
 
     def get_element_quality(self, boundary, reference_vertex_idx, action_instance, action_name, new_coords):

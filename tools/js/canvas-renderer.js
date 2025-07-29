@@ -491,7 +491,7 @@ export class CanvasRenderer {
             return;
         }
 
-        const {local_env_vertices, ref_vertex} = refInfo;
+        const {local_env_vertices, ref_vertex, clicked_point, new_element} = refInfo;
 
         // Draw local environment edges
         if (Array.isArray(local_env_vertices) && local_env_vertices.length > 1) {
@@ -519,6 +519,58 @@ export class CanvasRenderer {
             this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-white').trim() || '#FFFFFF';
             this.ctx.lineWidth = 2;
             this.drawVertex(refScreenPos, 8);
+        }
+
+        // Draw clicked point for Type1 actions
+        if (clicked_point && isValidCoordinate(clicked_point)) {
+            const clickedScreenPos = this.worldToScreen(clicked_point, transform);
+            this.ctx.fillStyle = '#FF6B6B'; // Red color for clicked point
+            this.ctx.strokeStyle = '#FFFFFF';
+            this.ctx.lineWidth = 2;
+            this.drawVertex(clickedScreenPos, 6);
+            
+            // Draw connection line from reference point to clicked point
+            if (isValidCoordinate(ref_vertex)) {
+                const refScreenPos = this.worldToScreen(ref_vertex, transform);
+                this.ctx.strokeStyle = '#FF6B6B';
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([5, 5]); // Dashed line
+                this.drawLine(refScreenPos, clickedScreenPos);
+                this.ctx.setLineDash([]); // Reset line dash
+            }
+        }
+
+        // Draw new element if exists (after execute)
+        if (new_element && Array.isArray(new_element) && new_element.length >= 3) {
+            this.ctx.strokeStyle = '#00D2FF'; // Cyan color for new element
+            this.ctx.fillStyle = 'rgba(0, 210, 255, 0.1)';
+            this.ctx.lineWidth = 3;
+            
+            // Draw element outline
+            this.ctx.beginPath();
+            const firstElementPoint = this.worldToScreen(new_element[0], transform);
+            this.ctx.moveTo(firstElementPoint[0], firstElementPoint[1]);
+            
+            for (let i = 1; i < new_element.length; i++) {
+                if (isValidCoordinate(new_element[i])) {
+                    const point = this.worldToScreen(new_element[i], transform);
+                    this.ctx.lineTo(point[0], point[1]);
+                }
+            }
+            this.ctx.closePath();
+            this.ctx.fill();
+            this.ctx.stroke();
+            
+            // Draw vertices of new element
+            this.ctx.fillStyle = '#00D2FF';
+            this.ctx.strokeStyle = '#FFFFFF';
+            this.ctx.lineWidth = 2;
+            new_element.forEach(vertex => {
+                if (isValidCoordinate(vertex)) {
+                    const vertexScreenPos = this.worldToScreen(vertex, transform);
+                    this.drawVertex(vertexScreenPos, 5);
+                }
+            });
         }
     }
 

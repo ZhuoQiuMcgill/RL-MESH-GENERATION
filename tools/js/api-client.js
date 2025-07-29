@@ -267,4 +267,56 @@ export class ApiClient {
     async checkCheckpointHealth() {
         return await this.request('/checkpoint/health');
     }
+
+    // ========== Action Related APIs ==========
+
+    /**
+     * Find reference point for a mesh
+     * @param {string} meshName - Mesh name
+     * @returns {Promise<Object>} Reference point information
+     */
+    async findReferencePoint(meshName) {
+        return await this.request(`/action/find-ref-point/${meshName}`);
+    }
+
+    /**
+     * Execute and validate an action
+     * @param {Object} actionData - Action execution data
+     * @returns {Promise<Object>} Execution result
+     */
+    async executeAction(actionData) {
+        return await this.request('/action/execute', {
+            method: 'POST',
+            body: JSON.stringify(actionData)
+        });
+    }
+
+    /**
+     * Validate a specific action type
+     * @param {string} actionType - Action type
+     * @param {Object} actionData - Action validation data
+     * @returns {Promise<Object>} Validation result
+     */
+    async validateAction(actionType, actionData) {
+        return await this.request(`/action/validate/${actionType}`, {
+            method: 'POST',
+            body: JSON.stringify(actionData)
+        });
+    }
+
+    /**
+     * Get information about available actions
+     * @returns {Promise<Object>} Action information
+     */
+    async getActionInfo() {
+        return await this.request('/action/info');
+    }
+
+    /**
+     * Check Action API Health Status
+     * @returns {Promise<Object>} Health status
+     */
+    async checkActionHealth() {
+        return await this.request('/action/health');
+    }
 }

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RL Mesh Generation Action Tester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/shared.css">
+    <link rel="stylesheet" href="css/train.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#6366F1',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Ensure consistent background for the entire page */
+        html {
+            background-color: var(--color-bg-primary);
+            height: 100%;
+        }
+        body {
+            background-color: var(--color-bg-primary);
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        /* Fix main container layout to prevent black areas */
+        .page-wrapper {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: var(--color-bg-primary);
+        }
+        
+        .nav-header {
+            flex-shrink: 0;
+        }
+        
+        .compact-status-bar {
+            flex-shrink: 0;
+        }
+        
+        .main-container {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+        }
+        
+        /* Details grid for information cards */
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 12px;
+            margin-top: 8px;
+        }
+        
+        .detail-card {
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border-primary);
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .detail-card-header {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .detail-card-header::before {
+            content: '';
+            width: 3px;
+            height: 12px;
+            background: var(--color-primary-gradient);
+            border-radius: 2px;
+        }
+        
+        .detail-content {
+            font-size: 0.8rem;
+            color: var(--color-text-secondary);
+            line-height: 1.4;
+        }
+        
+        .detail-content > div {
+            margin-bottom: 4px;
+        }
+        
+        .detail-value {
+            color: var(--color-text-primary);
+            font-weight: 500;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-wrapper">
+        <!-- Navigation Header -->
+        <div class="nav-header">
+        <div class="nav-left">
+            <a href="index.html" class="back-btn">
+                ← Back to Dashboard
+            </a>
+            <h1 class="tool-title">Action Tester</h1>
+        </div>
+        <div class="nav-right">
+            <div class="nav-breadcrumb">
+                <a href="index.html">Tools</a> / Action Tester
+            </div>
+        </div>
+    </div>
+    
+    <!-- Action Tester Status Bar -->
+    <div class="compact-status-bar">
+        <div class="status-group">
+            <div class="status-item">
+                <div id="status-indicator-dot" class="status-indicator-dot bg-gray-400"></div>
+                <span id="compact-status-text">Ready</span>
+            </div>
+        </div>
+        <div class="status-group">
+            <span class="text-sm opacity-75">Action Tester - Interactive RL Action Testing</span>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Left Control Panel -->
+        <div class="left-panel shadow-lg">
+            <!-- Header -->
+            <div class="p-4 border-b border-gray-200">
+                <h1 class="text-xl font-bold text-gray-800">Action Tester</h1>
+                <p class="text-sm text-gray-600 mt-1">Test RL Actions Interactively</p>
+            </div>
+
+            <!-- Left Panel Content -->
+            <div class="left-panel-content">
+                <div class="left-panel-scroll custom-scrollbar">
+
+                    <!-- Step 1: Mesh Selection -->
+                    <div class="panel-card">
+                        <h3 class="panel-card-header">Step 1: Select Mesh</h3>
+                        <div>
+                            <select id="mesh-select" class="form-select">
+                                <option value="">Loading...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Find Reference Point -->
+                    <div class="panel-card">
+                        <h3 class="panel-card-header">Step 2: Reference Point</h3>
+                        <button id="find-ref-point-btn" class="btn-primary w-full" disabled>
+                            Find Reference Point
+                        </button>
+                    </div>
+
+                    <!-- Step 3: Choose Action -->
+                    <div class="panel-card">
+                        <h3 class="panel-card-header">Step 3: Choose Action</h3>
+                        <div id="action-buttons" class="space-y-2 hidden">
+                            <button id="action-type0-left" class="btn-secondary w-full">
+                                Type0 Left
+                            </button>
+                            <button id="action-type0-right" class="btn-secondary w-full">
+                                Type0 Right
+                            </button>
+                            <button id="action-type1" class="btn-secondary w-full">
+                                Type1 (Click to Draw)
+                            </button>
+                        </div>
+                        
+                        <!-- Type1 Instruction (Compact) -->
+                        <div id="type1-instruction" class="hidden mt-3 p-2 bg-yellow-50 rounded text-sm text-yellow-700 border border-yellow-200">
+                            💡 Click on canvas to place vertex
+                        </div>
+                    </div>
+
+                    <!-- Step 4: Execute -->
+                    <div class="panel-card">
+                        <h3 class="panel-card-header">Step 4: Execute</h3>
+                        <button id="execute-btn" class="btn-success w-full" disabled>
+                            Execute Action
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Main Content Area -->
+        <div class="right-content">
+            <!-- Canvas and Info Side by Side -->
+            <div class="canvas-info-container">
+                <!-- Canvas Visualization Area -->
+                <div class="canvas-section">
+                    <!-- Compact Status Bar Above Canvas -->
+                    <div class="canvas-status-bar">
+                        <h2 class="text-base font-semibold text-gray-800">Mesh Visualization</h2>
+                        <div class="status-quick-info">
+                            <span id="mesh-status-compact" class="status-badge">Not Selected</span>
+                            <span id="ref-point-status-compact" class="status-badge">No Reference</span>
+                            <span id="action-status-compact" class="status-badge">No Action</span>
+                        </div>
+                    </div>
+                    
+                    <div class="canvas-wrapper">
+                        <div class="canvas-container">
+                            <canvas id="mesh-canvas" class="rounded" style="border: 1px solid var(--color-border-primary);"></canvas>
+                            <!-- Empty state overlay -->
+                            <div id="empty-state-overlay" class="empty-state" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-bg-canvas); display: flex;">
+                                <div style="margin: auto;">
+                                    <div class="empty-state-icon"></div>
+                                    <h3 class="empty-state-title">Select a Mesh to Begin</h3>
+                                    <p class="empty-state-description">
+                                        Choose a mesh from the dropdown to start testing actions. 
+                                        The mesh visualization will appear here.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Info Panel -->
+                <div class="info-panel">
+                    <!-- Basic Status info -->
+                    <div class="info-section">
+                        <h3 class="info-section-title">Status Overview</h3>
+                        <div class="info-items">
+                            <div class="info-item">
+                                <div class="info-label">Mesh Status</div>
+                                <div id="mesh-status" class="info-value">Not Selected</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Boundary Vertices</div>
+                                <div id="boundary-vertices-count" class="info-value">0</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Reference Point</div>
+                                <div id="ref-point-status" class="info-value">Not Selected</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">Action Status</div>
+                                <div id="action-status" class="info-value">No Action</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Information Cards -->
+                    <div class="details-section">
+                        <!-- Mesh Information Card -->
+                        <div id="mesh-info-card" class="detail-card hidden">
+                            <h4 class="detail-card-header">Mesh Information</h4>
+                            <div class="detail-content">
+                                <div>Vertices: <span id="mesh-vertices-detail" class="detail-value">0</span></div>
+                                <div>File size: <span id="mesh-size-detail" class="detail-value">0</span> bytes</div>
+                            </div>
+                        </div>
+
+                        <!-- Reference Point Information Card -->
+                        <div id="ref-point-info-card" class="detail-card hidden">
+                            <h4 class="detail-card-header">Reference Point Details</h4>
+                            <div class="detail-content">
+                                <div>Index: <span id="ref-point-index-detail" class="detail-value">-</span></div>
+                                <div>Coordinates: <span id="ref-point-coords-detail" class="detail-value">-</span></div>
+                                <div>Interior Angle: <span id="ref-point-angle-detail" class="detail-value">-</span>°</div>
+                            </div>
+                        </div>
+
+                        <!-- Action Selection Information Card -->
+                        <div id="action-selected-info-card" class="detail-card hidden">
+                            <h4 class="detail-card-header">Selected Action</h4>
+                            <div class="detail-content">
+                                <div>Type: <span id="selected-action-type-detail" class="detail-value">-</span></div>
+                                <div id="click-coords-info-detail" class="hidden">
+                                    Clicked Point: <span id="click-coordinates-detail" class="detail-value">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Execution Result Information Card -->
+                        <div id="execution-result-card" class="detail-card hidden">
+                            <h4 class="detail-card-header">Execution Result</h4>
+                            <div class="detail-content">
+                                <div>Valid: <span id="result-is-valid-detail" class="detail-value">-</span></div>
+                                <div id="result-polar-coords-detail" class="hidden">
+                                    Polar Coordinates: <span id="polar-coords-value-detail" class="detail-value">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Area -->
+            <div class="bottom-log-area">
+                <div class="log-controls">
+                    <h3 class="typography-h3 flex-1">Action Log</h3>
+                    <div class="auto-scroll-toggle">
+                        <input type="checkbox" id="auto-scroll-checkbox" checked>
+                        <label for="auto-scroll-checkbox">Auto-scroll</label>
+                    </div>
+                    <button id="clear-log-btn" class="btn-tertiary">Clear</button>
+                </div>
+                <div id="log-container" class="log-container">
+                    <div class="log-entry log-info">Action Tester initialized. Select a mesh to begin testing.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="rounded-lg p-6 flex items-center space-x-3" style="background: var(--color-bg-card); border: 1px solid var(--color-border-primary);">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            <span class="text-gray-700">Processing...</span>
+        </div>
+    </div>
+
+    <!-- Import JavaScript -->
+    <script type="module">
+        // Import and initialize action tester
+        import {ActionTester} from './js/action-tester.js';
+
+        // Initialize application after page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            window.actionTester = new ActionTester();
+        });
+    </script>
+    </div> <!-- Close page-wrapper -->
+</body>
+</html>

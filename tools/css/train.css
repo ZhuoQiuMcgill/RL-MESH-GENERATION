@@ -45,37 +45,24 @@
 #mesh-canvas {
     cursor: crosshair;
     background: var(--color-bg-canvas);
-    /* 修复Canvas居中问题 */
     display: block;
-    margin: 0 auto;
-    border-radius: inherit;
-    max-width: 100%;
-    max-height: 100%;
+    border-radius: 4px;
     box-sizing: border-box;
     border: 1px solid var(--color-border-primary);
+    /* 保持长宽比同时适应容器 */
+    max-width: calc(100% - 8px);
+    max-height: calc(100% - 8px);
+    margin: 4px;
 }
 
-/* 修复Canvas容器的响应式和居中问题 */
-.canvas-container {
-    width: 100%;
-    height: 100%;
-    min-height: 400px;
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px; /* 给边框留出空间 */
-    box-sizing: border-box;
-}
 
 /* Empty state overlay positioning */
 #empty-state-overlay {
     position: absolute;
-    top: 4px;
-    left: 4px;
-    right: 4px;
-    bottom: 4px;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     border-radius: inherit;
     z-index: 10;
 }
@@ -265,6 +252,34 @@
     background: var(--color-bg-hover);
     color: var(--color-text-primary);
     border-color: var(--color-border-secondary);
+}
+
+.btn-success {
+    background: var(--color-success);
+    color: var(--color-white);
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-success:hover:not(:disabled) {
+    background: #22c55e;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+    filter: brightness(1.1);
+}
+
+.btn-success:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    background: var(--color-gray-400);
 }
 
 /* Typography improvements */
@@ -598,6 +613,117 @@ body {
     box-sizing: border-box;
 }
 
+/* Canvas和信息面板并排布局 */
+.canvas-info-container {
+    flex: 1;
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* Canvas区域 - 主要显示区域 */
+.canvas-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* Canvas上方的紧凑状态栏 */
+.canvas-status-bar {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid var(--color-border-primary);
+}
+
+.status-quick-info {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-primary);
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+/* Canvas包装器 - 用于控制长宽比 */
+.canvas-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-canvas);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
+}
+
+/* 右侧信息面板 */
+.info-panel {
+    width: 300px;
+    flex-shrink: 0;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.info-section {
+    background: var(--color-bg-card);
+    border-radius: 6px;
+    padding: 0.75rem;
+    border: 1px solid var(--color-border-primary);
+}
+
+.info-section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.info-section-title::before {
+    content: '';
+    width: 3px;
+    height: 12px;
+    background: var(--color-primary-gradient);
+    border-radius: 2px;
+}
+
+.info-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.details-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
 /* 顶部信息栏响应式修复 - 更紧凑设计 */
 .top-info-bar {
     flex-shrink: 0;
@@ -644,6 +770,19 @@ body {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+}
+
+/* 修复Canvas容器的响应式和居中问题 */
+.canvas-container {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
 }
 
 /* 底部日志区域响应式修复 - 优化高度 */
@@ -744,11 +883,12 @@ input:focus, select:focus {
         min-width: 260px;
     }
 
-    .top-info-bar {
-        padding: 10px 12px;
+    .info-panel {
+        width: 280px;
     }
 
-    .visualization-area {
+    .canvas-info-container {
+        gap: 0.75rem;
         padding: 0.75rem;
     }
     
@@ -795,6 +935,19 @@ input:focus, select:focus {
         flex: 1;
         height: 55vh;
         min-height: 350px;
+    }
+
+    /* Canvas和信息面板在小屏幕上竖直排列 */
+    .canvas-info-container {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.75rem;
+    }
+    
+    .info-panel {
+        width: 100%;
+        max-height: 200px;
+        overflow-y: auto;
     }
 
     .visualization-area {
