@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesh Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/shared.css">
+    <link rel="stylesheet" href="css/mesh-generator.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#6366F1',
+                        success: '#10B981',
+                        warning: '#F59E0B',
+                        danger: '#EF4444',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-screen">
+    <!-- Navigation Header -->
+    <div class="nav-header">
+        <div class="nav-left">
+            <a href="index.html" class="back-btn">
+                ← Back to Dashboard
+            </a>
+            <h1 class="tool-title">Mesh Generator</h1>
+        </div>
+        <div class="nav-right">
+            <div class="nav-breadcrumb">
+                <a href="index.html">Tools</a> / Mesh Generator
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Container -->
+    <div class="mesh-generator-main-container">
+        <!-- Left Configuration Panel -->
+        <div class="mesh-generator-left-panel shadow-lg">
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-200">
+                <h1 class="text-2xl font-bold text-gray-800">Mesh Generator</h1>
+                <p class="text-sm text-gray-600 mt-1">Interactive mesh generation with RL prediction</p>
+            </div>
+
+            <!-- Configuration Panel -->
+            <div class="flex-1 p-6 flex flex-col overflow-hidden">
+                <!-- Session Setup -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Session Setup</h3>
+                    
+                    <!-- Mesh Selection -->
+                    <div class="mb-4">
+                        <label class="form-label">Select Initial Mesh</label>
+                        <select id="mesh-select" class="form-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <div id="mesh-info" class="mt-2 typography-small hidden">
+                            <div>Vertices: <span id="mesh-vertices" class="data-placeholder">0</span></div>
+                            <div>File size: <span id="mesh-size" class="data-placeholder">0</span> bytes</div>
+                        </div>
+                    </div>
+
+                    <!-- Predictor Selection -->
+                    <div class="mb-4">
+                        <label class="form-label">Select Predictor</label>
+                        <select id="predictor-select" class="form-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <div id="predictor-config" class="mt-3 hidden">
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="form-label">Model Path</label>
+                                    <select id="model-select" class="form-select">
+                                        <option value="">Select a trained model...</option>
+                                    </select>
+                                </div>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label class="form-label text-xs">N</label>
+                                        <input id="predictor-n" type="number" value="2" min="1" class="form-input text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="form-label text-xs">G</label>
+                                        <input id="predictor-g" type="number" value="3" min="1" class="form-input text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="form-label text-xs">Beta</label>
+                                        <input id="predictor-beta" type="number" value="6" min="1" class="form-input text-sm">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Reference Selector -->
+                    <div class="mb-4">
+                        <label class="form-label">Reference Selector</label>
+                        <select id="ref-selector-select" class="form-select">
+                            <option value="">Loading...</option>
+                        </select>
+                        <div id="ref-selector-config" class="mt-3 hidden">
+                            <div>
+                                <label class="form-label text-xs">N</label>
+                                <input id="ref-selector-n" type="number" value="2" min="1" class="form-input text-sm">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Create Session Button -->
+                    <button id="create-session-btn" class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        Create Session
+                    </button>
+                </div>
+
+                <!-- Session Controls -->
+                <div id="session-controls" class="mb-6 hidden">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Session Controls</h3>
+                    
+                    <!-- Step Controls -->
+                    <div class="space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <button id="prev-step-btn" class="btn-secondary px-4 py-2 text-sm" disabled>
+                                ← Previous
+                            </button>
+                            <button id="next-step-btn" class="btn-primary px-4 py-2 text-sm" disabled>
+                                Next →
+                            </button>
+                        </div>
+                        <button id="process-all-btn" class="w-full bg-warning hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200" disabled>
+                            Process All
+                        </button>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button id="reset-session-btn" class="btn-tertiary px-4 py-2 text-sm" disabled>
+                                Reset
+                            </button>
+                            <button id="delete-session-btn" class="btn-danger px-4 py-2 text-sm" disabled>
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Session Status -->
+                <div id="session-status" class="hidden">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Session Status</h3>
+                    <div class="rounded-lg p-4 border space-y-2" style="background: var(--color-bg-card); border-color: var(--color-border-primary);">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Session ID:</span>
+                            <span id="session-id-display" class="font-medium text-gray-800 text-xs">-</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Current Step:</span>
+                            <span id="current-step-display" class="font-medium text-gray-800">0</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Boundary Size:</span>
+                            <span id="boundary-size-display" class="font-medium text-gray-800">0</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Generated Elements:</span>
+                            <span id="generated-elements-display" class="font-medium text-gray-800">0</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Completion:</span>
+                            <span id="completion-status-display" class="font-medium text-gray-800">No</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Container -->
+        <div class="mesh-generator-main-content-container">
+            <!-- Canvas Visualization Area -->
+            <div class="mesh-generator-visualization-area">
+                <div class="canvas-header">
+                    <h2 class="text-lg font-semibold text-gray-800">Mesh Visualization</h2>
+                </div>
+                <div class="canvas-wrapper">
+                    <canvas id="mesh-generator-canvas" class="rounded"></canvas>
+                    <!-- Empty state overlay -->
+                    <div id="empty-state-overlay" class="empty-state" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-bg-canvas); display: flex;">
+                        <div style="margin: auto;">
+                            <div class="empty-state-icon"></div>
+                            <h3 class="empty-state-title">Ready to Generate Mesh</h3>
+                            <p class="empty-state-description">
+                                Select a mesh, predictor, and reference selector to begin mesh generation.
+                                The visualization will appear here during the process.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Data Panel -->
+            <div class="mesh-generator-data-panel">
+                <!-- Step Details Header -->
+                <div class="step-details-header">
+                    <h2 class="text-lg font-semibold text-gray-800">Step Details</h2>
+                    <p class="text-sm text-gray-600">
+                        <span id="current-step-info">No Session Active</span>
+                    </p>
+                </div>
+
+                <!-- Action Information Section -->
+                <div class="data-section">
+                    <h3 class="section-title">Last Action</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Action Type:</span>
+                            <span id="action-type-display" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Reference Vertex:</span>
+                            <span id="reference-vertex-display" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Status:</span>
+                            <span id="action-status-display" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">New Coordinates:</span>
+                            <span id="new-coords-display" class="stat-value">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reference Point Information Section -->
+                <div id="reference-point-info" class="data-section hidden">
+                    <h3 class="section-title">Current Reference Point</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Vertex Index:</span>
+                            <span id="ref-vertex-idx-display" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Coordinates:</span>
+                            <span id="ref-vertex-coords-display" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Selector Type:</span>
+                            <span id="ref-selector-type-display" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Interior Angle:</span>
+                            <span id="interior-angle-display" class="stat-value">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Statistics Section -->
+                <div class="data-section">
+                    <h3 class="section-title">Action Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Attempts:</span>
+                            <span id="total-attempts-display" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Successful:</span>
+                            <span id="successful-actions-display" class="stat-value text-green-600">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Failed:</span>
+                            <span id="failed-actions-display" class="stat-value text-red-600">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Success Rate:</span>
+                            <span id="success-rate-display" class="stat-value">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Display Section -->
+                <div id="error-display" class="data-section hidden">
+                    <h3 class="section-title text-red-600">Error Details</h3>
+                    <div class="error-content">
+                        <div id="error-message" class="text-sm text-red-600 font-medium mb-2"></div>
+                        <div id="error-details" class="text-xs text-gray-600 font-mono"></div>
+                    </div>
+                </div>
+
+                <!-- Operation Log Section -->
+                <div class="data-section flex-1">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="section-title">Operation Log</h3>
+                        <button id="clear-log-btn" class="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100">
+                            Clear
+                        </button>
+                    </div>
+                    <div id="log-container" class="data-content scrollable-content font-mono text-xs flex-1">
+                        <div class="text-gray-500">System ready, waiting for session creation...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="rounded-lg p-6 flex items-center space-x-3" style="background: var(--color-bg-card); border: 1px solid var(--color-border-primary);">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            <span class="text-gray-700">Processing...</span>
+        </div>
+    </div>
+
+    <!-- Import Modular JavaScript Files -->
+    <script type="module">
+        // Import and initialize mesh generator manager
+        import {MeshGeneratorManager} from './js/mesh-generator-manager.js';
+
+        // Initialize application after page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            window.meshGeneratorManager = new MeshGeneratorManager();
+
+            // Add window resize listener
+            let resizeTimeout;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    if (window.meshGeneratorManager && window.meshGeneratorManager.handleResize) {
+                        window.meshGeneratorManager.handleResize();
+                    }
+                }, 150);
+            });
+        });
+    </script>
+</body>
+</html>

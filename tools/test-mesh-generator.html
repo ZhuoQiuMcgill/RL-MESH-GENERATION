@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Mesh Generator</title>
+</head>
+<body>
+    <h1>Test Mesh Generator API</h1>
+    <div id="results"></div>
+    
+    <script>
+        async function testAPI() {
+            const results = document.getElementById('results');
+            
+            try {
+                // Test predict API
+                const response = await fetch('http://127.0.0.1:5000/predict/components');
+                const data = await response.json();
+                
+                results.innerHTML = `
+                    <h2>Success!</h2>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                results.innerHTML = `
+                    <h2>Error:</h2>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+        
+        // Test when page loads
+        testAPI();
+    </script>
+</body>
+</html>

@@ -181,13 +181,34 @@ class MeshGenerator:
             else:
                 raise ValueError(f"Unsupported action name: {action_name}")
 
-            # Validate and execute command
-            if not command.is_valid():
+            # Get validation details before attempting execution
+            is_valid = command.is_valid()
+            validation_message = None
+            if not is_valid:
+                # Try to get specific validation failure reason
+                try:
+                    # Attempt to get detailed error by trying to execute and catching the error
+                    command.execute()
+                except Exception as e:
+                    validation_message = str(e)
+            
+            # Prepare action information for frontend
+            action_info = {
+                'action_type': action_name,
+                'reference_vertex_idx': reference_vertex_idx,
+                'new_coords': new_coords if new_coords else None,
+                'is_valid': is_valid,
+                'validation_message': validation_message
+            }
+            
+            if not is_valid:
                 return {
                     'success': False,
                     'element': None,
                     'command': command,
-                    'message': f'Invalid action {action_name} at reference {reference_vertex_idx}'
+                    'action_info': action_info,
+                    'message': f'Invalid action {action_name} at reference {reference_vertex_idx}' + 
+                              (f': {validation_message}' if validation_message else '')
                 }
 
             # Execute command - this returns new boundary and mesh
@@ -202,10 +223,20 @@ class MeshGenerator:
             self.command_history.append(command)
             self.current_step += 1
 
+            # Prepare action information for successful execution
+            action_info = {
+                'action_type': action_name,
+                'reference_vertex_idx': reference_vertex_idx,
+                'new_coords': new_coords if new_coords else None,
+                'is_valid': True,
+                'validation_message': None
+            }
+            
             return {
                 'success': True,
                 'element': element,
                 'command': command,
+                'action_info': action_info,
                 'message': f'Successfully executed action {action_name}'
             }
 

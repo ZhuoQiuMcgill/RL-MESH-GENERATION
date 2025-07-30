@@ -3,7 +3,7 @@ import traceback
 from flask import Blueprint, jsonify, request, current_app
 from src.mesh_generator.mesh_generator import MeshGenerator
 from src.mesh_generator.rl_predictor import RLPredictor
-from src.geometry.reference_point_selectors import RLReferencePointSelector
+from src.geometry.reference_point_selectors import RLReferencePointSelector, RandomReferencePointSelector
 from src.utils import MeshImporter
 
 predict_bp = Blueprint("predict", __name__, url_prefix="/predict")
@@ -27,6 +27,12 @@ AVAILABLE_REF_SELECTORS = {
         "class": RLReferencePointSelector,
         "description": "RL-based reference point selector (minimum interior angle)",
         "parameters": ["n"]
+    },
+    "Random": {
+        "name": "Random",
+        "class": RandomReferencePointSelector,
+        "description": "Random reference point selector",
+        "parameters": []
     },
     "default": {
         "name": "default",
@@ -411,11 +417,12 @@ def next_step(session_id):
         # Execute step
         step_result = generator.step()
         
-        # Create JSON-serializable version of step result (remove command object)
+        # Create JSON-serializable version of step result (remove command object but keep action info)
         serializable_step_result = {
             "success": step_result.get("success"),
             "element": step_result.get("element"),
-            "message": step_result.get("message")
+            "message": step_result.get("message"),
+            "action_info": step_result.get("action_info")  # This is already JSON-serializable
         }
         
         # Record step in history (also remove command from history)
@@ -524,11 +531,12 @@ def process_all(session_id):
             # Execute step
             step_result = generator.step()
             
-            # Create JSON-serializable version (remove command object)
+            # Create JSON-serializable version (remove command object but keep action info)
             serializable_result = {
                 "success": step_result.get("success"),
                 "element": step_result.get("element"),
-                "message": step_result.get("message")
+                "message": step_result.get("message"),
+                "action_info": step_result.get("action_info")  # This is already JSON-serializable
             }
             results.append(serializable_result)
             step_count += 1
@@ -705,6 +713,234 @@ def list_sessions():
         traceback.print_exc()
         return jsonify({
             "error": f"Failed to list sessions: {str(e)}",
+            "success": False
+        }), 500
+
+
+@predict_bp.route("/session/<session_id>/reference_point", methods=["GET"])
+def get_reference_point(session_id):
+    """
+    Get current reference point information based on session's reference selector
+    
+    Query Parameters:
+        selector_type: Override selector type (optional)
+        selector_config: Override selector config as JSON string (optional)
+    
+    Returns:
+        JSON response with reference point details
+    """
+    try:
+        if session_id not in prediction_sessions:
+            return jsonify({
+                "error": f"Session not found: {session_id}",
+                "success": False
+            }), 404
+        
+        session = prediction_sessions[session_id]
+        generator = session["generator"]
+        
+        # Get current boundary
+        current_boundary = generator.boundary
+        
+        # Get selector configuration from query params or session config
+        selector_type = request.args.get('selector_type', session["config"]["ref_selector_type"])
+        selector_config_str = request.args.get('selector_config')
+        
+        if selector_config_str:
+            import json
+            selector_config = json.loads(selector_config_str)
+        else:
+            selector_config = session["config"]["ref_selector_config"]
+        
+        # Get reference point using specified selector
+        if selector_type == "default":
+            # Default selector uses RL method with n=1
+            ref_vertex_idx = current_boundary.get_ref_vertex(1)
+            selector_info = {
+                "type": "default",
+                "method": "boundary default (RL with n=1)",
+                "config": {"n": 1}
+            }
+        else:
+            if selector_type not in AVAILABLE_REF_SELECTORS:
+                return jsonify({
+                    "error": f"Unknown reference selector type: {selector_type}",
+                    "success": False
+                }), 400
+            
+            ref_selector_class = AVAILABLE_REF_SELECTORS[selector_type]["class"]
+            ref_vertex_idx = ref_selector_class.select_reference_point(current_boundary, **selector_config)
+            
+            selector_info = {
+                "type": selector_type,
+                "method": AVAILABLE_REF_SELECTORS[selector_type]["description"],
+                "config": selector_config
+            }
+        
+        # Get vertex coordinates and additional info
+        ref_vertex = current_boundary.get_vertex_by_index(ref_vertex_idx)
+        
+        # Calculate additional reference point details
+        boundary_size = current_boundary.size()
+        
+        # Get neighbor information
+        left_neighbor_idx = (ref_vertex_idx - 1) % boundary_size
+        right_neighbor_idx = (ref_vertex_idx + 1) % boundary_size
+        left_neighbor = current_boundary.get_vertex_by_index(left_neighbor_idx)
+        right_neighbor = current_boundary.get_vertex_by_index(right_neighbor_idx)
+        
+        # Calculate interior angle if possible
+        interior_angle = None
+        try:
+            from src.utils import get_avg_interior_angle
+            if selector_type == "RL" and "n" in selector_config:
+                interior_angle = get_avg_interior_angle(current_boundary, ref_vertex_idx, selector_config["n"])
+            else:
+                # Calculate simple interior angle
+                interior_angle = get_avg_interior_angle(current_boundary, ref_vertex_idx, 1)
+        except Exception:
+            pass  # Interior angle calculation failed, leave as None
+        
+        reference_point_info = {
+            "reference_vertex_idx": ref_vertex_idx,
+            "reference_vertex_coords": list(ref_vertex),
+            "selector_info": selector_info,
+            "boundary_context": {
+                "boundary_size": boundary_size,
+                "left_neighbor_idx": left_neighbor_idx,
+                "left_neighbor_coords": list(left_neighbor),
+                "right_neighbor_idx": right_neighbor_idx,
+                "right_neighbor_coords": list(right_neighbor),
+                "interior_angle": interior_angle
+            },
+            "session_status": generator.get_status()
+        }
+        
+        return jsonify({
+            "session_id": session_id,
+            "reference_point": reference_point_info,
+            "success": True
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Exception in get_reference_point: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "error": f"Failed to get reference point: {str(e)}",
+            "success": False
+        }), 500
+
+
+@predict_bp.route("/reference_point/preview", methods=["POST"])
+def preview_reference_point():
+    """
+    Preview reference point selection for a given mesh and selector configuration
+    without creating a session
+    
+    Request JSON:
+        {
+            "mesh_name": "basic1.txt",
+            "ref_selector_type": "RL",
+            "ref_selector_config": {"n": 2}
+        }
+    
+    Returns:
+        JSON response with reference point preview
+    """
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ["mesh_name", "ref_selector_type"]
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "error": f"Missing required field: {field}",
+                    "success": False
+                }), 400
+        
+        mesh_name = data["mesh_name"]
+        selector_type = data["ref_selector_type"]
+        selector_config = data.get("ref_selector_config", {})
+        
+        # Load mesh
+        importer = MeshImporter()
+        boundary = importer.load_boundary_by_name(mesh_name, "mesh")
+        
+        # Get reference point using specified selector
+        if selector_type == "default":
+            # Default selector uses RL method with n=1
+            ref_vertex_idx = boundary.get_ref_vertex(1)
+            selector_info = {
+                "type": "default",
+                "method": "boundary default (RL with n=1)",
+                "config": {"n": 1}
+            }
+        else:
+            if selector_type not in AVAILABLE_REF_SELECTORS:
+                return jsonify({
+                    "error": f"Unknown reference selector type: {selector_type}",
+                    "success": False
+                }), 400
+            
+            ref_selector_class = AVAILABLE_REF_SELECTORS[selector_type]["class"]
+            ref_vertex_idx = ref_selector_class.select_reference_point(boundary, **selector_config)
+            
+            selector_info = {
+                "type": selector_type,
+                "method": AVAILABLE_REF_SELECTORS[selector_type]["description"],
+                "config": selector_config
+            }
+        
+        # Get vertex coordinates and mesh info
+        ref_vertex = boundary.get_vertex_by_index(ref_vertex_idx)
+        boundary_vertices = boundary.get_vertices()
+        boundary_size = boundary.size()
+        
+        # Get neighbor information
+        left_neighbor_idx = (ref_vertex_idx - 1) % boundary_size
+        right_neighbor_idx = (ref_vertex_idx + 1) % boundary_size
+        left_neighbor = boundary.get_vertex_by_index(left_neighbor_idx)
+        right_neighbor = boundary.get_vertex_by_index(right_neighbor_idx)
+        
+        # Calculate interior angle if possible
+        interior_angle = None
+        try:
+            from src.utils import get_avg_interior_angle
+            if selector_type == "RL" and "n" in selector_config:
+                interior_angle = get_avg_interior_angle(boundary, ref_vertex_idx, selector_config["n"])
+            else:
+                interior_angle = get_avg_interior_angle(boundary, ref_vertex_idx, 1)
+        except Exception:
+            pass
+        
+        preview_info = {
+            "mesh_name": mesh_name,
+            "reference_vertex_idx": ref_vertex_idx,
+            "reference_vertex_coords": list(ref_vertex),
+            "selector_info": selector_info,
+            "boundary_context": {
+                "boundary_size": boundary_size,
+                "total_vertices": len(boundary_vertices),
+                "left_neighbor_idx": left_neighbor_idx,
+                "left_neighbor_coords": list(left_neighbor),
+                "right_neighbor_idx": right_neighbor_idx,
+                "right_neighbor_coords": list(right_neighbor),
+                "interior_angle": interior_angle
+            },
+            "boundary_vertices": boundary_vertices  # Full boundary for visualization
+        }
+        
+        return jsonify({
+            "preview": preview_info,
+            "success": True
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Exception in preview_reference_point: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "error": f"Failed to preview reference point: {str(e)}",
             "success": False
         }), 500
 
