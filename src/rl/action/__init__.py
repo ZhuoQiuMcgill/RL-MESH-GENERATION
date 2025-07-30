@@ -12,6 +12,8 @@ __all__ = [
     'ActionType0LeftCommand',
     'ActionType0RightCommand',
     'ActionType1Command',
+
+    'ACTION_COMMAND_MAPPING'
 ]
 
 __version__ = '1.4.0'
