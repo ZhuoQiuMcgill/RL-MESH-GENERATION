@@ -705,3 +705,127 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
     
     logger.info(f"Action reward distribution图表已保存: {save_path}")
     return save_path
+
+
+def plot_avg_element_quality(avg_qualities: List[float],
+                            episode_lengths: List[int],
+                            save_path: str) -> str:
+    """
+    绘制训练过程中平均元素质量随累计时间步的变化曲线
+    
+    Args:
+        avg_qualities: 各episode的平均元素质量列表
+        episode_lengths: 各episode对应的步数列表
+        save_path: 图表保存路径
+        
+    Returns:
+        str: 最终保存的文件路径
+    """
+    # 数据校验和预处理
+    qualities = np.array(avg_qualities, dtype=float)
+    lengths = np.array(episode_lengths, dtype=float)
+    
+    if qualities.ndim != 1 or lengths.ndim != 1:
+        raise ValueError("avg_qualities 和 episode_lengths 必须都是一维列表")
+    
+    if qualities.shape[0] != lengths.shape[0]:
+        logger.warning(f"Qualities 长度 {len(qualities)} 与 Lengths 长度 {len(lengths)} 不一致，截断到最小长度")
+        m = min(len(qualities), lengths)
+        qualities = qualities[:m]
+        lengths = lengths[:m]
+    
+    if len(qualities) == 0:
+        logger.warning("没有平均元素质量数据可用于绘制")
+        return save_path
+        
+    # 计算累计时间步
+    cumulative_steps = np.cumsum(lengths)
+    
+    # 配色方案
+    bg_color = '#1a1a1a'
+    primary_color = '#4CAF50'  # 绿色主色调
+    secondary_color = '#81C784'  # 浅绿色
+    text_color = '#e8e8e8'
+    grid_color = '#333333'
+    
+    # 创建图表
+    fig, ax = plt.subplots(figsize=(12, 8), facecolor=bg_color)
+    ax.set_facecolor(bg_color)
+    
+    # 绘制主曲线
+    ax.plot(cumulative_steps, qualities, color=primary_color, linewidth=2.5, 
+            alpha=0.9, label='Avg Element Quality')
+    
+    # 添加数据点
+    ax.scatter(cumulative_steps, qualities, color=secondary_color, s=25, 
+              alpha=0.7, zorder=5)
+    
+    # 计算并绘制移动平均线（平滑曲线）
+    if len(qualities) >= 10:
+        window_size = max(5, len(qualities) // 20)  # 窗口大小为数据点数的5%，最小为5
+        moving_avg = np.convolve(qualities, np.ones(window_size)/window_size, mode='valid')
+        moving_steps = cumulative_steps[window_size-1:]
+        
+        ax.plot(moving_steps, moving_avg, color='#FFA726', linewidth=3, 
+                alpha=0.8, label=f'Moving Average ({window_size} episodes)')
+    
+    # 添加统计信息
+    mean_quality = np.mean(qualities)
+    max_quality = np.max(qualities)
+    min_quality = np.min(qualities)
+    final_quality = qualities[-1]
+    
+    # 绘制统计线
+    ax.axhline(mean_quality, color='red', linestyle='--', linewidth=2, 
+               alpha=0.7, label=f'Mean: {mean_quality:.4f}')
+    ax.axhline(max_quality, color='orange', linestyle=':', linewidth=2, 
+               alpha=0.6, label=f'Max: {max_quality:.4f}')
+    
+    # 设置标题和标签
+    title = f'Average Element Quality Over Training\n'
+    title += f'Final: {final_quality:.4f} | Range: [{min_quality:.4f}, {max_quality:.4f}]'
+    ax.set_title(title, fontsize=16, color=text_color, fontweight='600', pad=20)
+    
+    ax.set_xlabel('Cumulative Training Steps', fontsize=12, color=text_color)
+    ax.set_ylabel('Average Element Quality', fontsize=12, color=text_color)
+    
+    # 设置网格和样式
+    ax.grid(True, alpha=0.3, color=grid_color, linewidth=1)
+    ax.set_axisbelow(True)
+    
+    # 移除顶部和右侧边框
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
+    ax.spines['left'].set_color(grid_color)
+    ax.spines['bottom'].set_color(grid_color)
+    
+    # 设置刻度颜色
+    ax.tick_params(colors=text_color, labelsize=10)
+    
+    # 图例
+    legend = ax.legend(loc='best', fontsize=11, framealpha=0.9)
+    legend.get_frame().set_facecolor('#2a2a2a')
+    legend.get_frame().set_edgecolor(grid_color)
+    for txt in legend.get_texts():
+        txt.set_color(text_color)
+    
+    # 添加统计文本框
+    stats_text = f'Episodes: {len(qualities)}\n'
+    stats_text += f'Total Steps: {int(cumulative_steps[-1])}\n'
+    stats_text += f'Std Dev: {np.std(qualities):.4f}\n'
+    stats_text += f'Improvement: {final_quality - qualities[0]:.4f}'
+    
+    # 在右下角添加统计信息
+    ax.text(0.98, 0.02, stats_text, transform=ax.transAxes, 
+            fontsize=10, color=text_color, ha='right', va='bottom',
+            bbox=dict(boxstyle='round,pad=0.5', facecolor='#2a2a2a', 
+                     edgecolor=grid_color, alpha=0.9))
+    
+    # 保存图表
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, facecolor=bg_color, edgecolor='none', bbox_inches='tight')
+    plt.close(fig)
+    
+    logger.info(f"Average element quality图表已保存: {save_path}")
+    return save_path

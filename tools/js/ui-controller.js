@@ -36,6 +36,8 @@ export class UIController {
             'checkpoint-mode', 'checkpoint-select', 'checkpoint-info', 'checkpoint-details',
             // Training metrics elements
             'actor-loss', 'critic-loss', 'alpha-value',
+            // Evaluation elements
+            'last-eval-reward', 'best-eval-reward', 'eval-frequency',
             // Status bar elements (simplified)
             'compact-status-text', 'status-indicator-dot'
         ];
@@ -95,6 +97,11 @@ export class UIController {
         this.updateElement('critic-loss', formatNumber(stats.recent_critic_loss, 4));
         this.updateElement('alpha-value', formatNumber(stats.current_alpha, 4));
 
+        // Update evaluation information
+        this.updateElement('last-eval-reward', formatNumber(stats.last_eval_reward, 3));
+        this.updateElement('best-eval-reward', formatNumber(stats.best_eval_reward, 3));
+        this.updateElement('eval-frequency', `${stats.evaluation_frequency || 'N/A'} episodes`);
+
         // Update reference point information
         if (stats.reference_point_info && stats.reference_point_info.ref_vertex) {
             const [rx, ry] = stats.reference_point_info.ref_vertex;
@@ -126,6 +133,9 @@ export class UIController {
                 <span>Actor Loss: ${formatNumber(stats.recent_actor_loss)}</span>
                 <span>Critic Loss: ${formatNumber(stats.recent_critic_loss)}</span>
                 <span>Alpha: ${formatNumber(stats.current_alpha)}</span>
+                <span>Last Eval: ${formatNumber(stats.last_eval_reward, 3)}</span>
+                <span>Best Eval: ${formatNumber(stats.best_eval_reward, 3)}</span>
+                <span>Eval Freq: ${stats.evaluation_frequency || 'N/A'} episodes</span>
             `;
         }
 
@@ -147,14 +157,10 @@ export class UIController {
 
         if (progress.current_episode !== undefined) {
             this.updateElement('current-episode', progress.current_episode);
-            this.updateElement('display-episode', progress.current_episode);
-            this.updateElement('compact-episode', progress.current_episode);
         }
 
         if (progress.total_steps !== undefined) {
             this.updateElement('total-steps', progress.total_steps);
-            this.updateElement('display-total-steps', progress.total_steps);
-            this.updateElement('compact-steps', progress.total_steps);
             
             // Update estimated finish time
             this.updateEstimatedFinishTime(progress.total_steps);
@@ -162,7 +168,6 @@ export class UIController {
 
         if (progress.average_reward !== undefined) {
             this.updateElement('avg-reward', formatNumber(progress.average_reward));
-            this.updateElement('compact-avg-reward', formatNumber(progress.average_reward, 3));
         }
 
         if (progress.buffer_utilization !== undefined) {
@@ -173,16 +178,8 @@ export class UIController {
             this.updateElement('episode-reward', formatNumber(progress.latest_reward));
         }
         
-        // Update compact training metrics if available
-        if (progress.recent_actor_loss !== undefined) {
-            this.updateElement('compact-actor-loss', formatNumber(progress.recent_actor_loss, 4));
-        }
-        if (progress.recent_critic_loss !== undefined) {
-            this.updateElement('compact-critic-loss', formatNumber(progress.recent_critic_loss, 4));
-        }
-        if (progress.current_alpha !== undefined) {
-            this.updateElement('compact-alpha', formatNumber(progress.current_alpha, 4));
-        }
+        // Training metrics are updated via updateTrainingStats method
+        // No need for compact versions as they don't exist in HTML
     }
 
     /**
@@ -760,12 +757,10 @@ export class UIController {
      */
     updateElement(elementId, value) {
         const element = this.elements[elementId];
-        console.log(`DEBUG updateElement: ${elementId} = ${value}, element found: ${!!element}`);
         if (element) {
             element.textContent = value;
-            console.log(`DEBUG: Updated ${elementId} to "${value}"`);
         } else {
-            console.error(`DEBUG: Element with ID '${elementId}' not found!`);
+            console.warn(`UI: Element with ID '${elementId}' not found`);
         }
     }
 

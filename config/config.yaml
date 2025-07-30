@@ -117,17 +117,8 @@ training:
   max_timesteps: 1000000
 
   # 每episode最大步数 - 与environment.max_steps保持一致
-  # 这里保留是为了向后兼容
   max_steps_per_episode: 1000
 
-  # 模型保存和日志频率 - 基于timestep
-  save_frequency: 10000           # 每多少个timestep保存一次检查点
-  log_frequency: 1000             # 每多少个timestep输出一次日志
-  evaluation_frequency: 5000      # 每多少个timestep进行一次评估
-
-  # 训练历史保存频率
-  history_save_frequency: 10000   # 每多少个timestep保存一次episode历史数据
-
-  # 早停和收敛参数（暂未实现）
-  early_stopping_patience: 200    # 早停的patience
-  convergence_threshold: 0.01     # 收敛阈值
+  # 自动评估配置
+  evaluation_frequency: 1      # 每多少个episode进行一次评估
+  n_eval_episodes: 1         # 每次评估运行多少个episode

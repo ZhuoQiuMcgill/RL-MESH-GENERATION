@@ -7,12 +7,12 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from src.rl.agent.sb3_sac_agent import SB3SACAgent
 from src.rl.config import load_config
-from src.utils.rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution
+from src.utils.rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution, plot_avg_element_quality
 from src.rl.training.history_manager import save_episode_details
 
 
 class _EpisodeCallback(BaseCallback):
-    def __init__(self):
+    def __init__(self, evaluation_frequency=10, n_eval_episodes=10, training_session_dir=None):
         super().__init__()
         self._current_episode = 0
         self._current_timesteps = 0
@@ -24,7 +24,8 @@ class _EpisodeCallback(BaseCallback):
                      "last_ref_point": [],
                      "is_completed": [],
                      "generated_elements": [],
-                     "action_counts": []}
+                     "action_counts": [],
+                     "avg_element_quality": []}
         self._best_reward = -inf
         self._best_episode = 0
         
@@ -40,6 +41,18 @@ class _EpisodeCallback(BaseCallback):
         self._latest_actor_loss = 0.0
         self._latest_critic_loss = 0.0
         self._latest_alpha = 0.0
+        
+        # 新增：自动评估相关参数
+        self.evaluation_frequency = evaluation_frequency
+        self.n_eval_episodes = n_eval_episodes
+        self.training_session_dir = training_session_dir
+        
+        # 评估状态跟踪
+        self._eval_count = 0
+        self._last_eval_reward = 0.0
+        self._best_eval_reward = -inf
+        self._eval_rewards_history = []
+        self._best_model_path = None
 
     def _on_step(self) -> bool:
         # 收集训练过程中的loss和alpha数据
@@ -62,6 +75,7 @@ class _EpisodeCallback(BaseCallback):
             self.data['is_completed'].append(detail['is_completed'])
             self.data['generated_elements'].append(detail['generated_elements'])
             self.data['action_counts'].append(detail.get('action_count', {}))
+            self.data['avg_element_quality'].append(detail.get('avg_element_quality', 0.0))
 
             if detail['r'] > self._best_reward:
                 self._best_reward = detail['r']
@@ -71,6 +85,10 @@ class _EpisodeCallback(BaseCallback):
             self._current_timesteps += detail['l']
             if not detail['is_completed']:
                 self._current_timesteps += 1
+            
+            # 检查是否需要进行自动评估
+            if self.evaluation_frequency > 0 and self._current_episode % self.evaluation_frequency == 0:
+                self._perform_evaluation()
 
         return True
 
@@ -129,6 +147,179 @@ class _EpisodeCallback(BaseCallback):
             # 静默处理异常，避免影响训练过程
             pass
 
+    def _perform_evaluation(self):
+        """
+        执行自动评估并保存最佳模型
+        """
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"开始第{self._eval_count + 1}次自动评估 (Episode {self._current_episode})")
+            
+            # 使用当前环境进行评估
+            eval_env = self.model.env
+            if eval_env is None:
+                logger.warning("评估环境不可用，跳过评估")
+                return
+            
+            # 执行评估
+            episode_rewards = []
+            for i in range(self.n_eval_episodes):
+                # 兼容不同版本的gymnasium/gym API
+                reset_result = eval_env.reset()
+                if isinstance(reset_result, tuple):
+                    obs, _ = reset_result
+                else:
+                    obs = reset_result
+                    
+                total_reward = 0.0
+                done = False
+                
+                while not done:
+                    action, _ = self.model.predict(obs, deterministic=True)
+                    
+                    # 兼容不同版本的step返回值
+                    step_result = eval_env.step(action)
+                    if len(step_result) == 5:
+                        obs, reward, terminated, truncated, _ = step_result
+                        done = terminated or truncated
+                    elif len(step_result) == 4:
+                        obs, reward, done, _ = step_result
+                    else:
+                        logger.error(f"意外的step返回值数量: {len(step_result)}")
+                        break
+                        
+                    total_reward += float(reward)
+                
+                episode_rewards.append(total_reward)
+                logger.debug(f"评估Episode {i+1}/{self.n_eval_episodes}: {total_reward:.3f}")
+            
+            # 计算平均奖励
+            mean_reward = float(np.mean(episode_rewards))
+            std_reward = float(np.std(episode_rewards))
+            
+            # 更新评估统计
+            self._eval_count += 1
+            self._last_eval_reward = mean_reward
+            self._eval_rewards_history.append({
+                'episode': self._current_episode,
+                'eval_count': self._eval_count,
+                'mean_reward': mean_reward,
+                'std_reward': std_reward,
+                'rewards': episode_rewards.copy()
+            })
+            
+            logger.info(f"评估完成: 平均奖励={mean_reward:.3f}±{std_reward:.3f}")
+            
+            # 检查是否是最佳模型
+            if mean_reward > self._best_eval_reward:
+                self._best_eval_reward = mean_reward
+                logger.info(f"🎉 发现更好的模型! 新最佳评估奖励: {mean_reward:.3f}")
+                
+                # 保存最佳模型
+                if self.training_session_dir:
+                    self._save_best_model(mean_reward)
+            else:
+                logger.info(f"当前最佳评估奖励仍为: {self._best_eval_reward:.3f}")
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"自动评估过程中出错: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+    def _save_best_model(self, reward):
+        """
+        保存最佳模型
+        
+        Args:
+            reward: 当前评估奖励
+        """
+        try:
+            import os
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            if not self.training_session_dir:
+                logger.warning("训练会话目录未设置，无法保存最佳模型")
+                return
+            
+            # 创建最佳模型目录
+            best_model_dir = os.path.join(self.training_session_dir, "best_model")
+            os.makedirs(best_model_dir, exist_ok=True)
+            
+            # 生成文件名
+            timestamp = self._current_episode
+            best_model_name = f"best_model_ep{timestamp}_reward{reward:.3f}"
+            
+            # 保存SB3模型
+            sb3_path = os.path.join(best_model_dir, f"{best_model_name}.zip")
+            self.model.save(sb3_path)
+            
+            # 保存PyTorch模型参数
+            import torch
+            checkpoint = {
+                'episode': self._current_episode,
+                'eval_count': self._eval_count,
+                'eval_reward': reward,
+                'training_timesteps': self.model.num_timesteps,
+                'learning_rate': self.model.learning_rate,
+                'gamma': self.model.gamma,
+                'tau': self.model.tau,
+                'actor_state_dict': self.model.policy.actor.state_dict(),
+                'critic_state_dict': self.model.policy.critic.state_dict(),
+                'critic_target_state_dict': self.model.policy.critic_target.state_dict(),
+            }
+            
+            # 保存温度参数
+            if hasattr(self.model.policy, 'log_ent_coef'):
+                checkpoint['log_ent_coef'] = self.model.policy.log_ent_coef.data.clone()
+            elif hasattr(self.model.policy, 'ent_coef'):
+                checkpoint['ent_coef'] = self.model.policy.ent_coef
+            
+            # 保存checkpoint
+            checkpoint_path = os.path.join(best_model_dir, f"{best_model_name}.pth")
+            torch.save(checkpoint, checkpoint_path)
+            
+            # 保存评估信息
+            import json
+            eval_info = {
+                'episode': self._current_episode,
+                'eval_count': self._eval_count,
+                'eval_reward': float(reward),
+                'best_eval_reward': float(self._best_eval_reward),
+                'n_eval_episodes': self.n_eval_episodes,
+                'evaluation_frequency': self.evaluation_frequency,
+                'timestamp': self.model.num_timesteps,
+                'eval_history': self._eval_rewards_history
+            }
+            
+            eval_info_path = os.path.join(best_model_dir, f"{best_model_name}_eval_info.json")
+            with open(eval_info_path, 'w', encoding='utf-8') as f:
+                json.dump(eval_info, f, indent=2, default=str)
+            
+            # 更新最佳模型路径
+            self._best_model_path = {
+                'sb3_path': sb3_path,
+                'checkpoint_path': checkpoint_path,
+                'eval_info_path': eval_info_path,
+                'reward': reward,
+                'episode': self._current_episode
+            }
+            
+            logger.info(f"✓ 最佳模型已保存:")
+            logger.info(f"  - SB3模型: {sb3_path}")
+            logger.info(f"  - Checkpoint: {checkpoint_path}")
+            logger.info(f"  - 评估信息: {eval_info_path}")
+            
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"保存最佳模型失败: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
     def get_latest_training_metrics(self):
         """
         获取最新的训练指标，用于实时显示
@@ -151,8 +342,37 @@ class _EpisodeCallback(BaseCallback):
         """
         return self.training_metrics.copy()
 
+    def get_evaluation_info(self):
+        """
+        获取评估相关信息
+        
+        Returns:
+            dict: 包含评估统计信息
+        """
+        return {
+            'eval_count': self._eval_count,
+            'last_eval_reward': self._last_eval_reward,
+            'best_eval_reward': self._best_eval_reward,
+            'evaluation_frequency': self.evaluation_frequency,
+            'n_eval_episodes': self.n_eval_episodes,
+            'eval_history': self._eval_rewards_history.copy(),
+            'best_model_path': self._best_model_path
+        }
+
     def get_last_detail(self):
-        return self.details[-1]
+        if self.details:
+            return self.details[-1]
+        else:
+            # 返回默认值以避免异常
+            return {
+                'r': 0.0,
+                'l': 0,
+                'mesh_data': {},
+                'boundary_vertices_data': [],
+                'last_ref_point': None,
+                'is_completed': False,
+                'avg_element_quality': 0.0
+            }
 
     def get_details(self):
         return self.details
@@ -190,7 +410,7 @@ class SB3SACTrainer:
     支持从config.yaml读取所有训练参数，确保参数配置的一致性。
     """
 
-    def __init__(self, env, device: str = "cuda", config=None):
+    def __init__(self, env, device: str = "cuda", config=None, training_session_dir=None):
         """
         初始化SB3 SAC训练器
 
@@ -198,16 +418,27 @@ class SB3SACTrainer:
             env: 训练环境
             device: 训练设备
             config: 配置字典，如果为None则从config.yaml加载
+            training_session_dir: 训练会话目录，用于保存最佳模型
         """
         self.env = env
         self.device = device
         self.config = config if config is not None else load_config()
+        self.training_session_dir = training_session_dir
 
         # 创建SAC智能体，传入完整配置
         self.agent = SB3SACAgent(env, device, self.config)
 
-        # 创建回调函数
-        self._cb = _EpisodeCallback()
+        # 获取评估配置
+        training_config = self.config.get("training", {})
+        evaluation_frequency = training_config.get("evaluation_frequency", 10)
+        n_eval_episodes = training_config.get("n_eval_episodes", 10)
+
+        # 创建回调函数，传入评估参数
+        self._cb = _EpisodeCallback(
+            evaluation_frequency=evaluation_frequency,
+            n_eval_episodes=n_eval_episodes,
+            training_session_dir=training_session_dir
+        )
 
     def train(self, total_timesteps: int):
         """
@@ -311,6 +542,19 @@ class SB3SACTrainer:
             "total_episodes": self.total_episodes,
         }
 
+    def _sanitize_value(self, value):
+        """
+        清理数值，确保JSON序列化兼容
+        """
+        import math
+        if value is None:
+            return 0.0
+        if isinstance(value, (int, float)):
+            if math.isnan(value) or math.isinf(value):
+                return 0.0
+            return float(value)
+        return value
+
     def get_status(self) -> Dict[str, Any]:
         """
         获取训练状态
@@ -322,23 +566,34 @@ class SB3SACTrainer:
         
         # 获取最新的训练指标
         latest_metrics = self._cb.get_latest_training_metrics()
+        
+        # 获取评估信息
+        eval_info = self._cb.get_evaluation_info()
 
-        return {
+        result = {
             "timesteps": self._cb.current_timesteps(),
             "episodes": self._cb.current_episodes(),
-            "latest_reward": last_detail.get('r'),
-            "latest_length": last_detail.get('l'),
-            "latest_mesh": last_detail.get('mesh_data'),
-            "latest_boundary": last_detail.get('boundary_vertices_data'),
+            "latest_reward": self._sanitize_value(last_detail.get('r')),
+            "latest_length": last_detail.get('l', 0),
+            "latest_mesh": last_detail.get('mesh_data', {}),
+            "latest_boundary": last_detail.get('boundary_vertices_data', []),
             "latest_ref_point": last_detail.get('last_ref_point'),
-            "avg_reward_100": self._cb.avg_reward_100(),
-            "is_completed": last_detail.get('is_completed'),
-            "avg_element_quality": last_detail.get('avg_element_quality', 0.0),
-            # 新增：训练指标
-            "recent_actor_loss": latest_metrics.get("actor_loss", 0.0),
-            "recent_critic_loss": latest_metrics.get("critic_loss", 0.0),
-            "current_alpha": latest_metrics.get("alpha", 0.0),
+            "avg_reward_100": self._sanitize_value(self._cb.avg_reward_100()),
+            "is_completed": last_detail.get('is_completed', False),
+            "avg_element_quality": self._sanitize_value(last_detail.get('avg_element_quality', 0.0)),
+            # 训练指标
+            "recent_actor_loss": self._sanitize_value(latest_metrics.get("actor_loss", 0.0)),
+            "recent_critic_loss": self._sanitize_value(latest_metrics.get("critic_loss", 0.0)),
+            "current_alpha": self._sanitize_value(latest_metrics.get("alpha", 0.0)),
+            # 评估信息
+            "eval_count": eval_info.get("eval_count", 0),
+            "last_eval_reward": self._sanitize_value(eval_info.get("last_eval_reward", 0.0)),
+            "best_eval_reward": self._sanitize_value(eval_info.get("best_eval_reward", 0.0)),
+            "evaluation_frequency": eval_info.get("evaluation_frequency", 10),
+            "n_eval_episodes": eval_info.get("n_eval_episodes", 10),
         }
+
+        return result
 
     def __getattr__(self, name):
         """代理到agent的属性访问"""
@@ -403,6 +658,20 @@ class SB3SACTrainer:
         """
         action_counts_list = self._cb.get_data('action_counts')
         return plot_action_reward_distribution(action_counts_list, save_path)
+
+    def plot_avg_element_quality(self, save_path: str) -> str:
+        """
+        绘制训练过程中平均元素质量变化图表
+        
+        Args:
+            save_path: 图表保存路径
+            
+        Returns:
+            str: 最终保存的文件路径
+        """
+        avg_qualities = self._cb.get_data('avg_element_quality')
+        episode_lengths = self._cb.get_data('l')
+        return plot_avg_element_quality(avg_qualities, episode_lengths, save_path)
 
     def save_history(self, path):
         details = self._cb.get_non_zero_generated_details()

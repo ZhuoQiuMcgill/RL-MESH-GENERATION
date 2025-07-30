@@ -82,7 +82,13 @@ class TrainingManager:
             "avg_element_quality": 0.0,
             "mesh_data": {},
             "boundary_vertices_data": [],
-            "reference_point_info": None
+            "reference_point_info": None,
+            # 评估信息
+            "eval_count": 0,
+            "last_eval_reward": 0.0,
+            "best_eval_reward": 0.0,
+            "evaluation_frequency": 10,
+            "n_eval_episodes": 10,
         }
 
         self.logger.info("训练管理器初始化完成")
@@ -230,6 +236,30 @@ class TrainingManager:
                 "success": False
             }
 
+    def _sanitize_value(self, value):
+        """
+        清理数值，确保JSON序列化兼容
+        """
+        import math
+        if value is None:
+            return 0.0
+        if isinstance(value, (int, float)):
+            if math.isnan(value) or math.isinf(value):
+                return 0.0
+            return float(value)
+        return value
+
+    def _sanitize_dict(self, data):
+        """
+        递归清理字典中的所有数值
+        """
+        if isinstance(data, dict):
+            return {k: self._sanitize_dict(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._sanitize_dict(item) for item in data]
+        else:
+            return self._sanitize_value(data)
+
     def get_status(self) -> Dict[str, Any]:
         """
         获取当前训练状态
@@ -258,13 +288,16 @@ class TrainingManager:
             "buffer_utilization": self.current_stats.get("buffer_size", 0)
         }
 
-        return {
+        result = {
             "running": True,
             "status": "running",
             "stats": self.current_stats.copy(),
             "progress": progress_info,
             "timestamp": time.time()
         }
+
+        # 清理数据以确保JSON兼容性
+        return self._sanitize_dict(result)
 
     def is_running(self) -> bool:
         """
@@ -407,17 +440,26 @@ class TrainingManager:
                 except Exception as e:
                     self.logger.warning(f"加载温度参数优化器状态失败: {e}")
 
-            # 尝试加载经验回放缓冲区
+            # 尝试加载经验回放缓冲区 - 修复版本
             if self.checkpoint_data.get('has_replay_buffer', False):
                 try:
                     replay_buffer = self.checkpoint_manager.load_replay_buffer(self.loaded_checkpoint_name)
-                    if replay_buffer and hasattr(model, 'replay_buffer'):
-                        model.replay_buffer = replay_buffer
-                        self.logger.info("✓ 成功加载经验回放缓冲区")
+                    if replay_buffer is not None and hasattr(model, 'replay_buffer'):
+                        # Buffer兼容性检查和修复
+                        success = self._apply_replay_buffer_safely(model, replay_buffer)
+                        if success:
+                            self.logger.info("✓ 成功加载并应用经验回放缓冲区")
+                        else:
+                            self.logger.warning("经验回放缓冲区不兼容，将使用空缓冲区开始训练")
                     else:
-                        self.logger.warning("无法加载经验回放缓冲区，将使用空缓冲区开始训练")
+                        if replay_buffer is None:
+                            self.logger.warning("经验回放缓冲区文件不存在或加载失败，将使用空缓冲区开始训练")
+                        else:
+                            self.logger.warning("模型不支持replay_buffer属性，跳过加载")
                 except Exception as e:
                     self.logger.warning(f"加载经验回放缓冲区失败: {e}")
+            else:
+                self.logger.info("checkpoint未标记包含replay buffer，将使用空缓冲区开始训练")
 
             # 修复：设置正确的训练步数
             original_timesteps = self.checkpoint_data.get('training_timesteps', 0)
@@ -434,6 +476,102 @@ class TrainingManager:
             self.logger.error(f"应用checkpoint到训练器失败: {e}")
             self.logger.error(traceback.format_exc())
             raise ValueError(f"Failed to apply checkpoint to trainer: {e}")
+
+    def _apply_replay_buffer_safely(self, model, replay_buffer) -> bool:
+        """
+        安全地应用replay buffer到模型，处理兼容性问题
+        
+        Args:
+            model: SB3 SAC模型
+            replay_buffer: 要加载的replay buffer
+            
+        Returns:
+            bool: 是否成功应用
+        """
+        try:
+            import torch
+            
+            # 1. 检查buffer类型兼容性
+            if not hasattr(replay_buffer, 'buffer_size') or not hasattr(replay_buffer, 'pos'):
+                self.logger.error("Replay buffer缺少必要属性，类型不兼容")
+                return False
+            
+            # 2. 检查buffer大小兼容性
+            current_buffer_size = model.replay_buffer.buffer_size if model.replay_buffer else 0
+            loaded_buffer_size = replay_buffer.buffer_size
+            
+            if current_buffer_size != loaded_buffer_size:
+                self.logger.warning(f"Buffer大小不匹配: 当前={current_buffer_size}, 加载={loaded_buffer_size}")
+                # 如果大小不匹配，尝试调整
+                if current_buffer_size > loaded_buffer_size:
+                    self.logger.info("当前buffer更大，将加载的数据复制到新buffer中")
+                    # 可以继续，数据会被复制到更大的buffer中
+                else:
+                    self.logger.error("当前buffer较小，无法容纳加载的数据")
+                    return False
+            
+            # 3. 检查观测空间和动作空间兼容性
+            if hasattr(replay_buffer, 'observations') and hasattr(model.replay_buffer, 'observations'):
+                try:
+                    loaded_obs_shape = replay_buffer.observations.shape
+                    current_obs_shape = model.replay_buffer.observations.shape
+                    
+                    # 比较形状（除了第一维度buffer大小）
+                    if loaded_obs_shape[1:] != current_obs_shape[1:]:
+                        self.logger.error(f"观测空间不匹配: 加载={loaded_obs_shape}, 当前={current_obs_shape}")
+                        return False
+                except Exception as e:
+                    self.logger.warning(f"检查观测空间时出错: {e}")
+            
+            # 4. 处理设备不匹配问题
+            device = model.device
+            if hasattr(replay_buffer, 'observations') and replay_buffer.observations is not None:
+                try:
+                    # 检查并转移到正确设备
+                    if hasattr(replay_buffer.observations, 'device'):
+                        if replay_buffer.observations.device != device:
+                            self.logger.info(f"转移replay buffer到设备: {device}")
+                            replay_buffer.observations = replay_buffer.observations.to(device)
+                            
+                    if hasattr(replay_buffer, 'actions') and replay_buffer.actions is not None:
+                        if hasattr(replay_buffer.actions, 'device'):
+                            replay_buffer.actions = replay_buffer.actions.to(device)
+                            
+                    if hasattr(replay_buffer, 'rewards') and replay_buffer.rewards is not None:
+                        if hasattr(replay_buffer.rewards, 'device'):
+                            replay_buffer.rewards = replay_buffer.rewards.to(device)
+                            
+                    if hasattr(replay_buffer, 'next_observations') and replay_buffer.next_observations is not None:
+                        if hasattr(replay_buffer.next_observations, 'device'):
+                            replay_buffer.next_observations = replay_buffer.next_observations.to(device)
+                            
+                    if hasattr(replay_buffer, 'dones') and replay_buffer.dones is not None:
+                        if hasattr(replay_buffer.dones, 'device'):
+                            replay_buffer.dones = replay_buffer.dones.to(device)
+                            
+                except Exception as e:
+                    self.logger.warning(f"转移设备时出错: {e}")
+            
+            # 5. 应用replay buffer
+            model.replay_buffer = replay_buffer
+            
+            # 6. 验证应用结果
+            buffer_size = replay_buffer.size() if hasattr(replay_buffer, 'size') else 0
+            buffer_pos = replay_buffer.pos if hasattr(replay_buffer, 'pos') else 0
+            buffer_full = replay_buffer.full if hasattr(replay_buffer, 'full') else False
+            
+            self.logger.info(f"Replay buffer应用成功:")
+            self.logger.info(f"  - 缓冲区大小: {buffer_size}")
+            self.logger.info(f"  - 当前位置: {buffer_pos}")
+            self.logger.info(f"  - 是否满: {buffer_full}")
+            self.logger.info(f"  - 容量: {loaded_buffer_size}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"安全应用replay buffer失败: {e}")
+            self.logger.error(traceback.format_exc())
+            return False
 
     def _verify_checkpoint_loading(self) -> None:
         """
@@ -619,6 +757,14 @@ class TrainingManager:
             except Exception as e:
                 self.logger.warning(f"保存动作奖励分布图表失败: {e}")
 
+            # 保存平均元素质量变化图表
+            try:
+                avg_quality_path = os.path.join(plot_dir, f"{self.training_id}_avg_element_quality.png")
+                self.trainer.plot_avg_element_quality(avg_quality_path)
+                self.logger.info(f"平均元素质量图表已保存: {avg_quality_path}")
+            except Exception as e:
+                self.logger.warning(f"保存平均元素质量图表失败: {e}")
+
             history_path = os.path.join(self.training_session_dir, "history")
             self.trainer.save_history(history_path)
             self.logger.info(f"训练历史已保存: {history_path}")
@@ -772,7 +918,8 @@ class TrainingManager:
         self.trainer = SB3SACTrainer(
             env=self.env,
             device=device,
-            config=self.config
+            config=self.config,
+            training_session_dir=self.training_session_dir
         )
 
         self.logger.info(f"训练器已创建，设备: {device}")
@@ -831,6 +978,12 @@ class TrainingManager:
                 "recent_critic_loss": trainer_status.get("recent_critic_loss", 0.0),
                 "current_alpha": trainer_status.get("current_alpha", 0.0),
                 "avg_element_quality": trainer_status.get("avg_element_quality", 0.0) or 0.0,
+                # 更新评估信息
+                "eval_count": trainer_status.get("eval_count", 0),
+                "last_eval_reward": trainer_status.get("last_eval_reward", 0.0),
+                "best_eval_reward": trainer_status.get("best_eval_reward", 0.0),
+                "evaluation_frequency": trainer_status.get("evaluation_frequency", 10),
+                "n_eval_episodes": trainer_status.get("n_eval_episodes", 10),
             })
 
             mesh_data = trainer_status.get("latest_mesh")
