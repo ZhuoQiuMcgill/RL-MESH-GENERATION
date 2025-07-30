@@ -11,7 +11,7 @@ __all__ = [
 
 AVALIABLE_REFERENCE_POINT_SELECTORS = {
     "AVG INTERIOR ANGLE SELECTOR": RLReferencePointSelector(),
-    "RANDOM SELECTOR": RLReferencePointSelector(),
+    "RANDOM SELECTOR": RandomReferencePointSelector(),
     "MIN INTERIOR ANGLE SELECTOR": MinAngleReferenceSelector(),
 }
 

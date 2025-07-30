@@ -48,8 +48,9 @@ class MeshGenerator:
     def set_predictor(self, predictor):
         self.predictors[predictor.name()] = predictor
 
-    def set_ref_selector(self, ref_selector):
+    def set_ref_selector(self, ref_selector, config=None):
         self.current_activated_ref_selector = ref_selector
+        self.ref_selector_config = config or {}
 
     def update_activated_predictor(self, name):
         self.current_activated_predictor = self.predictors.get(name)

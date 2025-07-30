@@ -211,12 +211,8 @@ export class MeshGeneratorManager {
                 const selector = this.components.reference_selectors[key];
                 const option = document.createElement('option');
                 option.value = key;
-                // Truncate long descriptions for better display
-                const shortDesc = selector.description.length > 35 ? 
-                    selector.description.substring(0, 35) + '...' : 
-                    selector.description;
-                option.textContent = `${selector.name} - ${shortDesc}`;
-                option.title = `${selector.name} - ${selector.description}`; // Full text in tooltip
+                option.textContent = selector.name;
+                option.title = selector.description; // Full description in tooltip
                 refSelectorSelect.appendChild(option);
             });
         }

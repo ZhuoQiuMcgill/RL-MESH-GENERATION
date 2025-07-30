@@ -1,9 +1,10 @@
 import os
 import traceback
+import copy
 from flask import Blueprint, jsonify, request, current_app
 from src.mesh_generator.mesh_generator import MeshGenerator
 from src.mesh_generator.rl_predictor import RLPredictor
-from src.geometry.reference_point_selectors import RLReferencePointSelector, RandomReferencePointSelector
+from src.geometry import AVALIABLE_REFERENCE_POINT_SELECTORS as AVAILABLE_REF_SELECTORS
 from src.utils import MeshImporter
 
 predict_bp = Blueprint("predict", __name__, url_prefix="/predict")
@@ -21,26 +22,7 @@ AVAILABLE_PREDICTORS = {
     }
 }
 
-AVAILABLE_REF_SELECTORS = {
-    "RL": {
-        "name": "RL", 
-        "class": RLReferencePointSelector,
-        "description": "RL-based reference point selector (minimum interior angle)",
-        "parameters": ["n"]
-    },
-    "Random": {
-        "name": "Random",
-        "class": RandomReferencePointSelector,
-        "description": "Random reference point selector",
-        "parameters": []
-    },
-    "default": {
-        "name": "default",
-        "class": None,  # Uses boundary's default get_ref_vertex
-        "description": "Default boundary reference point selector",
-        "parameters": []
-    }
-}
+
 
 
 def get_available_models():
@@ -90,11 +72,11 @@ def list_components():
             }
         
         serializable_ref_selectors = {}
-        for name, info in AVAILABLE_REF_SELECTORS.items():
+        for name, selector in AVAILABLE_REF_SELECTORS.items():
             serializable_ref_selectors[name] = {
-                "name": info["name"],
-                "description": info["description"],
-                "parameters": info["parameters"]
+                "name": name,
+                "description": selector.__doc__ or "No description available",
+                "parameters": getattr(selector, 'parameters', [])
             }
         
         return jsonify({
@@ -198,18 +180,16 @@ def create_session():
                     "success": False
                 }), 400
             
-            ref_selector_class = AVAILABLE_REF_SELECTORS[ref_selector_type]["class"]
+            # Clone the base selector to prevent modifying the shared instance
+            base_selector = AVAILABLE_REF_SELECTORS[ref_selector_type]
+            ref_selector = copy.deepcopy(base_selector)
+
+            # Update the cloned selector with new config
+            if hasattr(ref_selector, 'parameters'):
+                for param in ref_selector.parameters:
+                    if param in ref_selector_config:
+                        setattr(ref_selector, param, ref_selector_config[param])
             
-            # Create a wrapper that passes the required parameters
-            class ReferencePointSelectorWrapper:
-                def __init__(self, selector_class, config):
-                    self.selector_class = selector_class
-                    self.config = config
-                
-                def select_reference_point(self, boundary):
-                    return self.selector_class.select_reference_point(boundary, **self.config)
-            
-            ref_selector = ReferencePointSelectorWrapper(ref_selector_class, ref_selector_config)
             generator.set_ref_selector(ref_selector)
         
         # Generate session ID
@@ -360,18 +340,16 @@ def update_session_config(session_id):
                         "success": False
                     }), 400
                 
-                ref_selector_class = AVAILABLE_REF_SELECTORS[ref_selector_type]["class"]
+                # Clone the base selector to prevent modifying the shared instance
+                base_selector = AVAILABLE_REF_SELECTORS[ref_selector_type]
+                ref_selector = copy.deepcopy(base_selector)
                 
-                # Create a wrapper that passes the required parameters
-                class ReferencePointSelectorWrapper:
-                    def __init__(self, selector_class, config):
-                        self.selector_class = selector_class
-                        self.config = config
-                    
-                    def select_reference_point(self, boundary):
-                        return self.selector_class.select_reference_point(boundary, **self.config)
+                # Update the cloned selector with new config
+                if hasattr(ref_selector, 'parameters'):
+                    for param in ref_selector.parameters:
+                        if param in ref_selector_config:
+                            setattr(ref_selector, param, ref_selector_config[param])
                 
-                ref_selector = ReferencePointSelectorWrapper(ref_selector_class, ref_selector_config)
                 generator.set_ref_selector(ref_selector)
             
             # Update session config
@@ -488,6 +466,9 @@ def prev_step(session_id):
         # Execute undo
         undo_result = generator.undo()
         
+        # Clear the locked reference point, as the state has changed
+        session["current_ref_point_idx"] = None
+
         # Record undo in history
         session["history"].append({
             "action": "prev",
@@ -613,8 +594,9 @@ def reset_session(session_id):
         # Execute reset
         reset_result = generator.reset()
         
-        # Clear history
+        # Clear history and locked reference point
         session["history"] = []
+        session["current_ref_point_idx"] = None
         
         # Get reset status
         status = generator.get_status()
@@ -784,13 +766,28 @@ def get_reference_point(session_id):
                     "success": False
                 }), 400
             
-            ref_selector_class = AVAILABLE_REF_SELECTORS[selector_type]["class"]
-            ref_vertex_idx = ref_selector_class.select_reference_point(current_boundary, **selector_config)
+            import copy
+
+# ... (other imports)
+
+# ... (inside get_reference_point function)
+            
+            # Clone the base selector to avoid modifying the shared instance
+            base_selector = AVAILABLE_REF_SELECTORS[selector_type]
+            ref_selector = copy.deepcopy(base_selector)
+            
+            # Update the cloned selector with new config
+            if hasattr(ref_selector, 'parameters'):
+                for param in ref_selector.parameters:
+                    if param in selector_config:
+                        setattr(ref_selector, param, selector_config[param])
+            
+            ref_vertex_idx = ref_selector.select_reference_point(current_boundary, **selector_config)
             
             selector_info = {
                 "type": selector_type,
-                "method": AVAILABLE_REF_SELECTORS[selector_type]["description"],
-                "config": selector_config
+                "method": ref_selector.__doc__ or "No description available",
+                "config": {param: getattr(ref_selector, param) for param in getattr(ref_selector, 'parameters', [])}
             }
         
         # Store the selected reference point index in the session state
@@ -808,17 +805,19 @@ def get_reference_point(session_id):
         left_neighbor = current_boundary.get_vertex_by_index(left_neighbor_idx)
         right_neighbor = current_boundary.get_vertex_by_index(right_neighbor_idx)
         
+        # Determine the value of 'n' from the request's configuration
+        n_val = selector_config.get("n", 1)
+
         # Calculate interior angle if possible
         interior_angle = None
         try:
             from src.utils import get_avg_interior_angle
-            if selector_type == "RL" and "n" in selector_config:
-                interior_angle = get_avg_interior_angle(current_boundary, ref_vertex_idx, selector_config["n"])
-            else:
-                # Calculate simple interior angle
-                interior_angle = get_avg_interior_angle(current_boundary, ref_vertex_idx, 1)
+            interior_angle = get_avg_interior_angle(current_boundary, ref_vertex_idx, n_val)
         except Exception:
             pass  # Interior angle calculation failed, leave as None
+
+        # Get local environment for rendering
+        local_env_vertices = current_boundary.get_neighbors(ref_vertex_idx, n_val)
         
         reference_point_info = {
             "reference_vertex_idx": ref_vertex_idx,
@@ -830,7 +829,9 @@ def get_reference_point(session_id):
                 "left_neighbor_coords": list(left_neighbor),
                 "right_neighbor_idx": right_neighbor_idx,
                 "right_neighbor_coords": list(right_neighbor),
-                "interior_angle": interior_angle
+                "interior_angle": interior_angle,
+                "local_env": local_env_vertices,
+                "n": n_val
             },
             "session_status": generator.get_status()
         }
@@ -889,7 +890,7 @@ def preview_reference_point():
         # Get reference point using specified selector
         if selector_type == "default":
             # Default selector uses RL method with n=1
-            ref_vertex_idx = boundary.get_ref_vertex(1)
+            ref_vertex_idx = boundary.get_ref_vertex(n=1)
             selector_info = {
                 "type": "default",
                 "method": "boundary default (RL with n=1)",
@@ -902,13 +903,22 @@ def preview_reference_point():
                     "success": False
                 }), 400
             
-            ref_selector_class = AVAILABLE_REF_SELECTORS[selector_type]["class"]
-            ref_vertex_idx = ref_selector_class.select_reference_point(boundary, **selector_config)
+            # Clone the base selector to avoid modifying the shared instance
+            base_selector = AVAILABLE_REF_SELECTORS[selector_type]
+            ref_selector = copy.deepcopy(base_selector)
+            
+            # Update the cloned selector with new config
+            if hasattr(ref_selector, 'parameters'):
+                for param in ref_selector.parameters:
+                    if param in selector_config:
+                        setattr(ref_selector, param, selector_config[param])
+            
+            ref_vertex_idx = ref_selector.select_reference_point(boundary, **selector_config)
             
             selector_info = {
                 "type": selector_type,
-                "method": AVAILABLE_REF_SELECTORS[selector_type]["description"],
-                "config": selector_config
+                "method": ref_selector.__doc__ or "No description available",
+                "config": {param: getattr(ref_selector, param) for param in getattr(ref_selector, 'parameters', [])}
             }
         
         # Get vertex coordinates and mesh info
@@ -922,16 +932,19 @@ def preview_reference_point():
         left_neighbor = boundary.get_vertex_by_index(left_neighbor_idx)
         right_neighbor = boundary.get_vertex_by_index(right_neighbor_idx)
         
+        # Determine the value of 'n' from the request's configuration
+        n_val = selector_config.get("n", 1)
+
         # Calculate interior angle if possible
         interior_angle = None
         try:
             from src.utils import get_avg_interior_angle
-            if selector_type == "RL" and "n" in selector_config:
-                interior_angle = get_avg_interior_angle(boundary, ref_vertex_idx, selector_config["n"])
-            else:
-                interior_angle = get_avg_interior_angle(boundary, ref_vertex_idx, 1)
+            interior_angle = get_avg_interior_angle(boundary, ref_vertex_idx, n_val)
         except Exception:
             pass
+
+        # Get local environment for rendering
+        local_env_vertices = boundary.get_neighbors(ref_vertex_idx, n_val)
         
         preview_info = {
             "mesh_name": mesh_name,
@@ -945,7 +958,9 @@ def preview_reference_point():
                 "left_neighbor_coords": list(left_neighbor),
                 "right_neighbor_idx": right_neighbor_idx,
                 "right_neighbor_coords": list(right_neighbor),
-                "interior_angle": interior_angle
+                "interior_angle": interior_angle,
+                "local_env": local_env_vertices,
+                "n": n_val
             },
             "boundary_vertices": boundary_vertices  # Full boundary for visualization
         }
