@@ -7,12 +7,13 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 from src.rl.agent.sb3_sac_agent import SB3SACAgent
 from src.rl.config import load_config
-from src.utils.rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution, plot_avg_element_quality
+from src.utils.rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, \
+    plot_action_reward_distribution, plot_avg_element_quality
 from src.rl.training.history_manager import save_episode_details
 
 
 class _EpisodeCallback(BaseCallback):
-    def __init__(self, evaluation_frequency=10, n_eval_episodes=10, training_session_dir=None):
+    def __init__(self, evaluation_frequency=10, n_eval_episodes=10, training_session_dir=None, stop_event=None):
         super().__init__()
         self._current_episode = 0
         self._current_timesteps = 0
@@ -28,7 +29,7 @@ class _EpisodeCallback(BaseCallback):
                      "avg_element_quality": []}
         self._best_reward = -inf
         self._best_episode = 0
-        
+
         # 新增：训练过程中的loss和alpha数据收集
         self.training_metrics = {
             "actor_losses": [],
@@ -36,17 +37,18 @@ class _EpisodeCallback(BaseCallback):
             "alphas": [],
             "timesteps": []  # 记录对应的timestep
         }
-        
+
         # 当前最新的metrics值（用于实时显示）
         self._latest_actor_loss = 0.0
         self._latest_critic_loss = 0.0
         self._latest_alpha = 0.0
-        
+
         # 新增：自动评估相关参数
         self.evaluation_frequency = evaluation_frequency
         self.n_eval_episodes = n_eval_episodes
         self.training_session_dir = training_session_dir
-        
+        self.stop_event = stop_event  # 停止事件
+
         # 评估状态跟踪
         self._eval_count = 0
         self._last_eval_reward = 0.0
@@ -55,9 +57,16 @@ class _EpisodeCallback(BaseCallback):
         self._best_model_path = None
 
     def _on_step(self) -> bool:
+        # 检查停止事件
+        if self.stop_event and self.stop_event.is_set():
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("检测到停止信号，终止训练")
+            return False  # 返回False停止训练
+
         # 收集训练过程中的loss和alpha数据
         self._collect_training_metrics()
-        
+
         infos = self.locals.get("infos", [])
         dones = self.locals.get("dones", [])
 
@@ -85,9 +94,11 @@ class _EpisodeCallback(BaseCallback):
             self._current_timesteps += detail['l']
             if not detail['is_completed']:
                 self._current_timesteps += 1
-            
-            # 检查是否需要进行自动评估
-            if self.evaluation_frequency > 0 and self._current_episode % self.evaluation_frequency == 0:
+
+            # 检查是否需要进行自动评估（只有在训练未停止时才进行）
+            if (self.evaluation_frequency > 0 and
+                    self._current_episode % self.evaluation_frequency == 0 and
+                    (not self.stop_event or not self.stop_event.is_set())):
                 self._perform_evaluation()
 
         return True
@@ -100,29 +111,29 @@ class _EpisodeCallback(BaseCallback):
             if self.model and hasattr(self.model, 'logger') and self.model.logger:
                 # 获取logger中记录的值
                 name_to_value = getattr(self.model.logger, 'name_to_value', {})
-                
+
                 if name_to_value:
                     current_timestep = self.model.num_timesteps
-                    
+
                     # 获取actor loss
                     if 'train/actor_loss' in name_to_value:
                         actor_loss = name_to_value['train/actor_loss']
                         self._latest_actor_loss = actor_loss
                         self.training_metrics["actor_losses"].append(actor_loss)
                         self.training_metrics["timesteps"].append(current_timestep)
-                    
+
                     # 获取critic loss
                     if 'train/critic_loss' in name_to_value:
                         critic_loss = name_to_value['train/critic_loss']
                         self._latest_critic_loss = critic_loss
                         self.training_metrics["critic_losses"].append(critic_loss)
-                    
+
                     # 获取alpha (entropy coefficient)
                     if 'train/ent_coef' in name_to_value:
                         alpha = name_to_value['train/ent_coef']
                         self._latest_alpha = alpha
                         self.training_metrics["alphas"].append(alpha)
-            
+
             # 如果logger中没有数据，尝试直接从policy中获取alpha
             if self._latest_alpha == 0.0 and self.model and hasattr(self.model, 'policy'):
                 try:
@@ -154,30 +165,46 @@ class _EpisodeCallback(BaseCallback):
         try:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"开始第{self._eval_count + 1}次自动评估 (Episode {self._current_episode})")
-            
+
+            # 检查停止事件
+            if self.stop_event and self.stop_event.is_set():
+                logger.info("检测到停止信号，跳过评估")
+                return
+
+            # logger.info(f"开始第{self._eval_count + 1}次自动评估 (Episode {self._current_episode})")
+
             # 使用当前环境进行评估
             eval_env = self.model.env
             if eval_env is None:
                 logger.warning("评估环境不可用，跳过评估")
                 return
-            
+
             # 执行评估
             episode_rewards = []
             for i in range(self.n_eval_episodes):
+                # 在每个评估episode开始前检查停止事件
+                if self.stop_event and self.stop_event.is_set():
+                    logger.info("检测到停止信号，终止评估")
+                    return
+
                 # 兼容不同版本的gymnasium/gym API
                 reset_result = eval_env.reset()
                 if isinstance(reset_result, tuple):
                     obs, _ = reset_result
                 else:
                     obs = reset_result
-                    
+
                 total_reward = 0.0
                 done = False
-                
+
                 while not done:
+                    # 在evaluation步骤中也检查停止事件
+                    if self.stop_event and self.stop_event.is_set():
+                        logger.info("检测到停止信号，终止当前评估episode")
+                        return
+
                     action, _ = self.model.predict(obs, deterministic=True)
-                    
+
                     # 兼容不同版本的step返回值
                     step_result = eval_env.step(action)
                     if len(step_result) == 5:
@@ -188,16 +215,16 @@ class _EpisodeCallback(BaseCallback):
                     else:
                         logger.error(f"意外的step返回值数量: {len(step_result)}")
                         break
-                        
+
                     total_reward += float(reward)
-                
+
                 episode_rewards.append(total_reward)
-                logger.debug(f"评估Episode {i+1}/{self.n_eval_episodes}: {total_reward:.3f}")
-            
+                # logger.debug(f"评估Episode {i + 1}/{self.n_eval_episodes}: {total_reward:.3f}")
+
             # 计算平均奖励
             mean_reward = float(np.mean(episode_rewards))
             std_reward = float(np.std(episode_rewards))
-            
+
             # 更新评估统计
             self._eval_count += 1
             self._last_eval_reward = mean_reward
@@ -208,20 +235,21 @@ class _EpisodeCallback(BaseCallback):
                 'std_reward': std_reward,
                 'rewards': episode_rewards.copy()
             })
-            
-            logger.info(f"评估完成: 平均奖励={mean_reward:.3f}±{std_reward:.3f}")
-            
+
+            # logger.info(f"评估完成: 平均奖励={mean_reward:.3f}±{std_reward:.3f}")
+
             # 检查是否是最佳模型
             if mean_reward > self._best_eval_reward:
                 self._best_eval_reward = mean_reward
-                logger.info(f"🎉 发现更好的模型! 新最佳评估奖励: {mean_reward:.3f}")
-                
+                # logger.info(f"🎉 发现更好的模型! 新最佳评估奖励: {mean_reward:.3f}")
+
                 # 保存最佳模型
                 if self.training_session_dir:
                     self._save_best_model(mean_reward)
             else:
-                logger.info(f"当前最佳评估奖励仍为: {self._best_eval_reward:.3f}")
-                
+                # logger.info(f"当前最佳评估奖励仍为: {self._best_eval_reward:.3f}")
+                pass
+
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
@@ -239,24 +267,57 @@ class _EpisodeCallback(BaseCallback):
         try:
             import os
             import logging
+            import glob
             logger = logging.getLogger(__name__)
-            
+
             if not self.training_session_dir:
                 logger.warning("训练会话目录未设置，无法保存最佳模型")
                 return
-            
+
             # 创建最佳模型目录
             best_model_dir = os.path.join(self.training_session_dir, "best_model")
             os.makedirs(best_model_dir, exist_ok=True)
-            
-            # 生成文件名
+
+            # 删除之前的最佳模型文件
+            if self._best_model_path:
+                try:
+                    # 删除之前的SB3模型文件
+                    if 'sb3_path' in self._best_model_path and os.path.exists(self._best_model_path['sb3_path']):
+                        os.remove(self._best_model_path['sb3_path'])
+                        # logger.info(f"已删除旧的SB3模型: {self._best_model_path['sb3_path']}")
+
+                    # 删除之前的Checkpoint文件
+                    if 'checkpoint_path' in self._best_model_path and os.path.exists(
+                            self._best_model_path['checkpoint_path']):
+                        os.remove(self._best_model_path['checkpoint_path'])
+                        # logger.info(f"已删除旧的Checkpoint: {self._best_model_path['checkpoint_path']}")
+
+                    # 删除之前的评估信息文件
+                    if 'eval_info_path' in self._best_model_path and os.path.exists(
+                            self._best_model_path['eval_info_path']):
+                        os.remove(self._best_model_path['eval_info_path'])
+                        # logger.info(f"已删除旧的评估信息: {self._best_model_path['eval_info_path']}")
+
+                except Exception as e:
+                    logger.warning(f"删除旧的最佳模型文件时发生错误: {e}")
+            else:
+                # 如果没有记录的最佳模型路径，尝试清理目录中的所有最佳模型文件
+                try:
+                    for pattern in ["best_model_*.zip", "best_model_*.pth", "best_model_*_eval_info.json"]:
+                        for file_path in glob.glob(os.path.join(best_model_dir, pattern)):
+                            os.remove(file_path)
+                            logger.info(f"已删除旧的最佳模型文件: {file_path}")
+                except Exception as e:
+                    logger.warning(f"清理旧的最佳模型文件时发生错误: {e}")
+
+            # 生成新的文件名
             timestamp = self._current_episode
             best_model_name = f"best_model_ep{timestamp}_reward{reward:.3f}"
-            
+
             # 保存SB3模型
             sb3_path = os.path.join(best_model_dir, f"{best_model_name}.zip")
             self.model.save(sb3_path)
-            
+
             # 保存PyTorch模型参数
             import torch
             checkpoint = {
@@ -271,17 +332,17 @@ class _EpisodeCallback(BaseCallback):
                 'critic_state_dict': self.model.policy.critic.state_dict(),
                 'critic_target_state_dict': self.model.policy.critic_target.state_dict(),
             }
-            
+
             # 保存温度参数
             if hasattr(self.model.policy, 'log_ent_coef'):
                 checkpoint['log_ent_coef'] = self.model.policy.log_ent_coef.data.clone()
             elif hasattr(self.model.policy, 'ent_coef'):
                 checkpoint['ent_coef'] = self.model.policy.ent_coef
-            
+
             # 保存checkpoint
             checkpoint_path = os.path.join(best_model_dir, f"{best_model_name}.pth")
             torch.save(checkpoint, checkpoint_path)
-            
+
             # 保存评估信息
             import json
             eval_info = {
@@ -294,11 +355,11 @@ class _EpisodeCallback(BaseCallback):
                 'timestamp': self.model.num_timesteps,
                 'eval_history': self._eval_rewards_history
             }
-            
+
             eval_info_path = os.path.join(best_model_dir, f"{best_model_name}_eval_info.json")
             with open(eval_info_path, 'w', encoding='utf-8') as f:
                 json.dump(eval_info, f, indent=2, default=str)
-            
+
             # 更新最佳模型路径
             self._best_model_path = {
                 'sb3_path': sb3_path,
@@ -307,12 +368,12 @@ class _EpisodeCallback(BaseCallback):
                 'reward': reward,
                 'episode': self._current_episode
             }
-            
+
             logger.info(f"✓ 最佳模型已保存:")
             logger.info(f"  - SB3模型: {sb3_path}")
             logger.info(f"  - Checkpoint: {checkpoint_path}")
             logger.info(f"  - 评估信息: {eval_info_path}")
-            
+
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
@@ -410,7 +471,7 @@ class SB3SACTrainer:
     支持从config.yaml读取所有训练参数，确保参数配置的一致性。
     """
 
-    def __init__(self, env, device: str = "cuda", config=None, training_session_dir=None):
+    def __init__(self, env, device: str = "cuda", config=None, training_session_dir=None, stop_event=None):
         """
         初始化SB3 SAC训练器
 
@@ -419,11 +480,13 @@ class SB3SACTrainer:
             device: 训练设备
             config: 配置字典，如果为None则从config.yaml加载
             training_session_dir: 训练会话目录，用于保存最佳模型
+            stop_event: 停止事件，用于停止训练
         """
         self.env = env
         self.device = device
         self.config = config if config is not None else load_config()
         self.training_session_dir = training_session_dir
+        self.stop_event = stop_event
 
         # 创建SAC智能体，传入完整配置
         self.agent = SB3SACAgent(env, device, self.config)
@@ -433,11 +496,12 @@ class SB3SACTrainer:
         evaluation_frequency = training_config.get("evaluation_frequency", 10)
         n_eval_episodes = training_config.get("n_eval_episodes", 10)
 
-        # 创建回调函数，传入评估参数
+        # 创建回调函数，传入评估参数和停止事件
         self._cb = _EpisodeCallback(
             evaluation_frequency=evaluation_frequency,
             n_eval_episodes=n_eval_episodes,
-            training_session_dir=training_session_dir
+            training_session_dir=training_session_dir,
+            stop_event=stop_event
         )
 
     def train(self, total_timesteps: int):
@@ -447,7 +511,30 @@ class SB3SACTrainer:
         Args:
             total_timesteps: 总训练时间步数
         """
-        self.agent.learn(total_timesteps=total_timesteps, callback=self._cb)
+        try:
+            # 在开始训练前检查停止事件
+            if self.stop_event and self.stop_event.is_set():
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info("训练开始前检测到停止信号，取消训练")
+                return
+
+            self.agent.learn(total_timesteps=total_timesteps, callback=self._cb)
+
+        except KeyboardInterrupt:
+            # 处理键盘中断
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("检测到键盘中断，停止训练")
+        except Exception as e:
+            # 检查是否因为停止事件而异常
+            if self.stop_event and self.stop_event.is_set():
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info("训练因停止信号而终止")
+            else:
+                # 重新抛出其他异常
+                raise
 
     def save(self, path: str):
         """
@@ -563,10 +650,10 @@ class SB3SACTrainer:
             Dict[str, Any]: 训练状态信息
         """
         last_detail = self._cb.get_last_detail()
-        
+
         # 获取最新的训练指标
         latest_metrics = self._cb.get_latest_training_metrics()
-        
+
         # 获取评估信息
         eval_info = self._cb.get_evaluation_info()
 
@@ -616,12 +703,12 @@ class SB3SACTrainer:
         """
         # 获取训练指标数据
         metrics = self._cb.get_training_metrics()
-        
+
         actor_losses = metrics.get("actor_losses", [])
         critic_losses = metrics.get("critic_losses", [])
         alphas = metrics.get("alphas", [])
         timesteps = metrics.get("timesteps", [])
-        
+
         # 生成图表
         saved_plots = plot_training_metrics(
             actor_losses=actor_losses,
@@ -630,7 +717,7 @@ class SB3SACTrainer:
             timesteps=timesteps,
             save_dir=save_dir
         )
-        
+
         return saved_plots
 
     def plot_action_distribution(self, save_path: str) -> str:

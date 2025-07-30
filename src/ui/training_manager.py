@@ -919,7 +919,8 @@ class TrainingManager:
             env=self.env,
             device=device,
             config=self.config,
-            training_session_dir=self.training_session_dir
+            training_session_dir=self.training_session_dir,
+            stop_event=self._stop_event  # 传递停止事件
         )
 
         self.logger.info(f"训练器已创建，设备: {device}")
@@ -939,19 +940,36 @@ class TrainingManager:
                 log_msg += f"，继续训练自checkpoint: {config['checkpoint_name']}"
             self.logger.info(log_msg)
 
+            # 检查训练开始前是否已经收到停止信号
+            if self._stop_event.is_set():
+                self.logger.info("训练开始前检测到停止信号，取消训练")
+                return
+
             # 开始训练
             self.trainer.train(total_timesteps=max_timesteps)
 
-            self.logger.info("训练完成")
+            # 检查是否是正常完成还是被停止
+            if self._stop_event.is_set():
+                self.logger.info("训练被用户停止")
+            else:
+                self.logger.info("训练正常完成")
 
         except Exception as e:
-            self.logger.error(f"训练过程中发生错误: {e}")
-            self.logger.error(traceback.format_exc())
+            if self._stop_event.is_set():
+                self.logger.info("训练在停止过程中发生异常，这可能是正常的")
+            else:
+                self.logger.error(f"训练过程中发生错误: {e}")
+                self.logger.error(traceback.format_exc())
         finally:
             # 训练结束时保存结果
-            self._save_results()
+            if not self._stop_event.is_set():
+                # 只有在正常结束时才保存结果
+                self._save_results()
+            else:
+                self.logger.info("训练被停止，跳过结果保存")
+            
             self._is_running = False
-            self._stop_event.set()
+            self._stop_event.set()  # 确保停止事件被设置
 
     def _update_stats(self) -> None:
         """
