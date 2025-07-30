@@ -1,6 +1,6 @@
 from .boundary import Boundary
 from .mesh import Mesh
-from .reference_point_selectors import RLReferencePointSelector, RandomReferencePointSelector
+from .reference_point_selectors import RLReferencePointSelector, RandomReferencePointSelector, MinAngleReferenceSelector
 
 __all__ = [
     'Boundary',
@@ -12,6 +12,7 @@ __all__ = [
 AVALIABLE_REFERENCE_POINT_SELECTORS = {
     "AVG INTERIOR ANGLE SELECTOR": RLReferencePointSelector(),
     "RANDOM SELECTOR": RLReferencePointSelector(),
+    "MIN INTERIOR ANGLE SELECTOR": MinAngleReferenceSelector(),
 }
 
 __version__ = '1.5.0'

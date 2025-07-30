@@ -99,12 +99,17 @@ class MeshGenerator:
             'initial_boundary': self.initial_boundary
         }
 
-    def step(self):
+    def step(self, ref_idx=None):
         """
         Execute one generation step using the current activated predictor.
         
         This method gets the current state, uses the predictor to make a decision,
         creates and executes an action command, and updates the generation state.
+        
+        Args:
+            ref_idx (int, optional): If provided, force the step to use this reference vertex.
+                                     If None, a reference vertex will be selected automatically.
+                                     Defaults to None.
         
         Returns:
             dict: Step result containing:
@@ -140,7 +145,13 @@ class MeshGenerator:
         try:
             # Get current state information
             state_info = self.get_current_state_info()
-            reference_vertex_idx = state_info['reference_vertex_idx']
+            
+            # If a specific reference index is provided, use it. Otherwise, use the one from the state.
+            if ref_idx is not None:
+                reference_vertex_idx = ref_idx
+                state_info['reference_vertex_idx'] = ref_idx  # Ensure state is consistent for predictor
+            else:
+                reference_vertex_idx = state_info['reference_vertex_idx']
 
             # Use predictor to make decision
             prediction = self.current_activated_predictor.predict(state_info)

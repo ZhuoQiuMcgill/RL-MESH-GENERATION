@@ -92,6 +92,12 @@ export class MeshGeneratorManager {
             refSelectorSelect.addEventListener('change', (e) => this.onRefSelectorChange(e.target.value));
         }
 
+        // Reselect reference point button
+        const reselectBtn = document.getElementById('reselect-ref-point-btn');
+        if (reselectBtn) {
+            reselectBtn.addEventListener('click', () => this.reselectReferencePoint());
+        }
+
         // Session controls
         this.bindSessionControls();
 
@@ -321,11 +327,23 @@ export class MeshGeneratorManager {
         
         if (selectorType) {
             this.logMessage(`Selected reference selector: ${selectorType}`, 'info');
+
+            // If the user is changing the selector, it's often to fix an invalid action.
+            // Clear the invalid action flag to re-enable the "Next" button immediately.
+            if (this.lastInvalidAction) {
+                this.logMessage('Invalid action state cleared by changing reference selector.', 'info');
+                this.lastInvalidAction = null;
+            }
             
-            // Preview reference point if mesh is selected
-            const meshName = document.getElementById('mesh-select').value;
-            if (meshName) {
-                await this.previewReferencePoint();
+            if (this.isSessionActive) {
+                // If session is active, update the session config and re-fetch the reference point
+                await this.updateSessionRefSelector(selectorType);
+            } else {
+                // Otherwise, just preview the reference point on the selected mesh
+                const meshName = document.getElementById('mesh-select').value;
+                if (meshName) {
+                    await this.previewReferencePoint();
+                }
             }
         }
         
@@ -370,6 +388,9 @@ export class MeshGeneratorManager {
             this.showSessionControls(true);
             this.logMessage(`Session created: ${this.sessionId}`, 'success');
             
+            // Show reselect button
+            this.showReselectButton(true);
+
             // Reset action statistics
             this.resetActionStats();
             
@@ -456,8 +477,15 @@ export class MeshGeneratorManager {
             const response = await this.apiRequest(`/session/${this.sessionId}/prev`, 'POST');
             
             if (response.undo_result.success) {
-                await this.refreshSessionStatus();
                 this.logMessage('Previous step undone', 'success');
+
+                // Clear stale data from the undone step to prevent re-rendering artifacts
+                this.lastActionInfo = null;
+                this.lastGeneratedElement = null;
+                this.lastInvalidAction = null;
+
+                // Refresh the session status, which will trigger a re-render of the mesh
+                await this.refreshSessionStatus();
             } else {
                 this.logMessage('Undo failed: ' + response.undo_result.message, 'warning');
             }
@@ -536,13 +564,13 @@ export class MeshGeneratorManager {
                 
                 this.logMessage('Session reset to initial state', 'success');
                 
-                // Reload mesh preview
+                // Reload mesh preview and get a new reference point
                 const meshName = document.getElementById('mesh-select').value;
                 if (meshName) {
                     await this.loadMeshPreview(meshName);
                 }
+                await this.updateCurrentReferencePoint();
             }
-            
         } catch (error) {
             console.error('Failed to reset session:', error);
             this.showError('Failed to reset session: ' + error.message);
@@ -574,6 +602,7 @@ export class MeshGeneratorManager {
             this.clearSessionStatus();
             this.clearActionInfo();
             this.resetActionStats();
+            this.showReselectButton(false);
             
             // Clear visualization data
             this.lastActionInfo = null;
@@ -758,18 +787,11 @@ export class MeshGeneratorManager {
         if (!this.canvasRenderer || !status) return;
 
         try {
-            // Create reference point info from last action if available
-            let refPointInfo = status.reference_point_info || null;
-            
-            if (!refPointInfo && this.lastActionInfo && status.boundary_vertices) {
-                refPointInfo = this.createReferencePointInfo(this.lastActionInfo, status.boundary_vertices);
-            }
-            
-            // Render the mesh scene with current data
+            // Render the mesh scene with the latest data, including the current reference point
             this.canvasRenderer.renderScene(
                 status.mesh_data || null,
                 status.boundary_vertices || null,
-                refPointInfo
+                this.currentReferencePoint // Pass the centrally managed reference point
             );
             
             // Hide empty state when we have data to render
@@ -1233,10 +1255,11 @@ export class MeshGeneratorManager {
         if (!meshName || !refSelectorType) return;
         
         try {
-            // Get selector config
+            // Always get the selector config if the input is visible
             const refSelectorConfig = {};
-            if (refSelectorType === 'RL') {
-                refSelectorConfig.n = parseInt(document.getElementById('ref-selector-n').value) || 2;
+            const n_input = document.getElementById('ref-selector-n');
+            if (n_input && !n_input.closest('.hidden')) {
+                refSelectorConfig.n = parseInt(n_input.value) || 1;
             }
             
             const response = await this.apiRequest('/reference_point/preview', 'POST', {
@@ -1272,6 +1295,73 @@ export class MeshGeneratorManager {
     }
     
     /**
+     * Update session reference selector configuration
+     */
+    async updateSessionRefSelector(selectorType) {
+        if (!this.sessionId) return;
+
+        try {
+            this.showLoading(true);
+
+            // Always get the selector config if the input is visible
+            const refSelectorConfig = {};
+            const n_input = document.getElementById('ref-selector-n');
+            if (n_input && !n_input.closest('.hidden')) {
+                refSelectorConfig.n = parseInt(n_input.value) || 1;
+            }
+
+            const config = {
+                ref_selector_type: selectorType,
+                ref_selector_config: refSelectorConfig
+            };
+
+            const response = await this.apiRequest(`/session/${this.sessionId}/config`, 'PUT', config);
+            this.logMessage(`Updated reference selector to: ${selectorType}`, 'success');
+
+            // The response from the config update now contains the full, updated session status
+            if (response.success && response.status) {
+                // Update the current reference point from the response
+                if (response.status.reference_point) {
+                    this.currentReferencePoint = response.status.reference_point;
+                    this.updateReferencePointDisplay(this.currentReferencePoint);
+                }
+                // Update the entire session status, which re-renders the canvas and buttons
+                this.updateSessionStatus(response.status);
+            }
+
+        } catch (error) {
+            console.error('Failed to update reference selector:', error);
+            this.showError('Failed to update reference selector: ' + error.message);
+        } finally {
+            this.showLoading(false);
+        }
+    }
+
+    /**
+     * Show/hide reselect button
+     */
+    showReselectButton(show) {
+        const container = document.getElementById('reselect-button-container');
+        if (container) {
+            if (show) {
+                container.classList.remove('hidden');
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+    }
+
+    /**
+     * Trigger a re-selection of the reference point
+     */
+    async reselectReferencePoint() {
+        if (!this.isSessionActive) return;
+
+        this.logMessage('Requesting new reference point...', 'info');
+        await this.updateCurrentReferencePoint();
+    }
+
+    /**
      * Update current reference point from session
      */
     async updateCurrentReferencePoint() {
@@ -1283,8 +1373,11 @@ export class MeshGeneratorManager {
             if (response.success && response.reference_point) {
                 this.currentReferencePoint = response.reference_point;
                 
-                // Update reference point display
+                // Update reference point display in the UI
                 this.updateReferencePointDisplay(response.reference_point);
+                
+                // Refresh the entire session status to ensure UI consistency, including button states
+                this.updateSessionStatus(response.reference_point.session_status);
                 
                 this.logMessage(`Reference point updated: vertex ${response.reference_point.reference_vertex_idx}`, 'info');
             }

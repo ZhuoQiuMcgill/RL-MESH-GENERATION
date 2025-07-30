@@ -225,7 +225,8 @@ def create_session():
                 "ref_selector_type": ref_selector_type,
                 "ref_selector_config": ref_selector_config
             },
-            "history": []
+            "history": [],
+            "current_ref_point_idx": None  # Initialize with no selected reference point
         }
         
         # Get initial status
@@ -377,9 +378,18 @@ def update_session_config(session_id):
             session["config"]["ref_selector_type"] = ref_selector_type
             session["config"]["ref_selector_config"] = ref_selector_config
         
-        # Get updated status
+        # Get updated status and new reference point in one go
         status = generator.get_status()
         
+        # Manually get the new reference point to include in the response
+        try:
+            ref_point_response = get_reference_point(session_id)
+            if ref_point_response.status_code == 200:
+                status['reference_point'] = ref_point_response.get_json().get('reference_point')
+        except Exception as e:
+            current_app.logger.warning(f"Could not fetch reference point during config update: {e}")
+            status['reference_point'] = None
+
         return jsonify({
             "session_id": session_id,
             "status": status,
@@ -414,8 +424,14 @@ def next_step(session_id):
         session = prediction_sessions[session_id]
         generator = session["generator"]
         
-        # Execute step
-        step_result = generator.step()
+        # Use the stored reference point for this step
+        ref_idx_to_use = session.get("current_ref_point_idx")
+
+        # Execute step with the specific reference point
+        step_result = generator.step(ref_idx=ref_idx_to_use)
+
+        # Clear the used reference point to ensure a new one is selected for the next step
+        session["current_ref_point_idx"] = None
         
         # Create JSON-serializable version of step result (remove command object but keep action info)
         serializable_step_result = {
@@ -777,6 +793,9 @@ def get_reference_point(session_id):
                 "config": selector_config
             }
         
+        # Store the selected reference point index in the session state
+        session["current_ref_point_idx"] = ref_vertex_idx
+
         # Get vertex coordinates and additional info
         ref_vertex = current_boundary.get_vertex_by_index(ref_vertex_idx)
         

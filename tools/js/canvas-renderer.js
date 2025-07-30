@@ -329,7 +329,7 @@ export class CanvasRenderer {
         }
 
         if (refPointInfo) {
-            this.renderReferencePointInfo(refPointInfo, transform);
+            this.renderReferencePointInfo(refPointInfo, transform, boundaryVertices);
         }
     }
 
@@ -516,91 +516,113 @@ export class CanvasRenderer {
      * @param {Object} refInfo - Reference point information
      * @param {Object} transform - Transformation parameters
      */
-    renderReferencePointInfo(refInfo, transform) {
-        if (!refInfo || !refInfo.local_env_vertices || !refInfo.ref_vertex) {
-            return;
-        }
+    renderReferencePointInfo(refInfo, transform, boundaryVertices) {
+        if (!refInfo || !transform) return;
 
-        const {local_env_vertices, ref_vertex, clicked_point, new_element} = refInfo;
+        // --- Unified Rendering Logic --- //
+        // This function now handles multiple data structures for backward compatibility
+        // across predict, training, and history pages.
 
-        // Draw local environment edges
-        if (Array.isArray(local_env_vertices) && local_env_vertices.length > 1) {
-            this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-local-env-color').trim() || '#F59E0B';
-            this.ctx.lineWidth = Math.max(2, this.adaptiveSizes.boundaryLineWidth * 1.33);
-            this.ctx.lineCap = 'round';
-            this.ctx.beginPath();
+        // --- Mode 1: New structure from Predict Page (reference_vertex_idx) --- //
+        if (refInfo.reference_vertex_idx !== undefined && boundaryVertices && boundaryVertices.length > 0) {
+            const refVertexIdx = refInfo.reference_vertex_idx;
+            const refVertexCoords = refInfo.reference_vertex_coords;
+            if (!isValidCoordinate(refVertexCoords)) return;
 
-            const firstPoint = this.worldToScreen(local_env_vertices[0], transform);
-            this.ctx.moveTo(firstPoint[0], firstPoint[1]);
+            // Render N neighboring edges
+            const n = refInfo.selector_info?.config?.n || 1;
+            const boundarySize = boundaryVertices.length;
 
-            for (let i = 1; i < local_env_vertices.length; i++) {
-                if (isValidCoordinate(local_env_vertices[i])) {
-                    const point = this.worldToScreen(local_env_vertices[i], transform);
-                    this.ctx.lineTo(point[0], point[1]);
+            if (n > 0 && boundarySize > 1) {
+                this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-local-env-color').trim() || '#F59E0B';
+                this.ctx.lineWidth = Math.max(2.5, this.adaptiveSizes.boundaryLineWidth * 1.5);
+                this.ctx.lineCap = 'round';
+
+                for (let i = 0; i < n; i++) {
+                    // Left edge
+                    const p1_idx_left = (refVertexIdx - i + boundarySize) % boundarySize;
+                    const p2_idx_left = (refVertexIdx - i - 1 + boundarySize) % boundarySize;
+                    if (boundaryVertices[p1_idx_left] && boundaryVertices[p2_idx_left]) {
+                        this.drawLine(this.worldToScreen(boundaryVertices[p1_idx_left], transform), this.worldToScreen(boundaryVertices[p2_idx_left], transform));
+                    }
+
+                    // Right edge
+                    const p1_idx_right = (refVertexIdx + i + boundarySize) % boundarySize;
+                    const p2_idx_right = (refVertexIdx + i + 1 + boundarySize) % boundarySize;
+                    if (boundaryVertices[p1_idx_right] && boundaryVertices[p2_idx_right]) {
+                        this.drawLine(this.worldToScreen(boundaryVertices[p1_idx_right], transform), this.worldToScreen(boundaryVertices[p2_idx_right], transform));
+                    }
                 }
             }
-            this.ctx.stroke();
-        }
 
-        // Highlight reference point
-        if (isValidCoordinate(ref_vertex)) {
-            const refScreenPos = this.worldToScreen(ref_vertex, transform);
+            // Highlight the reference point itself (drawn on top)
+            const refScreenPos = this.worldToScreen(refVertexCoords, transform);
             this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-color').trim() || '#10B981';
             this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-white').trim() || '#FFFFFF';
-            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.meshVertexLineWidth);
+            this.ctx.lineWidth = Math.max(1.5, this.adaptiveSizes.meshVertexLineWidth);
             this.drawVertex(refScreenPos, this.adaptiveSizes.referencePointRadius);
-        }
 
-        // Draw clicked point for Type1 actions
-        if (clicked_point && isValidCoordinate(clicked_point)) {
-            const clickedScreenPos = this.worldToScreen(clicked_point, transform);
-            this.ctx.fillStyle = '#FF6B6B'; // Red color for clicked point
-            this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.meshVertexLineWidth);
-            this.drawVertex(clickedScreenPos, Math.max(3, this.adaptiveSizes.referencePointRadius * 0.75));
-            
-            // Draw connection line from reference point to clicked point
+        // --- Mode 2: Old structure from History/Training Pages (ref_vertex) --- //
+        } else if (refInfo.ref_vertex) {
+            const { local_env_vertices, ref_vertex, clicked_point, new_element } = refInfo;
+
+            // Draw local environment edges (original logic)
+            if (Array.isArray(local_env_vertices) && local_env_vertices.length > 1) {
+                this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-local-env-color').trim() || '#F59E0B';
+                this.ctx.lineWidth = Math.max(2, this.adaptiveSizes.boundaryLineWidth * 1.33);
+                this.ctx.lineCap = 'round';
+                this.ctx.beginPath();
+                const firstPoint = this.worldToScreen(local_env_vertices[0], transform);
+                this.ctx.moveTo(firstPoint[0], firstPoint[1]);
+                for (let i = 1; i < local_env_vertices.length; i++) {
+                    if (isValidCoordinate(local_env_vertices[i])) {
+                        this.ctx.lineTo(...this.worldToScreen(local_env_vertices[i], transform));
+                    }
+                }
+                this.ctx.stroke();
+            }
+
+            // Highlight reference point (original logic)
             if (isValidCoordinate(ref_vertex)) {
                 const refScreenPos = this.worldToScreen(ref_vertex, transform);
-                this.ctx.strokeStyle = '#FF6B6B';
-                this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.boundaryLineWidth * 0.67);
-                this.ctx.setLineDash([5, 5]); // Dashed line
-                this.drawLine(refScreenPos, clickedScreenPos);
-                this.ctx.setLineDash([]); // Reset line dash
+                this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-color').trim() || '#10B981';
+                this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-white').trim() || '#FFFFFF';
+                this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.meshVertexLineWidth);
+                this.drawVertex(refScreenPos, this.adaptiveSizes.referencePointRadius);
             }
-        }
 
-        // Draw new element if exists (after execute)
-        if (new_element && Array.isArray(new_element) && new_element.length >= 3) {
-            this.ctx.strokeStyle = '#00D2FF'; // Cyan color for new element
-            this.ctx.fillStyle = 'rgba(0, 210, 255, 0.1)';
-            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.boundaryLineWidth);
-            
-            // Draw element outline
-            this.ctx.beginPath();
-            const firstElementPoint = this.worldToScreen(new_element[0], transform);
-            this.ctx.moveTo(firstElementPoint[0], firstElementPoint[1]);
-            
-            for (let i = 1; i < new_element.length; i++) {
-                if (isValidCoordinate(new_element[i])) {
-                    const point = this.worldToScreen(new_element[i], transform);
-                    this.ctx.lineTo(point[0], point[1]);
+            // Draw clicked point for Type1 actions (original logic)
+            if (clicked_point && isValidCoordinate(clicked_point)) {
+                const clickedScreenPos = this.worldToScreen(clicked_point, transform);
+                this.ctx.fillStyle = '#FF6B6B';
+                this.ctx.strokeStyle = '#FFFFFF';
+                this.ctx.lineWidth = 1.5;
+                this.drawVertex(clickedScreenPos, Math.max(3, this.adaptiveSizes.referencePointRadius * 0.75));
+                if (isValidCoordinate(ref_vertex)) {
+                    this.ctx.strokeStyle = '#FF6B6B';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.setLineDash([5, 5]);
+                    this.drawLine(this.worldToScreen(ref_vertex, transform), clickedScreenPos);
+                    this.ctx.setLineDash([]);
                 }
             }
-            this.ctx.closePath();
-            this.ctx.fill();
-            this.ctx.stroke();
-            
-            // Draw vertices of new element
-            this.ctx.fillStyle = '#00D2FF';
-            this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = Math.max(1, this.adaptiveSizes.meshVertexLineWidth);
-            new_element.forEach(vertex => {
-                if (isValidCoordinate(vertex)) {
-                    const vertexScreenPos = this.worldToScreen(vertex, transform);
-                    this.drawVertex(vertexScreenPos, Math.max(2, this.adaptiveSizes.boundaryVertexRadius * 1.25));
+
+            // Draw new element if it was generated (original logic)
+            if (new_element && Array.isArray(new_element) && new_element.length >= 3) {
+                this.ctx.strokeStyle = '#00D2FF';
+                this.ctx.fillStyle = 'rgba(0, 210, 255, 0.1)';
+                this.ctx.lineWidth = 1.5;
+                this.ctx.beginPath();
+                this.ctx.moveTo(...this.worldToScreen(new_element[0], transform));
+                for (let i = 1; i < new_element.length; i++) {
+                    if (isValidCoordinate(new_element[i])) {
+                        this.ctx.lineTo(...this.worldToScreen(new_element[i], transform));
+                    }
                 }
-            });
+                this.ctx.closePath();
+                this.ctx.fill();
+                this.ctx.stroke();
+            }
         }
     }
 
