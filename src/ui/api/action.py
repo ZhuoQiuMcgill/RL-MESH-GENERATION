@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from src.geometry import Boundary
 from src.rl.action.action_manager import ActionManager
 from src.rl.environment import MeshEnv
-from src.utils import normalize_coordinates, euclidean_distance
+from src.utils import normalize_coordinates, euclidean_distance, get_avg_interior_angle
 
 action_bp = Blueprint('action', __name__, url_prefix='/action')
 
@@ -82,9 +82,10 @@ class ActionTesterService:
                 }
 
             # Get reference vertex index using boundary's method
-            ref_index = boundary.get_ref_vertex()
+            n = 2
+            ref_index = boundary.get_ref_vertex(n)
             ref_vertex = boundary.get_vertex_by_index(ref_index)
-            ref_angle = boundary.get_avg_interior_angle(ref_index)
+            ref_angle = get_avg_interior_angle(boundary, ref_index, n)
 
             # Get neighbor vertices for visualization
             neighbor_vertices = boundary.get_neighbors(ref_index, n=2, get_type="exclude ref")

@@ -205,7 +205,7 @@ class MeshEnv(gym.Env):
             self.action_count[action_name]["rewards"] = [reward]
 
     def _get_reference_vertex(self):
-        return self.boundary.get_ref_vertex()
+        return self.boundary.get_ref_vertex(self.n)
 
     def _get_obs(self):
         """
@@ -217,7 +217,7 @@ class MeshEnv(gym.Env):
 
         # 1. reference vertex and geometric info
         get_type = "exclude ref"
-        reference_idx = self.boundary.get_ref_vertex()
+        reference_idx = self.boundary.get_ref_vertex(self.n)
         ref_v = self.boundary.get_vertex_by_index(reference_idx)
         right_neighbor_v = self.boundary.get_vertex_by_index(reference_idx - 1)
         neighbor_coords = self.boundary.get_neighbors(reference_idx, self.n, get_type=get_type)

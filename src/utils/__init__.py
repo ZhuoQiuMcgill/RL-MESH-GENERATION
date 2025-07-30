@@ -1,6 +1,6 @@
 # 直接导入不会造成循环依赖的模块
 from .angle import euclidean_distance, get_interior_angle, is_angle_in_slice, normalize_coordinates, decode_coordinate, \
-    calculate_polygon_area, valid_element_angle
+    calculate_polygon_area, valid_element_angle, get_avg_interior_angle
 from .segment import ray_segment_intersection, orientation, point_on_line_segment, line_segments_intersect, \
     segments_overlap_interior, point_to_segment_distance
 
@@ -79,7 +79,8 @@ __all__ = [
     'segments_overlap_interior',
     'point_to_segment_distance',
     'decode_coordinate',
-    'valid_element_angle'
+    'valid_element_angle',
+    'get_avg_interior_angle'
 ]
 
 # 版本信息

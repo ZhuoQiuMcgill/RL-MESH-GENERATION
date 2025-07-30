@@ -95,18 +95,7 @@ class ActionManager:
         # return spaces.Box(low=-1, high=1, shape=(self.action_dim,), dtype=np.float32)
         return spaces.Box(low=np.array([-1, 0, -1.5]), high=np.array([1, 1.5, 1.5]), dtype=np.float32)
 
-    def decode_action(self, action, boundary, reference_vertex_idx):
-        """
-        Decode action from SAC returned action data and compute new coordinates
-        
-        Args:
-            action: Raw action vector [type_logit, x_coord, y_coord]
-            boundary: Current boundary object
-            reference_vertex_idx: Reference vertex index
-            
-        Returns:
-            tuple: (action_name, action_instance, new_coords, reference_vertex_idx)
-        """
+    def decode_action(self, action, boundary, reference_vertex_idx, command=False):
         type_logit = action[0]
 
         # Find the appropriate action based on configuration
@@ -154,6 +143,9 @@ class ActionManager:
                 # type1 -> type0_left
                 action_name = self.enabled_actions[0]
                 action_instance = self.action_types[action_name]
+
+        if command:
+            return action_name, new_coords
 
         return action_name, action_instance, new_coords, reference_vertex_idx
 

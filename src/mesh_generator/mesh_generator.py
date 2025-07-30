@@ -1,13 +1,14 @@
+from src.geometry import *
+
+
 class MeshGenerator:
     def __init__(self, boundary_vertices):
         self.predictors = {}
         self.current_used_predictor = None
+        self.boundary = Boundary(boundary_vertices)
+        self.mesh = Mesh(self.boundary)
 
-
-    def init_env(self):
-        pass
-
-    def set_predict(self, predictor):
+    def set_predictor(self, predictor):
         self.predictors[predictor.name()] = predictor
 
     def update_used_predictor(self, name):
@@ -15,10 +16,9 @@ class MeshGenerator:
         if not self.current_used_predictor:
             raise KeyError(f"[ERROR] Predictor {name} not found.")
 
-    def register(self, generator):
-        pass
-
     def get_current_state_info(self):
+        """
+
+        :return:
+        """
         pass
-
-

@@ -15,9 +15,6 @@ def get_interior_angle(right, center, left):
 
 
 def is_angle_in_slice(angle: float, start_angle: float, end_angle: float) -> bool:
-    """检查角度是否在切片内（处理角度环绕问题）"""
-
-    # 规范化角度到[0, 2π]
     def normalize_angle(a):
         while a < 0:
             a += 2 * np.pi
@@ -30,10 +27,8 @@ def is_angle_in_slice(angle: float, start_angle: float, end_angle: float) -> boo
     end_angle = normalize_angle(end_angle)
 
     if start_angle <= end_angle:
-        # 正常情况
         return start_angle <= angle <= end_angle
     else:
-        # 跨越0点的情况
         return angle >= start_angle or angle <= end_angle
 
 
@@ -102,15 +97,6 @@ def decode_coordinate(
 
 
 def calculate_polygon_area(vertices):
-    """
-    使用鞋带公式计算多边形面积
-
-    Args:
-        vertices: 顶点列表
-
-    Returns:
-        float: 多边形面积
-    """
     if len(vertices) < 3:
         return 0.0
 
@@ -136,3 +122,13 @@ def valid_element_angle(element):
             return False
 
     return True
+
+
+def get_avg_interior_angle(boundary, target, n):
+    v_center = boundary.get_vertex_by_index(target)
+    angles = []
+    for i in range(1, n + 1):
+        v_right = boundary.get_vertex_by_index(target - n)
+        v_left = boundary.get_vertex_by_index(target + n)
+        angles.append(get_interior_angle(v_right, v_center, v_left))
+    return sum(angles) / len(angles) if len(angles) else 0.0

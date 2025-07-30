@@ -1,12 +1,10 @@
 import numpy as np
 from typing import List, Tuple
-from math import inf
-from .fan_shape import FanShape
 import math
-
-from src.utils.angle import get_interior_angle, euclidean_distance
+from .fan_shape import FanShape
+from .reference_point_selectors import RLReferencePointSelector
+from src.utils.angle import euclidean_distance
 from src.utils.segment import (
-    ray_segment_intersection,
     orientation,
     point_on_line_segment,
     line_segments_intersect,
@@ -98,7 +96,7 @@ class Boundary:
 
         normalized_ignore = {normalize(edge) for edge in ignore_edges}
 
-        min_distance = inf
+        min_distance = math.inf
         for seg_start, seg_end in self.get_edges():
             if normalize((seg_start, seg_end)) in normalized_ignore:
                 continue
@@ -122,7 +120,7 @@ class Boundary:
         # Normalize ignore_vertices to tuples for consistent comparison
         normalized_ignore = {to_tuple(v) for v in ignore_vertices}
 
-        min_distance = inf
+        min_distance = math.inf
         vertex_array = np.asarray(vertex, dtype=float)
 
         for boundary_vertex in self.get_vertices():
@@ -232,33 +230,8 @@ class Boundary:
     def size(self) -> int:
         return len(self._verts)
 
-    # ------------------------------------------------------------
-    # 内角计算工具
-    # ------------------------------------------------------------
-    def get_ref_vertex(self):
-        min_interior_angle = 360
-        min_n = 0
-        for n in range(self.size()):
-            avg_interior_angle = self.get_avg_interior_angle(n)
-            if avg_interior_angle < min_interior_angle:
-                min_interior_angle = avg_interior_angle
-                min_n = n
-
-        return min_n
-
-    def get_avg_interior_angle(self, n):
-        """
-        按照论文中的算法，ref_point 为v0，选取两个内角(v-2, v0, v+2)与(v-1, v0, v+1)的平均值
-        :param n: int ref_point的index
-        :return: 角度 0-360
-        """
-        ref_point = self.get_vertex_by_index(n)
-        left_point_1 = self.get_vertex_by_index(n + 1)
-        left_point_2 = self.get_vertex_by_index(n + 2)
-        right_point_1 = self.get_vertex_by_index(n - 1)
-        right_point_2 = self.get_vertex_by_index(n - 2)
-        return (get_interior_angle(right_point_1, ref_point, left_point_1) +
-                get_interior_angle(right_point_2, ref_point, left_point_2)) / 2
+    def get_ref_vertex(self, n):
+        return RLReferencePointSelector.select_reference_point(self, **{'n': n})
 
     # ------------------------------------------------------------
     # 修改器方法
