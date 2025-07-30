@@ -1,15 +1,9 @@
-from .action import ActionType
+from src.interfaces import ActionType
 from src.utils import get_interior_angle, euclidean_distance, valid_element_angle
-import math
-import logging
+
 
 
 class ActionType1(ActionType):
-    """
-    实现Type 1动作：增加一个新顶点V2，形成一个四边形。
-    对应论文中的 Figure 5(b)。
-    """
-
     def get_element(self, boundary, reference_vertex_idx, *coords):
         v0 = boundary.get_vertex_by_index(reference_vertex_idx)
         v1 = boundary.get_vertex_by_index(reference_vertex_idx - 1)

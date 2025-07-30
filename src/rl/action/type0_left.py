@@ -1,4 +1,4 @@
-from .action import ActionType
+from src.interfaces import ActionType
 from src.utils import get_interior_angle, euclidean_distance, valid_element_angle
 import math
 
