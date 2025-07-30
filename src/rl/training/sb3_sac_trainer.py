@@ -13,7 +13,7 @@ from src.rl.training.history_manager import save_episode_details
 
 
 class _EpisodeCallback(BaseCallback):
-    def __init__(self, evaluation_frequency=10, n_eval_episodes=10, training_session_dir=None, stop_event=None):
+    def __init__(self, evaluation_frequency=10, n_eval_episodes=10, training_session_dir=None, stop_event=None, enable_verbose_logging=False, require_completed_for_save=True):
         super().__init__()
         self._current_episode = 0
         self._current_timesteps = 0
@@ -55,6 +55,12 @@ class _EpisodeCallback(BaseCallback):
         self._best_eval_reward = -inf
         self._eval_rewards_history = []
         self._best_model_path = None
+        
+        # 日志控制开关
+        self.enable_verbose_logging = enable_verbose_logging
+        
+        # 保存条件控制开关
+        self.require_completed_for_save = require_completed_for_save
 
     def _on_step(self) -> bool:
         # 检查停止事件
@@ -171,7 +177,8 @@ class _EpisodeCallback(BaseCallback):
                 logger.info("检测到停止信号，跳过评估")
                 return
 
-            # logger.info(f"开始第{self._eval_count + 1}次自动评估 (Episode {self._current_episode})")
+            if self.enable_verbose_logging:
+                logger.info(f"开始第{self._eval_count + 1}次自动评估 (Episode {self._current_episode})")
 
             # 使用当前环境进行评估
             eval_env = self.model.env
@@ -181,6 +188,8 @@ class _EpisodeCallback(BaseCallback):
 
             # 执行评估
             episode_rewards = []
+            completed_episodes = []  # 记录每个episode是否完成
+            
             for i in range(self.n_eval_episodes):
                 # 在每个评估episode开始前检查停止事件
                 if self.stop_event and self.stop_event.is_set():
@@ -196,6 +205,7 @@ class _EpisodeCallback(BaseCallback):
 
                 total_reward = 0.0
                 done = False
+                episode_completed = False  # 追踪整个episode的完成状态
 
                 while not done:
                     # 在evaluation步骤中也检查停止事件
@@ -208,22 +218,39 @@ class _EpisodeCallback(BaseCallback):
                     # 兼容不同版本的step返回值
                     step_result = eval_env.step(action)
                     if len(step_result) == 5:
-                        obs, reward, terminated, truncated, _ = step_result
+                        obs, reward, terminated, truncated, info = step_result
                         done = terminated or truncated
                     elif len(step_result) == 4:
-                        obs, reward, done, _ = step_result
+                        obs, reward, done, info = step_result
                     else:
                         logger.error(f"意外的step返回值数量: {len(step_result)}")
                         break
 
                     total_reward += float(reward)
+                    
+                    # 检查episode是否在任何时刻完成任务（修复：追踪整个过程）
+                    if info and 'detail' in info:
+                        current_completed = info['detail'].get('is_completed', False)
+                        # 一旦检测到完成状态，就保持为True（不会被后续的False覆盖）
+                        if current_completed:
+                            episode_completed = True
+                    
+                    # 如果episode因为任务完成而终止，立即停止（避免继续执行无效动作）
+                    if done and episode_completed:
+                        break
 
                 episode_rewards.append(total_reward)
-                # logger.debug(f"评估Episode {i + 1}/{self.n_eval_episodes}: {total_reward:.3f}")
+                completed_episodes.append(episode_completed)
+                if self.enable_verbose_logging:
+                    logger.debug(f"评估Episode {i + 1}/{self.n_eval_episodes}: {total_reward:.3f}, 完成: {episode_completed}")
 
             # 计算平均奖励
             mean_reward = float(np.mean(episode_rewards))
             std_reward = float(np.std(episode_rewards))
+            
+            # 统计完成情况
+            completed_count = sum(completed_episodes)
+            completion_rate = completed_count / len(completed_episodes) if completed_episodes else 0.0
 
             # 更新评估统计
             self._eval_count += 1
@@ -233,22 +260,49 @@ class _EpisodeCallback(BaseCallback):
                 'eval_count': self._eval_count,
                 'mean_reward': mean_reward,
                 'std_reward': std_reward,
-                'rewards': episode_rewards.copy()
+                'rewards': episode_rewards.copy(),
+                'completed_episodes': completed_episodes.copy(),
+                'completed_count': completed_count,
+                'completion_rate': completion_rate
             })
 
-            # logger.info(f"评估完成: 平均奖励={mean_reward:.3f}±{std_reward:.3f}")
-
-            # 检查是否是最佳模型
-            if mean_reward > self._best_eval_reward:
+            if self.enable_verbose_logging:
+                logger.info(f"评估完成: 平均奖励={mean_reward:.3f}±{std_reward:.3f}, 完成率={completion_rate:.2%} ({completed_count}/{len(completed_episodes)})")
+                # 调试日志：显示每个episode的完成状态
+                logger.debug(f"Episode完成状态: {completed_episodes}")
+                logger.debug(f"Episode奖励: {[f'{r:.2f}' for r in episode_rewards]}")
+            
+            # 检查是否满足保存条件：根据配置决定是否要求完成任务
+            should_save = False
+            save_reason = ""
+            
+            # 检查完成条件（如果启用了要求完成的配置）
+            completion_check_passed = True
+            if self.require_completed_for_save and completed_count == 0:
+                completion_check_passed = False
+                save_reason = "没有episode完成任务，不保存模型"
+            
+            # 检查奖励提升条件
+            if completion_check_passed:
+                if mean_reward <= self._best_eval_reward:
+                    save_reason = f"奖励未提升 ({mean_reward:.3f} <= {self._best_eval_reward:.3f})，不保存模型"
+                else:
+                    should_save = True
+                    if self.require_completed_for_save:
+                        save_reason = f"发现更好的模型! 奖励提升: {self._best_eval_reward:.3f} -> {mean_reward:.3f}, 完成率: {completion_rate:.2%}"
+                    else:
+                        save_reason = f"发现更好的模型! 奖励提升: {self._best_eval_reward:.3f} -> {mean_reward:.3f} (不要求完成)"
+            
+            if should_save:
                 self._best_eval_reward = mean_reward
-                # logger.info(f"🎉 发现更好的模型! 新最佳评估奖励: {mean_reward:.3f}")
+                logger.info(f"🎉 {save_reason}")  # 保存成功总是记录
 
                 # 保存最佳模型
                 if self.training_session_dir:
-                    self._save_best_model(mean_reward)
+                    self._save_best_model(mean_reward, completed_count, completion_rate)
             else:
-                # logger.info(f"当前最佳评估奖励仍为: {self._best_eval_reward:.3f}")
-                pass
+                if self.enable_verbose_logging:
+                    logger.info(save_reason)  # 不保存的原因只在verbose模式下记录
 
         except Exception as e:
             import logging
@@ -257,12 +311,14 @@ class _EpisodeCallback(BaseCallback):
             import traceback
             logger.error(traceback.format_exc())
 
-    def _save_best_model(self, reward):
+    def _save_best_model(self, reward, completed_count=0, completion_rate=0.0):
         """
         保存最佳模型
         
         Args:
             reward: 当前评估奖励
+            completed_count: 完成任务的episode数量
+            completion_rate: 任务完成率
         """
         try:
             import os
@@ -284,19 +340,22 @@ class _EpisodeCallback(BaseCallback):
                     # 删除之前的SB3模型文件
                     if 'sb3_path' in self._best_model_path and os.path.exists(self._best_model_path['sb3_path']):
                         os.remove(self._best_model_path['sb3_path'])
-                        # logger.info(f"已删除旧的SB3模型: {self._best_model_path['sb3_path']}")
+                        if self.enable_verbose_logging:
+                            logger.info(f"已删除旧的SB3模型: {self._best_model_path['sb3_path']}")
 
                     # 删除之前的Checkpoint文件
                     if 'checkpoint_path' in self._best_model_path and os.path.exists(
                             self._best_model_path['checkpoint_path']):
                         os.remove(self._best_model_path['checkpoint_path'])
-                        # logger.info(f"已删除旧的Checkpoint: {self._best_model_path['checkpoint_path']}")
+                        if self.enable_verbose_logging:
+                            logger.info(f"已删除旧的Checkpoint: {self._best_model_path['checkpoint_path']}")
 
                     # 删除之前的评估信息文件
                     if 'eval_info_path' in self._best_model_path and os.path.exists(
                             self._best_model_path['eval_info_path']):
                         os.remove(self._best_model_path['eval_info_path'])
-                        # logger.info(f"已删除旧的评估信息: {self._best_model_path['eval_info_path']}")
+                        if self.enable_verbose_logging:
+                            logger.info(f"已删除旧的评估信息: {self._best_model_path['eval_info_path']}")
 
                 except Exception as e:
                     logger.warning(f"删除旧的最佳模型文件时发生错误: {e}")
@@ -306,13 +365,14 @@ class _EpisodeCallback(BaseCallback):
                     for pattern in ["best_model_*.zip", "best_model_*.pth", "best_model_*_eval_info.json"]:
                         for file_path in glob.glob(os.path.join(best_model_dir, pattern)):
                             os.remove(file_path)
-                            logger.info(f"已删除旧的最佳模型文件: {file_path}")
+                            if self.enable_verbose_logging:
+                                logger.info(f"已删除旧的最佳模型文件: {file_path}")
                 except Exception as e:
                     logger.warning(f"清理旧的最佳模型文件时发生错误: {e}")
 
-            # 生成新的文件名
+            # 生成新的文件名，包含完成信息
             timestamp = self._current_episode
-            best_model_name = f"best_model_ep{timestamp}_reward{reward:.3f}"
+            best_model_name = f"best_model_ep{timestamp}_reward{reward:.3f}_completed{completed_count}_rate{completion_rate:.0%}"
 
             # 保存SB3模型
             sb3_path = os.path.join(best_model_dir, f"{best_model_name}.zip")
@@ -350,10 +410,17 @@ class _EpisodeCallback(BaseCallback):
                 'eval_count': self._eval_count,
                 'eval_reward': float(reward),
                 'best_eval_reward': float(self._best_eval_reward),
+                'completed_count': completed_count,
+                'completion_rate': float(completion_rate),
                 'n_eval_episodes': self.n_eval_episodes,
                 'evaluation_frequency': self.evaluation_frequency,
                 'timestamp': self.model.num_timesteps,
-                'eval_history': self._eval_rewards_history
+                'eval_history': self._eval_rewards_history,
+                'save_criteria': {
+                    'requires_completion': True,
+                    'requires_better_reward': True,
+                    'description': 'Model saved only if episodes completed tasks AND reward improved'
+                }
             }
 
             eval_info_path = os.path.join(best_model_dir, f"{best_model_name}_eval_info.json")
@@ -369,10 +436,11 @@ class _EpisodeCallback(BaseCallback):
                 'episode': self._current_episode
             }
 
-            logger.info(f"✓ 最佳模型已保存:")
-            logger.info(f"  - SB3模型: {sb3_path}")
-            logger.info(f"  - Checkpoint: {checkpoint_path}")
-            logger.info(f"  - 评估信息: {eval_info_path}")
+            logger.info(f"✓ 最佳模型已保存 (奖励: {reward:.3f}, 完成: {completed_count}/{self.n_eval_episodes}, 完成率: {completion_rate:.1%})")
+            if self.enable_verbose_logging:
+                logger.info(f"  - SB3模型: {sb3_path}")
+                logger.info(f"  - Checkpoint: {checkpoint_path}")
+                logger.info(f"  - 评估信息: {eval_info_path}")
 
         except Exception as e:
             import logging
@@ -471,7 +539,7 @@ class SB3SACTrainer:
     支持从config.yaml读取所有训练参数，确保参数配置的一致性。
     """
 
-    def __init__(self, env, device: str = "cuda", config=None, training_session_dir=None, stop_event=None):
+    def __init__(self, env, device: str = "cuda", config=None, training_session_dir=None, stop_event=None, enable_verbose_logging=False):
         """
         初始化SB3 SAC训练器
 
@@ -481,12 +549,14 @@ class SB3SACTrainer:
             config: 配置字典，如果为None则从config.yaml加载
             training_session_dir: 训练会话目录，用于保存最佳模型
             stop_event: 停止事件，用于停止训练
+            enable_verbose_logging: 是否启用详细日志输出
         """
         self.env = env
         self.device = device
         self.config = config if config is not None else load_config()
         self.training_session_dir = training_session_dir
         self.stop_event = stop_event
+        self.enable_verbose_logging = enable_verbose_logging
 
         # 创建SAC智能体，传入完整配置
         self.agent = SB3SACAgent(env, device, self.config)
@@ -495,14 +565,36 @@ class SB3SACTrainer:
         training_config = self.config.get("training", {})
         evaluation_frequency = training_config.get("evaluation_frequency", 10)
         n_eval_episodes = training_config.get("n_eval_episodes", 10)
+        require_completed_for_save = training_config.get("require_completed_for_save", True)
 
         # 创建回调函数，传入评估参数和停止事件
         self._cb = _EpisodeCallback(
             evaluation_frequency=evaluation_frequency,
             n_eval_episodes=n_eval_episodes,
             training_session_dir=training_session_dir,
-            stop_event=stop_event
+            stop_event=stop_event,
+            enable_verbose_logging=enable_verbose_logging,
+            require_completed_for_save=require_completed_for_save
         )
+
+    def set_verbose_logging(self, enable: bool):
+        """
+        动态设置详细日志开关
+        
+        Args:
+            enable: 是否启用详细日志
+        """
+        self.enable_verbose_logging = enable
+        self._cb.enable_verbose_logging = enable
+
+    def set_require_completed_for_save(self, require: bool):
+        """
+        动态设置是否要求evaluation中必须有completed episode才能保存模型
+        
+        Args:
+            require: 是否要求completed episode
+        """
+        self._cb.require_completed_for_save = require
 
     def train(self, total_timesteps: int):
         """

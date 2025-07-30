@@ -914,13 +914,18 @@ class TrainingManager:
         # 确定设备
         device = "cuda"
 
+        # 获取日志配置
+        training_config = self.config.get("training", {})
+        enable_verbose_logging = training_config.get("enable_verbose_logging", False)
+
         # 创建SB3 SAC训练器，传入完整的config以确保所有训练参数都能被读取
         self.trainer = SB3SACTrainer(
             env=self.env,
             device=device,
             config=self.config,
             training_session_dir=self.training_session_dir,
-            stop_event=self._stop_event  # 传递停止事件
+            stop_event=self._stop_event,  # 传递停止事件
+            enable_verbose_logging=enable_verbose_logging  # 传递日志配置
         )
 
         self.logger.info(f"训练器已创建，设备: {device}")
