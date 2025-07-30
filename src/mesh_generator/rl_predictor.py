@@ -1,6 +1,8 @@
 from src.interfaces import Predictor
 from src.utils import normalize_coordinates
 import numpy as np
+import os
+from stable_baselines3 import SAC
 
 
 class RLPredictor(Predictor):
@@ -33,24 +35,37 @@ class RLPredictor(Predictor):
         Initialize the RL agent.
         
         Args:
-            agent_path (str, optional): Path to saved agent model
+            agent_path (str, optional): Path to saved Stable-Baselines3 SAC model (.zip file)
             agent_instance (optional): Pre-initialized agent instance
             
         Raises:
             ValueError: If neither agent_path nor agent_instance is provided
+            RuntimeError: If agent loading fails
         """
         if agent_instance is not None:
             self.agent = agent_instance
             self.is_loaded = True
         elif agent_path is not None:
-            # Load agent from path - implementation depends on agent type
-            # This is a placeholder for actual loading logic
             try:
-                # Example loading logic - adapt based on your agent implementation
-                # self.agent = load_agent_from_path(agent_path)
-                raise NotImplementedError("Agent loading from path not implemented yet")
+                # Validate path exists
+                if not os.path.exists(agent_path):
+                    raise FileNotFoundError(f"Agent model file not found: {agent_path}")
+                
+                # Validate file extension
+                if not agent_path.endswith('.zip'):
+                    raise ValueError(f"Agent model must be a .zip file from Stable-Baselines3, got: {agent_path}")
+                
+                # Load Stable-Baselines3 SAC model
+                print(f"Loading SAC model from: {agent_path}")
+                self.agent = SAC.load(agent_path)
+                print(f"Successfully loaded SAC model")
+                
+                self.is_loaded = True
+                
+            except FileNotFoundError as e:
+                raise RuntimeError(f"Model file not found: {e}")
             except Exception as e:
-                raise RuntimeError(f"Failed to load agent from {agent_path}: {e}")
+                raise RuntimeError(f"Failed to load SAC model from {agent_path}: {e}")
         else:
             raise ValueError("Either agent_path or agent_instance must be provided")
 
@@ -93,14 +108,9 @@ class RLPredictor(Predictor):
             # Build RL state vector following MeshEnv._get_obs() pattern
             rl_state = self._build_rl_state(boundary, reference_vertex_idx)
             
-            # Get prediction from agent
-            # The exact API depends on your agent implementation
-            if hasattr(self.agent, 'predict'):
-                action, _states = self.agent.predict(rl_state, deterministic=True)
-            elif hasattr(self.agent, 'act'):
-                action = self.agent.act(rl_state)
-            else:
-                raise RuntimeError("Agent does not have predict() or act() method")
+            # Get prediction from Stable-Baselines3 SAC agent
+            # SAC.predict() returns (action, _states) tuple
+            action, _states = self.agent.predict(rl_state, deterministic=True)
             
             # Return raw action vector for ActionManager to decode
             return {
