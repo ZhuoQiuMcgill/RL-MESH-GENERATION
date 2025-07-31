@@ -521,10 +521,48 @@ export class CanvasRenderer {
 
         // --- Unified Rendering Logic --- //
         // This function now handles multiple data structures for backward compatibility
-        // across predict, training, and history pages.
+        // and new API responses.
 
-        // --- Mode 1: New structure from Predict Page (reference_vertex_idx) --- //
-        if (refInfo.reference_vertex_idx !== undefined && boundaryVertices && boundaryVertices.length > 0) {
+        // --- Mode 3: New structure with local_env from Predict Page --- //
+        if ((refInfo.local_env && refInfo.n !== undefined) || 
+            (refInfo.boundary_context && refInfo.boundary_context.local_env && refInfo.boundary_context.n !== undefined)) {
+            const localEnv = refInfo.local_env || refInfo.boundary_context.local_env;
+            const n = refInfo.n !== undefined ? refInfo.n : refInfo.boundary_context.n;
+            
+            // The reference vertex is at the center of the local environment (index n)
+            const refIndex = n;
+            
+            if (!Array.isArray(localEnv) || refIndex < 0 || refIndex >= localEnv.length) {
+                return;
+            }
+
+            const refVertexCoords = localEnv[refIndex];
+            if (!isValidCoordinate(refVertexCoords)) return;
+
+            // Draw local environment edges
+            this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-local-env-color').trim() || '#F59E0B';
+            this.ctx.lineWidth = Math.max(2, this.adaptiveSizes.boundaryLineWidth * 1.33);
+            this.ctx.lineCap = 'round';
+            this.ctx.beginPath();
+            const firstPoint = this.worldToScreen(localEnv[0], transform);
+            this.ctx.moveTo(firstPoint[0], firstPoint[1]);
+            for (let i = 1; i < localEnv.length; i++) {
+                if (isValidCoordinate(localEnv[i])) {
+                    this.ctx.lineTo(...this.worldToScreen(localEnv[i], transform));
+                }
+            }
+            // Don't close the path for local_env, it's not always a closed loop.
+            this.ctx.stroke();
+
+            // Highlight the reference point itself (drawn on top)
+            const refScreenPos = this.worldToScreen(refVertexCoords, transform);
+            this.ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-reference-color').trim() || '#10B981';
+            this.ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-white').trim() || '#FFFFFF';
+            this.ctx.lineWidth = Math.max(1.5, this.adaptiveSizes.meshVertexLineWidth);
+            this.drawVertex(refScreenPos, this.adaptiveSizes.referencePointRadius);
+
+        // --- Mode 1: Newish structure from Predict Page (reference_vertex_idx) --- //
+        } else if (refInfo.reference_vertex_idx !== undefined && boundaryVertices && boundaryVertices.length > 0) {
             const refVertexIdx = refInfo.reference_vertex_idx;
             const refVertexCoords = refInfo.reference_vertex_coords;
             if (!isValidCoordinate(refVertexCoords)) return;

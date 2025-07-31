@@ -13,16 +13,6 @@ export class MeshGeneratorManager {
         this.isSessionActive = false;
         this.components = null;
         this.currentStep = 0;
-        this.actionStats = {
-            totalAttempts: 0,
-            successfulActions: 0,
-            failedActions: 0,
-            actionTypeCounts: {
-                type0_left: { attempts: 0, successes: 0 },
-                type0_right: { attempts: 0, successes: 0 },
-                type1: { attempts: 0, successes: 0 }
-            }
-        };
         
         // Canvas renderer
         this.canvasRenderer = null;
@@ -49,6 +39,9 @@ export class MeshGeneratorManager {
             
             // Load components from API
             await this.loadComponents();
+            
+            // Load quality methods
+            await this.loadQualityMethods();
             
             this.logMessage('Mesh Generator initialized successfully', 'info');
         } catch (error) {
@@ -106,6 +99,8 @@ export class MeshGeneratorManager {
         if (canvas) {
             canvas.addEventListener('click', this.handleCanvasClickThrottled);
         }
+
+
 
         // Clear log
         const clearLogBtn = document.getElementById('clear-log-btn');
@@ -354,15 +349,118 @@ export class MeshGeneratorManager {
         const predictorSelect = document.getElementById('predictor-select');
         const refSelectorSelect = document.getElementById('ref-selector-select');
         const modelSelect = document.getElementById('model-select');
+        const qualityMethodSelect = document.getElementById('quality-method-select');
         const createSessionBtn = document.getElementById('create-session-btn');
 
         const isValid = meshSelect.value && 
                        predictorSelect.value && 
                        refSelectorSelect.value && 
+                       qualityMethodSelect.value &&
                        (predictorSelect.value !== 'RL' || modelSelect.value);
 
         if (createSessionBtn) {
             createSessionBtn.disabled = !isValid || this.isSessionActive;
+        }
+    }
+
+    /**
+     * Load available quality methods
+     */
+    async loadQualityMethods() {
+        try {
+            const response = await this.apiRequest('/quality/methods', 'GET');
+            this.qualityMethods = response.methods || [];
+            
+            // Populate quality method select
+            const qualityMethodSelect = document.getElementById('quality-method-select');
+            if (qualityMethodSelect && this.qualityMethods.length > 0) {
+                qualityMethodSelect.innerHTML = '<option value="">Select Quality Method</option>';
+                this.qualityMethods.forEach((method, index) => {
+                    const option = document.createElement('option');
+                    option.value = method;
+                    option.textContent = method;
+                    qualityMethodSelect.appendChild(option);
+                    
+                    // Select hybrid as default if available
+                    if (method === 'hybrid') {
+                        option.selected = true;
+                    }
+                });
+                
+                // Add change event listener for automatic quality updates
+                qualityMethodSelect.addEventListener('change', () => {
+                    this.validateConfiguration();
+                    if (this.isSessionActive && qualityMethodSelect.value) {
+                        this.updateQualityResults();
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load quality methods:', error);
+        }
+    }
+
+    /**
+     * Update element quality results automatically
+     */
+    async updateQualityResults() {
+        if (!this.sessionId) {
+            return;
+        }
+
+        const qualityMethodSelect = document.getElementById('quality-method-select');
+        const method = qualityMethodSelect?.value;
+
+        if (!method) {
+            this.hideElementQuality();
+            return;
+        }
+
+        try {
+            const response = await this.apiRequest(`/session/${this.sessionId}/quality?method=${method}`, 'GET');
+            
+            if (response.success) {
+                this.displayElementQuality(response.average_quality, response.element_count, method);
+            } else {
+                this.displayElementQuality(null, response.element_count || 0, method, response.message);
+            }
+        } catch (error) {
+            console.error('Failed to calculate quality:', error);
+            this.displayElementQuality(null, 0, method, 'Calculation failed');
+        }
+    }
+
+    /**
+     * Display element quality information
+     */
+    displayElementQuality(averageQuality, elementCount, method, errorMessage = null) {
+        const qualitySection = document.getElementById('element-quality');
+        if (qualitySection) {
+            qualitySection.classList.remove('hidden');
+            
+            this.updateElement('quality-method-display', method);
+            this.updateElement('quality-element-count-display', elementCount);
+            
+            if (errorMessage) {
+                this.updateElement('quality-average-display', '-');
+                this.updateElement('quality-status-display', 'Error');
+            } else if (averageQuality !== null) {
+                this.updateElement('quality-average-display', averageQuality.toFixed(4));
+                this.updateElement('quality-status-display', elementCount > 0 ? 'Ready' : 'No elements');
+            } else {
+                this.updateElement('quality-average-display', '-');
+                this.updateElement('quality-status-display', elementCount > 0 ? 'Ready' : 'No elements');
+            }
+        }
+    }
+
+    /**
+     * Hide element quality information
+     */
+    hideElementQuality() {
+        const qualitySection = document.getElementById('element-quality');
+        if (qualitySection) {
+            qualitySection.classList.add('hidden');
         }
     }
 
@@ -380,18 +478,25 @@ export class MeshGeneratorManager {
             this.isSessionActive = true;
             this.currentStep = 0;
             
+            // Handle initial reference point if provided in response
+            if (response.initial_status && response.initial_status.reference_point) {
+                this.currentReferencePoint = response.initial_status.reference_point;
+                this.updateReferencePointDisplay(this.currentReferencePoint);
+            }
+            
             this.updateSessionStatus(response.initial_status);
             this.showSessionControls(true);
+            this.updateQualityResults(); // Initial quality calculation
             this.logMessage(`Session created: ${this.sessionId}`, 'success');
             
             // Show reselect button
             this.showReselectButton(true);
 
-            // Reset action statistics
-            this.resetActionStats();
             
-            // Get and display current reference point
-            await this.updateCurrentReferencePoint();
+            // Get and display current reference point (if not already set from response)
+            if (!this.currentReferencePoint) {
+                await this.updateCurrentReferencePoint();
+            }
             
         } catch (error) {
             console.error('Failed to create session:', error);
@@ -482,6 +587,9 @@ export class MeshGeneratorManager {
 
                 // Refresh the session status, which will trigger a re-render of the mesh
                 await this.refreshSessionStatus();
+                
+                // Update quality results after going to previous step
+                this.updateQualityResults();
             } else {
                 this.logMessage('Undo failed: ' + response.undo_result.message, 'warning');
             }
@@ -501,7 +609,7 @@ export class MeshGeneratorManager {
     }
 
     /**
-     * Process all remaining steps
+     * Process all remaining steps in a single backend operation
      */
     async processAllSteps() {
         if (!this.sessionId) return;
@@ -510,21 +618,52 @@ export class MeshGeneratorManager {
             this.showLoading(true);
             this.setButtonLoading('process-all-btn', true);
             
-            const response = await this.apiRequest(`/session/${this.sessionId}/process_all?max_steps=100`, 'POST');
+            // Call the new process_all API without max_steps parameter
+            const response = await this.apiRequest(`/session/${this.sessionId}/process_all`, 'POST');
             
-            this.logMessage(`Processed ${response.steps_executed} steps`, 'success');
+            const { steps_executed, completion_reason, step_history, final_status } = response;
             
-            // Handle each step result
-            if (response.results) {
-                response.results.forEach((result, index) => {
-                    this.handleStepResult({
-                        step_result: result,
-                        status: index === response.results.length - 1 ? response.final_status : null
-                    });
+            this.logMessage(`Process All completed: ${steps_executed} steps (${completion_reason})`, 'success');
+            
+            // Process the step history to update UI state
+            if (step_history && step_history.length > 0) {
+                // Show final step result and status
+                const finalStep = step_history[step_history.length - 1];
+                this.handleStepResult({
+                    step_result: {
+                        success: finalStep.success,
+                        element: finalStep.element,
+                        message: finalStep.message,
+                        action_info: finalStep.action_info
+                    },
+                    status: final_status
                 });
+                
+                // Log completion details
+                if (completion_reason === 'mesh_completed') {
+                    this.logMessage('Mesh generation completed successfully!', 'success');
+                } else if (completion_reason === 'invalid_action') {
+                    this.logMessage('Process stopped due to invalid action', 'warning');
+                } else if (completion_reason === 'max_iterations_reached') {
+                    this.logMessage('Process stopped: safety limit reached (1000 steps)', 'warning');
+                }
+                
+                // Show step statistics
+                const successfulSteps = step_history.filter(step => step.success).length;
+                const failedSteps = step_history.length - successfulSteps;
+                this.logMessage(`Step statistics: ${successfulSteps} successful, ${failedSteps} failed`, 'info');
+                
+                // Inform user about undo capability
+                if (successfulSteps > 0) {
+                    this.logMessage(`You can now use the "Previous Step" button to review each of the ${successfulSteps} steps`, 'info');
+                }
             }
             
+            // Refresh the session status to ensure UI is up-to-date
             await this.refreshSessionStatus();
+            
+            // Update reference point for final state
+            await this.updateCurrentReferencePoint();
             
         } catch (error) {
             console.error('Failed to process all steps:', error);
@@ -541,14 +680,27 @@ export class MeshGeneratorManager {
     async resetSession() {
         if (!this.sessionId) return;
 
+        // Confirm with user before resetting
+        if (!confirm('Are you sure you want to reset the session to the initial boundary? This will clear all progress.')) {
+            return;
+        }
+
         try {
             this.showLoading(true);
+            this.setButtonLoading('reset-session-btn', true);
             
             const response = await this.apiRequest(`/session/${this.sessionId}/reset`, 'POST');
             
             if (response.reset_result.success) {
+                // Handle initial reference point if provided in response
+                if (response.status && response.status.reference_point) {
+                    this.currentReferencePoint = response.status.reference_point;
+                    this.updateReferencePointDisplay(this.currentReferencePoint);
+                }
+                
+                // Update all UI state
                 this.updateSessionStatus(response.status);
-                this.resetActionStats();
+                this.updateQualityResults(); // Update quality after reset
                 this.clearActionInfo();
                 this.currentStep = 0;
                 this.lastInvalidAction = null;
@@ -556,22 +708,36 @@ export class MeshGeneratorManager {
                 // Clear visualization data
                 this.lastActionInfo = null;
                 this.lastGeneratedElement = null;
-                this.currentReferencePoint = null;
                 
-                this.logMessage('Session reset to initial state', 'success');
+                this.logMessage('Session reset to initial boundary state', 'success');
+                this.logMessage('All mesh generation progress has been cleared', 'info');
+                this.logMessage('You can now start fresh with Next Step or Process All', 'info');
                 
-                // Reload mesh preview and get a new reference point
-                const meshName = document.getElementById('mesh-select').value;
-                if (meshName) {
-                    await this.loadMeshPreview(meshName);
+                // Get reference point if not already set from response
+                if (!this.currentReferencePoint) {
+                    await this.updateCurrentReferencePoint();
                 }
-                await this.updateCurrentReferencePoint();
+                
+                // Ensure canvas shows the clean initial boundary with reference point
+                if (this.canvasRenderer && response.status) {
+                    this.canvasRenderer.renderScene(
+                        response.status.mesh_data || null,
+                        response.status.boundary_vertices || null,
+                        this.currentReferencePoint
+                    );
+                    this.showEmptyState(false);
+                }
+                
+            } else {
+                this.logMessage('Reset failed: ' + response.reset_result.message, 'error');
+                this.showError('Reset failed: ' + response.reset_result.message);
             }
         } catch (error) {
             console.error('Failed to reset session:', error);
             this.showError('Failed to reset session: ' + error.message);
         } finally {
             this.showLoading(false);
+            this.setButtonLoading('reset-session-btn', false);
         }
     }
 
@@ -595,9 +761,9 @@ export class MeshGeneratorManager {
             this.currentStep = 0;
             this.lastInvalidAction = null;
             this.showSessionControls(false);
+            this.hideElementQuality();
             this.clearSessionStatus();
             this.clearActionInfo();
-            this.resetActionStats();
             this.showReselectButton(false);
             
             // Clear visualization data
@@ -632,7 +798,6 @@ export class MeshGeneratorManager {
         if (step_result.action_info) {
             this.lastActionInfo = step_result.action_info;
             this.updateActionInfo(step_result.action_info);
-            this.updateActionStats(step_result.action_info);
             
             // Track invalid actions for button state management
             if (!step_result.action_info.is_valid) {
@@ -653,6 +818,9 @@ export class MeshGeneratorManager {
         // Update session status and visualization
         if (status) {
             this.updateSessionStatus(status);
+            
+            // Update quality results after status update
+            this.updateQualityResults();
             
             // Update reference point after successful valid action
             if (step_result.success && step_result.action_info && step_result.action_info.is_valid) {
@@ -848,6 +1016,7 @@ export class MeshGeneratorManager {
         const nextBtn = document.getElementById('next-step-btn');
         const prevBtn = document.getElementById('prev-step-btn');
         const processAllBtn = document.getElementById('process-all-btn');
+        const resetBtn = document.getElementById('reset-session-btn');
         
         // Update current step
         this.currentStep = status.current_step || 0;
@@ -865,6 +1034,11 @@ export class MeshGeneratorManager {
         }
         if (processAllBtn) {
             processAllBtn.disabled = !this.isSessionActive || status.is_completed;
+        }
+        if (resetBtn) {
+            // Enable reset when session is active and has made some progress
+            const enableReset = this.isSessionActive && (this.currentStep > 0 || status.generated_elements_count > 0);
+            resetBtn.disabled = !enableReset;
         }
     }
 
@@ -898,51 +1072,6 @@ export class MeshGeneratorManager {
         }
     }
 
-    /**
-     * Update action statistics
-     */
-    updateActionStats(actionInfo) {
-        this.actionStats.totalAttempts++;
-        
-        if (actionInfo.is_valid) {
-            this.actionStats.successfulActions++;
-            this.actionStats.actionTypeCounts[actionInfo.action_type].successes++;
-        } else {
-            this.actionStats.failedActions++;
-        }
-        
-        this.actionStats.actionTypeCounts[actionInfo.action_type].attempts++;
-        
-        // Update display
-        this.updateElement('total-attempts-display', this.actionStats.totalAttempts);
-        this.updateElement('successful-actions-display', this.actionStats.successfulActions);
-        this.updateElement('failed-actions-display', this.actionStats.failedActions);
-        
-        const successRate = this.actionStats.totalAttempts > 0 ? 
-            ((this.actionStats.successfulActions / this.actionStats.totalAttempts) * 100).toFixed(1) : 0;
-        this.updateElement('success-rate-display', successRate + '%');
-    }
-
-    /**
-     * Reset action statistics
-     */
-    resetActionStats() {
-        this.actionStats = {
-            totalAttempts: 0,
-            successfulActions: 0,
-            failedActions: 0,
-            actionTypeCounts: {
-                type0_left: { attempts: 0, successes: 0 },
-                type0_right: { attempts: 0, successes: 0 },
-                type1: { attempts: 0, successes: 0 }
-            }
-        };
-        
-        this.updateElement('total-attempts-display', 0);
-        this.updateElement('successful-actions-display', 0);
-        this.updateElement('failed-actions-display', 0);
-        this.updateElement('success-rate-display', '0%');
-    }
 
     /**
      * Show action error
@@ -979,18 +1108,23 @@ export class MeshGeneratorManager {
     }
 
     /**
-     * Show/hide session controls
+     * Enable/disable session controls (always visible)
      */
-    showSessionControls(show) {
-        const controls = document.getElementById('session-controls');
-        if (controls) {
-            if (show) {
-                controls.classList.remove('hidden');
-            } else {
-                controls.classList.add('hidden');
-            }
-        }
+    showSessionControls(enable) {
+        // Controls are always visible now, just enable/disable buttons
+        const nextBtn = document.getElementById('next-step-btn');
+        const prevBtn = document.getElementById('prev-step-btn');
+        const processAllBtn = document.getElementById('process-all-btn');
+        const resetBtn = document.getElementById('reset-session-btn');
+        const deleteBtn = document.getElementById('delete-session-btn');
+
+        if (nextBtn) nextBtn.disabled = !enable;
+        if (prevBtn) prevBtn.disabled = !enable;
+        if (processAllBtn) processAllBtn.disabled = !enable;
+        if (resetBtn) resetBtn.disabled = !enable;
+        if (deleteBtn) deleteBtn.disabled = !enable;
     }
+
 
     /**
      * Clear session status display
@@ -1352,6 +1486,11 @@ export class MeshGeneratorManager {
      */
     async reselectReferencePoint() {
         if (!this.isSessionActive) return;
+
+        if (this.lastInvalidAction) {
+            this.lastInvalidAction = null;
+            this.logMessage('Next step unlocked by reselecting reference point.', 'info');
+        }
 
         this.logMessage('Requesting new reference point...', 'info');
         await this.updateCurrentReferencePoint();

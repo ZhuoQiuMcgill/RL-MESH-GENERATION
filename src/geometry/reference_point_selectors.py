@@ -21,6 +21,9 @@ class RLReferencePointSelector(ReferencePointSelector):
                 min_i = i
         return min_i
 
+    def get_interior_angle(self, boundary, ref_index, n=2):
+        return get_avg_interior_angle(boundary, ref_index, n, log=True)
+
 
 class RandomReferencePointSelector(ReferencePointSelector):
     def __init__(self, n=1):
@@ -31,6 +34,12 @@ class RandomReferencePointSelector(ReferencePointSelector):
     def select_reference_point(self, boundary, **info):
         ref_index = random.randrange(boundary.size())
         return ref_index
+
+    def get_interior_angle(self, boundary, ref_index, n=2):
+        v_right = boundary.get_vertex_by_index(ref_index - 1)
+        v_center = boundary.get_vertex_by_index(ref_index)
+        v_left = boundary.get_vertex_by_index(ref_index + 1)
+        return get_interior_angle(v_right, v_center, v_left)
 
 
 class MinAngleReferenceSelector(ReferencePointSelector):
@@ -51,3 +60,9 @@ class MinAngleReferenceSelector(ReferencePointSelector):
                 min_interior_angle = angle
                 min_i = i
         return min_i
+
+    def get_interior_angle(self, boundary, ref_index, n=2):
+        v_right = boundary.get_vertex_by_index(ref_index - 1)
+        v_center = boundary.get_vertex_by_index(ref_index)
+        v_left = boundary.get_vertex_by_index(ref_index + 1)
+        return get_interior_angle(v_right, v_center, v_left)

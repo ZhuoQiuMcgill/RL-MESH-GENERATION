@@ -1,8 +1,9 @@
 import numpy as np
 from typing import List, Tuple
 import math
+
 from .fan_shape import FanShape
-from .reference_point_selectors import RLReferencePointSelector
+from .reference_point_selectors import RLReferencePointSelector, MinAngleReferenceSelector
 from src.utils.angle import euclidean_distance
 from src.utils.segment import (
     orientation,
@@ -231,7 +232,8 @@ class Boundary:
         return len(self._verts)
 
     def get_ref_vertex(self, n):
-        return RLReferencePointSelector.select_reference_point(self, **{'n': n})
+        return (
+            RLReferencePointSelector().select_reference_point(self, **{'n': n}))
 
     # ------------------------------------------------------------
     # 修改器方法

@@ -23,6 +23,37 @@
     flex-shrink: 0;
 }
 
+/* Modern Scrollbar for Left Panel */
+.mesh-generator-left-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.mesh-generator-left-panel::-webkit-scrollbar-track {
+    background: var(--color-bg-secondary);
+    border-radius: 4px;
+}
+
+.mesh-generator-left-panel::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, var(--color-primary-start), var(--color-primary-end));
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.mesh-generator-left-panel::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #4c1d95, #7c2d92);
+    box-shadow: 0 0 8px rgba(87, 0, 124, 0.3);
+}
+
+.mesh-generator-left-panel::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(135deg, #581c87, #86198f);
+}
+
+/* Modern scrollbar for Firefox */
+.mesh-generator-left-panel {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-primary-end) var(--color-bg-secondary);
+}
+
 /* Main Content Container */
 .mesh-generator-main-content-container {
     flex: 1;
@@ -54,6 +85,12 @@
     padding: 1rem;
     background: var(--color-bg-canvas);
     display: flex;
+}
+
+.canvas-controls-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--color-border-primary);
+    background: var(--color-bg-card);
 }
 
 #mesh-generator-canvas {
@@ -113,11 +150,20 @@
 .stat-label {
     color: var(--color-text-secondary);
     font-weight: 500;
+    font-size: 0.875rem;
 }
 
 .stat-value {
     color: var(--color-text-primary);
     font-weight: 600;
+    font-size: 0.875rem;
+    text-align: right;
+    flex-shrink: 0;
+    word-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+    max-width: 60%;
+    margin-left: auto;
 }
 
 /* Error Display */

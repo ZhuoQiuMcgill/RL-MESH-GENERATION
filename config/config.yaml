@@ -40,7 +40,7 @@ sb3_sac:
   buffer_size: 1000000
 
   # 开始训练前的随机探索步数 - 确保缓冲区有足够的经验
-  learning_starts: 0
+  learning_starts: 10000
 
   # 训练批次大小 - 每次从缓冲区采样的经验数量
   batch_size: 100

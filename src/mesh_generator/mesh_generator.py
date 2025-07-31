@@ -28,6 +28,7 @@ class MeshGenerator:
         self.predictors = {}
         self.current_activated_predictor = None
         self.current_activated_ref_selector = None
+        self.ref_selector_config = {}
 
         # Geometry objects - these are the master copies
         self.initial_boundary = Boundary(boundary_vertices)
@@ -85,8 +86,9 @@ class MeshGenerator:
             # Fallback to boundary's default reference selection
             reference_vertex_idx = self.boundary.get_ref_vertex(2)  # Default n=2
         else:
+            # Pass the stored configuration to the selector
             reference_vertex_idx = self.current_activated_ref_selector.select_reference_point(
-                self.boundary
+                self.boundary, **self.ref_selector_config
             )
 
         return {

@@ -124,11 +124,14 @@ def valid_element_angle(element):
     return True
 
 
-def get_avg_interior_angle(boundary, target, n):
+def get_avg_interior_angle(boundary, target, n, log=False):
     v_center = boundary.get_vertex_by_index(target)
     angles = []
     for i in range(1, n + 1):
-        v_right = boundary.get_vertex_by_index(target - n)
-        v_left = boundary.get_vertex_by_index(target + n)
-        angles.append(get_interior_angle(v_right, v_center, v_left))
+        v_right = boundary.get_vertex_by_index(target - i)
+        v_left = boundary.get_vertex_by_index(target + i)
+        angle = get_interior_angle(v_right, v_center, v_left)
+        angles.append(angle)
+        if log:
+            print(f"angle{i}: {angle}")
     return sum(angles) / len(angles) if len(angles) else 0.0

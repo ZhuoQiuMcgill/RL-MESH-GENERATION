@@ -123,66 +123,22 @@
                         </div>
                     </div>
 
+                    <!-- Quality Method Selection -->
+                    <div class="mb-4">
+                        <label class="form-label">Quality Method</label>
+                        <select id="quality-method-select" class="form-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+
                     <!-- Create Session Button -->
                     <button id="create-session-btn" class="w-full bg-primary hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
                         Create Session
                     </button>
                 </div>
 
-                <!-- Session Controls -->
-                <div id="session-controls" class="mb-6 hidden">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Session Controls</h3>
-                    
-                    <!-- Step Controls -->
-                    <div class="space-y-3">
-                        <div class="grid grid-cols-2 gap-3">
-                            <button id="prev-step-btn" class="btn-secondary px-4 py-2 text-sm" disabled>
-                                ← Previous
-                            </button>
-                            <button id="next-step-btn" class="btn-primary px-4 py-2 text-sm" disabled>
-                                Next →
-                            </button>
-                        </div>
-                        <button id="process-all-btn" class="w-full bg-warning hover:bg-orange-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200" disabled>
-                            Process All
-                        </button>
-                        <div class="grid grid-cols-2 gap-3">
-                            <button id="reset-session-btn" class="btn-tertiary px-4 py-2 text-sm" disabled>
-                                Reset
-                            </button>
-                            <button id="delete-session-btn" class="btn-danger px-4 py-2 text-sm" disabled>
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Session Status -->
-                <div id="session-status" class="hidden">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Session Status</h3>
-                    <div class="rounded-lg p-4 border space-y-2" style="background: var(--color-bg-card); border-color: var(--color-border-primary);">
-                        <div class="flex justify-between text-sm">
-                            <span class="text-gray-600">Session ID:</span>
-                            <span id="session-id-display" class="font-medium text-gray-800 text-xs">-</span>
-                        </div>
-                        <div class="flex justify-between text-sm">
-                            <span class="text-gray-600">Current Step:</span>
-                            <span id="current-step-display" class="font-medium text-gray-800">0</span>
-                        </div>
-                        <div class="flex justify-between text-sm">
-                            <span class="text-gray-600">Boundary Size:</span>
-                            <span id="boundary-size-display" class="font-medium text-gray-800">0</span>
-                        </div>
-                        <div class="flex justify-between text-sm">
-                            <span class="text-gray-600">Generated Elements:</span>
-                            <span id="generated-elements-display" class="font-medium text-gray-800">0</span>
-                        </div>
-                        <div class="flex justify-between text-sm">
-                            <span class="text-gray-600">Completion:</span>
-                            <span id="completion-status-display" class="font-medium text-gray-800">No</span>
-                        </div>
-                    </div>
-                </div>
+
             </div>
         </div>
 
@@ -190,9 +146,6 @@
         <div class="mesh-generator-main-content-container">
             <!-- Canvas Visualization Area -->
             <div class="mesh-generator-visualization-area">
-                <div class="canvas-header">
-                    <h2 class="text-lg font-semibold text-gray-800">Mesh Visualization</h2>
-                </div>
                 <div class="canvas-wrapper">
                     <canvas id="mesh-generator-canvas" class="rounded"></canvas>
                     <!-- Empty state overlay -->
@@ -204,6 +157,31 @@
                                 Select a mesh, predictor, and reference selector to begin mesh generation.
                                 The visualization will appear here during the process.
                             </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Session Controls - Always visible at bottom -->
+                <div id="session-controls" class="canvas-controls-footer">
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="flex gap-2">
+                            <button id="prev-step-btn" class="btn-secondary px-3 py-1.5 text-sm" disabled>
+                                ← Previous
+                            </button>
+                            <button id="next-step-btn" class="btn-primary px-3 py-1.5 text-sm" disabled>
+                                Next →
+                            </button>
+                        </div>
+                        <button id="process-all-btn" class="bg-warning hover:bg-orange-600 text-white font-medium py-1.5 px-3 rounded text-sm transition-colors duration-200" disabled>
+                            Process All
+                        </button>
+                        <div class="flex gap-2 ml-auto">
+                            <button id="reset-session-btn" class="btn-tertiary px-3 py-1.5 text-sm" disabled>
+                                Reset
+                            </button>
+                            <button id="delete-session-btn" class="btn-danger px-3 py-1.5 text-sm" disabled>
+                                Delete
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -265,25 +243,52 @@
                     </div>
                 </div>
 
-                <!-- Action Statistics Section -->
-                <div class="data-section">
-                    <h3 class="section-title">Action Statistics</h3>
+                <!-- Element Quality Section -->
+                <div id="element-quality" class="data-section hidden">
+                    <h3 class="section-title">Element Quality</h3>
                     <div class="stats-grid">
                         <div class="stat-item">
-                            <span class="stat-label">Total Attempts:</span>
-                            <span id="total-attempts-display" class="stat-value">0</span>
+                            <span class="stat-label">Method:</span>
+                            <span id="quality-method-display" class="stat-value">-</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Successful:</span>
-                            <span id="successful-actions-display" class="stat-value text-green-600">0</span>
+                            <span class="stat-label">Elements:</span>
+                            <span id="quality-element-count-display" class="stat-value">0</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Failed:</span>
-                            <span id="failed-actions-display" class="stat-value text-red-600">0</span>
+                            <span class="stat-label">Average Quality:</span>
+                            <span id="quality-average-display" class="stat-value">-</span>
                         </div>
                         <div class="stat-item">
-                            <span class="stat-label">Success Rate:</span>
-                            <span id="success-rate-display" class="stat-value">0%</span>
+                            <span class="stat-label">Status:</span>
+                            <span id="quality-status-display" class="stat-value">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Session Status -->
+                <div id="session-status" class="data-section hidden">
+                    <h3 class="section-title">Session Status</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Session ID:</span>
+                            <span id="session-id-display" class="stat-value">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Current Step:</span>
+                            <span id="current-step-display" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Boundary Size:</span>
+                            <span id="boundary-size-display" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Generated Elements:</span>
+                            <span id="generated-elements-display" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Completion:</span>
+                            <span id="completion-status-display" class="stat-value">No</span>
                         </div>
                     </div>
                 </div>
