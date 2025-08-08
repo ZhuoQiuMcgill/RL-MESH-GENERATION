@@ -1,0 +1,414 @@
+/* Predict Layout - Modern, Tech-inspired Design */
+/* Compatible with light and dark themes */
+
+.predict-layout {
+  height: 100%;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  grid-template-rows: 1fr;
+  grid-template-areas: 
+    "left-panel center-area right-panel";
+  gap: 1rem;
+  padding: 1rem;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, 
+    var(--color-gray-50) 0%, 
+    var(--color-gray-100) 100%
+  );
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+/* Dark theme background override */
+[data-theme="dark"] .predict-layout {
+  background: #0f1419;
+}
+
+/* Left Control Panel */
+.predict-control-panel {
+  grid-area: left-panel;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 2px solid var(--color-primary-200);
+  border-radius: var(--radius-xl);
+  box-shadow: 
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Animated border effect */
+.predict-control-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, 
+    var(--color-primary-300), 
+    var(--color-primary-500), 
+    var(--color-primary-300)
+  );
+  background-size: 300% 300%;
+  animation: gradientShift 3s ease-in-out infinite;
+  border-radius: var(--radius-xl);
+  z-index: -1;
+  opacity: 0.3;
+}
+
+/* Dark theme for control panel */
+[data-theme="dark"] .predict-control-panel {
+  background: rgba(15, 20, 25, 0.95);
+  border-color: var(--color-primary-700);
+  box-shadow: 
+    0 20px 25px -5px rgba(0, 0, 0, 0.3),
+    0 10px 10px -5px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Center Area (Canvas + Control Bar) */
+.predict-center-area {
+  grid-area: center-area;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Canvas with Controls Container */
+.predict-canvas-with-controls {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: var(--spacing-md);
+}
+
+/* Canvas Container */
+.predict-canvas-container {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  border: 2px solid var(--color-primary-100);
+  border-radius: var(--radius-xl);
+  box-shadow: 
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  padding: var(--spacing-lg);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  min-height: 0; /* Allow flex shrinking */
+}
+
+/* Canvas wrapper fills all available space */
+.predict-canvas-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, 
+    var(--color-gray-50) 0%, 
+    var(--color-gray-100) 50%,
+    var(--color-gray-50) 100%
+  );
+  border: 2px dashed var(--color-primary-300);
+  border-radius: var(--radius-lg);
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-height: 0; /* Allow flex shrinking */
+}
+
+.predict-canvas-wrapper::after {
+  content: 'Canvas Area';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--color-primary-500);
+  font-size: 1.25rem;
+  font-weight: 600;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Dark theme for canvas */
+[data-theme="dark"] .predict-canvas-container {
+  background: rgba(15, 20, 25, 0.95);
+  border-color: var(--color-primary-700);
+}
+
+[data-theme="dark"] .predict-canvas-wrapper {
+  background: linear-gradient(135deg, 
+    #0f1419 0%, 
+    #1a202c 50%,
+    #0f1419 100%
+  );
+  border-color: var(--color-primary-700);
+}
+
+[data-theme="dark"] .predict-canvas-wrapper::after {
+  color: var(--color-primary-300);
+}
+
+/* Control Bar */
+.predict-control-bar {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(15px);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-sm);
+  height: 50px;
+}
+
+.predict-control-bar-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+}
+
+.predict-bar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  border-right: 1px solid var(--color-gray-200);
+  position: relative;
+}
+
+.predict-bar-section:last-child {
+  border-right: none;
+}
+
+.predict-bar-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-primary-600);
+  text-align: center;
+}
+
+/* Dark theme for control bar */
+[data-theme="dark"] .predict-control-bar {
+  background: rgba(15, 20, 25, 0.9);
+  border-color: var(--color-primary-700);
+}
+
+[data-theme="dark"] .predict-bar-section {
+  border-color: var(--color-gray-600);
+}
+
+[data-theme="dark"] .predict-bar-label {
+  color: var(--color-primary-400);
+}
+
+/* Right Data Panel */
+.predict-data-panel {
+  grid-area: right-panel;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 2px solid var(--color-success);
+  border-radius: var(--radius-xl);
+  box-shadow: 
+    var(--shadow-lg),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Animated border effect for data panel */
+.predict-data-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, 
+    var(--color-success), 
+    var(--color-primary-500), 
+    var(--color-success)
+  );
+  background-size: 300% 300%;
+  animation: gradientShift 4s ease-in-out infinite;
+  border-radius: var(--radius-xl);
+  z-index: -1;
+  opacity: 0.2;
+}
+
+/* Dark theme for data panel */
+[data-theme="dark"] .predict-data-panel {
+  background: rgba(15, 20, 25, 0.95);
+  border-color: var(--color-success);
+  box-shadow: 
+    0 20px 25px -5px rgba(0, 0, 0, 0.3),
+    0 10px 10px -5px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Section Headers */
+.predict-section-header {
+  margin-bottom: var(--spacing-lg);
+  text-align: center;
+  position: relative;
+}
+
+.predict-section-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: var(--spacing-xs);
+  background: linear-gradient(135deg, #030067 0%, #57007c 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  color: transparent !important;
+}
+
+.predict-section-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-gray-500);
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* Dark theme for section headers - use brighter gradient for dark mode */
+[data-theme="dark"] .predict-section-title {
+  background: linear-gradient(135deg, #60a5ff 0%, #d465ff 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  color: transparent !important;
+}
+
+[data-theme="dark"] .predict-section-subtitle {
+  color: var(--color-gray-400);
+}
+
+/* Panel Content Areas */
+.predict-panel-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.05) 0%, 
+    rgba(16, 185, 129, 0.05) 100%
+  );
+  border: 2px dashed var(--color-gray-300);
+  border-radius: var(--radius-lg);
+  color: var(--color-gray-400);
+  font-size: 0.875rem;
+  font-weight: 500;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.predict-control-panel .predict-panel-content::after {
+  content: 'User Input & Settings';
+  opacity: 0.6;
+}
+
+.predict-data-panel .predict-panel-content::after {
+  content: 'Prediction Data & Metrics';
+  opacity: 0.6;
+}
+
+/* Dark theme for panel content */
+[data-theme="dark"] .predict-panel-content {
+  background: linear-gradient(135deg, 
+    rgba(59, 130, 246, 0.1) 0%, 
+    rgba(16, 185, 129, 0.1) 100%
+  );
+  border-color: var(--color-gray-600);
+  color: var(--color-gray-500);
+}
+
+/* Animations */
+@keyframes gradientShift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 1280px) {
+  .predict-layout {
+    grid-template-columns: 260px 1fr 260px;
+    gap: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 1024px) {
+  .predict-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-areas: 
+      "left-panel"
+      "center-area"
+      "right-panel"
+      "control-bar";
+    height: auto;
+    min-height: 100vh;
+    gap: var(--spacing-sm);
+  }
+  
+  .predict-center-area {
+    min-height: 400px;
+  }
+}
+
+@media (max-width: 768px) {
+  .predict-layout {
+    padding: var(--spacing-md);
+    gap: var(--spacing-sm);
+  }
+  
+  .predict-canvas-wrapper {
+    min-height: 300px;
+  }
+  
+  .predict-control-bar-content {
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+  
+  .predict-bar-section {
+    border-right: none;
+    border-bottom: 1px solid var(--color-gray-200);
+    padding: var(--spacing-xs);
+  }
+  
+  .predict-bar-section:last-child {
+    border-bottom: none;
+  }
+}
+
+/* Hover Effects - Removed transform animations for stability */
+.predict-control-panel:hover,
+.predict-canvas-container:hover,
+.predict-data-panel:hover {
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    var(--shadow-lg);
+}
+
+.predict-control-bar:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+/* Focus states for accessibility */
+.predict-layout * {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
