@@ -1,34 +1,68 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { Suspense } from 'react'
+import { routes } from './app/routes'
+import AppProviders from './app/providers'
+import AppShell from './shared/layout/AppShell'
+import { ErrorBoundary } from './shared/ui'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+// Loading fallback component
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-[400px]">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+      <p className="text-text-secondary">Loading...</p>
+    </div>
+  </div>
+)
 
+// App component wrapped with theme context
+function AppContent() {
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <Router>
+      <AppShell 
+        showSidebar={false}
+      >
+        <ErrorBoundary 
+          showReload={true}
+          errorMessage="Sorry, this page encountered an unexpected error."
+          onError={(error, errorInfo) => {
+            console.error('Route Error:', error, errorInfo)
+            // Could send to error reporting service here
+          }}
+        >
+          <Suspense fallback={<LoadingFallback />}>
+            <Routes>
+              {routes.map((route) => {
+                const Component = route.element
+                return (
+                  <Route
+                    key={route.path}
+                    path={route.path}
+                    element={
+                      <ErrorBoundary
+                        errorMessage={`Error loading ${route.title}`}
+                        className="min-h-[300px]"
+                      >
+                        <Component />
+                      </ErrorBoundary>
+                    }
+                  />
+                )
+              })}
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
+      </AppShell>
+    </Router>
+  )
+}
+
+function App() {
+  return (
+    <AppProviders>
+      <AppContent />
+    </AppProviders>
   )
 }
 
