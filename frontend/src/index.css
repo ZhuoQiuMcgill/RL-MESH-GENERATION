@@ -1,6 +1,6 @@
+/* Import dashboard styles globally */
+@import './styles/dashboard.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import dashboard styles globally */
-@import './styles/dashboard.css';

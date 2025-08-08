@@ -1,14 +1,7 @@
-import React from 'react';
+// Train feature barrel exports - keeping file boundaries small for future logic hook integration
 
-const Train = () => {
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">Train</h1>
-        <p className="text-gray-600">TODO: Implement training functionality</p>
-      </div>
-    </div>
-  );
-};
+// Export all train components from components barrel
+export * from './components';
 
-export default Train;
+// Default export for route-level imports
+export { default } from './components/Train';

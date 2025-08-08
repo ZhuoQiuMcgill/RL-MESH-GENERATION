@@ -1,14 +1,7 @@
-import React from 'react';
+// History feature barrel exports - keeping file boundaries small for future logic hook integration
 
-const History = () => {
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">History</h1>
-        <p className="text-gray-600">TODO: Implement history functionality</p>
-      </div>
-    </div>
-  );
-};
+// Export all history components from components barrel
+export * from './components';
 
-export default History;
+// Default export for route-level imports
+export { default } from './components/History';

@@ -1,18 +1,9 @@
-// Export predict-specific components
-export { default as ConfigurationPanel } from './ConfigurationPanel';
-export { default as ControlButtons } from './ControlButtons';
-export { default as OperationLog } from './OperationLog';
+// Export all predict components
+export { default as Predict } from './Predict';
 
-// Status Display Components
-export { 
-  StatusDisplay,
-  SessionStatusPanel,
-  ActionInfoPanel,
-  ReferencePointPanel,
-  QualityPanel 
-} from './status';
-
-// Future components can be added here:
+// Future components to be exported when created:
+// export { default as PredictionControls } from './PredictionControls';
 // export { default as MeshCanvas } from './MeshCanvas';
-// export { default as SessionControls } from './SessionControls';
-// export { default as ProgressDisplay } from './ProgressDisplay';
+// export { default as PredictionResults } from './PredictionResults';
+// export { default as ParameterPanel } from './ParameterPanel';
+// export { default as MeshVisualization } from './MeshVisualization';

@@ -8,7 +8,8 @@ const predictRoutes = [
   //   children: [
   //     { path: '', component: PredictMain },
   //     { path: 'new', component: NewPrediction },
-  //     { path: 'results', component: PredictionResults }
+  //     { path: 'results/:id', component: PredictionResults },
+  //     { path: 'compare', component: ResultsComparison }
   //   ]
   // }
 ];
