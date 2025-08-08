@@ -10,6 +10,7 @@ const Layout = ({ children }) => {
   
   // Responsive state
   const [isMobile, setIsMobile] = useState(false);
+  const [titleKey, setTitleKey] = useState(0);
   
   useEffect(() => {
     const checkScreenSize = () => {
@@ -20,6 +21,11 @@ const Layout = ({ children }) => {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Force re-render of title when theme changes
+  useEffect(() => {
+    setTitleKey(prev => prev + 1);
+  }, [isDark]);
 
   // Get current page title for subtitle
   const getPageSubtitle = () => {
@@ -89,12 +95,17 @@ const Layout = ({ children }) => {
             fontSize: isMobile ? '1.2rem' : '1.6rem',
             fontWeight: 200,
             margin: 0,
-            background: isDark 
+            backgroundImage: isDark 
               ? 'linear-gradient(135deg, #60a5ff 0%, #d465ff 100%)'
               : 'linear-gradient(135deg, #030067 0%, #57007c 100%)',
+            backgroundSize: '100%',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
+            MozBackgroundClip: 'text',
+            MozTextFillColor: 'transparent',
             lineHeight: 1,
             letterSpacing: '-0.02em',
             whiteSpace: 'nowrap'
@@ -252,25 +263,11 @@ const Layout = ({ children }) => {
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+              transition: 'all 0.3s ease',
               boxShadow: isDark ? '0 1px 2px rgba(0, 0, 0, 0.3)' : '0 1px 2px 0 rgb(0 0 0 / 0.05)',
               position: 'relative',
               overflow: 'hidden',
               color: isDark ? '#f7fafc' : '#111827'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.borderColor = '#030067';
-              e.target.style.transform = 'translateY(-3px) scale(1.05)';
-              e.target.style.boxShadow = isDark 
-                ? '0 20px 25px rgba(0, 0, 0, 0.6)' 
-                : '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.borderColor = isDark ? '#4a5568' : '#e5e7eb';
-              e.target.style.transform = 'translateY(0) scale(1)';
-              e.target.style.boxShadow = isDark 
-                ? '0 1px 2px rgba(0, 0, 0, 0.3)' 
-                : '0 1px 2px 0 rgb(0 0 0 / 0.05)';
             }}
           >
             <div style={{

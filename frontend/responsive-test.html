@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Responsive Layout Test - RL Mesh Generation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+        // Reuse primary color variables from old CSS
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe', 
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                            start: '#030067',
+                            end: '#57007c',
+                        },
+                        success: {
+                            DEFAULT: '#10b981',
+                            light: 'rgba(16, 185, 129, 0.1)',
+                            dark: 'rgba(16, 185, 129, 0.2)',
+                        },
+                        warning: {
+                            DEFAULT: '#f59e0b',
+                            light: 'rgba(245, 158, 11, 0.1)', 
+                            dark: 'rgba(245, 158, 11, 0.2)',
+                        },
+                        error: {
+                            DEFAULT: '#ef4444',
+                            light: 'rgba(239, 68, 68, 0.1)',
+                            dark: 'rgba(239, 68, 68, 0.2)',
+                        },
+                        dark: {
+                            50: '#0f1419',
+                            100: '#1a1f2e',
+                            200: '#252a3a', 
+                            300: '#343a4a',
+                        }
+                    },
+                    screens: {
+                        'xs': '320px',
+                        '3xl': '1920px',
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        /* Responsive test control panel styles */
+        .test-control {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 9999;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .test-viewport {
+            border: 2px solid #e5e7eb;
+            margin: 20px auto;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        .size-indicator {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- Test control panel -->
+    <div class="test-control">
+        <h3 class="text-sm font-semibold mb-2">Screen Size Test</h3>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+            <button onclick="setViewportWidth(320)" class="px-2 py-1 bg-red-500 text-white rounded">320px</button>
+            <button onclick="setViewportWidth(480)" class="px-2 py-1 bg-orange-500 text-white rounded">480px</button>
+            <button onclick="setViewportWidth(768)" class="px-2 py-1 bg-yellow-500 text-white rounded">768px</button>
+            <button onclick="setViewportWidth(1024)" class="px-2 py-1 bg-green-500 text-white rounded">1024px</button>
+            <button onclick="setViewportWidth(1280)" class="px-2 py-1 bg-blue-500 text-white rounded">1280px</button>
+            <button onclick="setViewportWidth(1920)" class="px-2 py-1 bg-purple-500 text-white rounded">1920px</button>
+        </div>
+        <button onclick="resetViewport()" class="w-full mt-2 px-2 py-1 bg-gray-600 text-white rounded text-xs">Reset</button>
+    </div>
+
+    <!-- Size indicator -->
+    <div class="size-indicator" id="sizeIndicator">
+        Current Width: <span id="currentWidth">-</span>px
+    </div>
+
+    <!-- Test viewport container -->
+    <div id="testViewport" class="test-viewport" style="width: 100%; max-width: none;">
+        <!-- Three-column layout test content -->
+        <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+            <div class="flex flex-col lg:flex-row h-screen lg:h-auto">
+                
+                <!-- Left sidebar - Configuration panel -->
+                <div class="
+                    w-full lg:w-[350px] 
+                    bg-white dark:bg-gray-800 
+                    border-b lg:border-b-0 lg:border-r 
+                    border-gray-200 dark:border-gray-700 
+                    flex-shrink-0
+                    order-1 lg:order-1
+                ">
+                    <div class="p-3 sm:p-4 h-full">
+                        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4">
+                            Configuration Panel
+                        </h3>
+                        <div class="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 sm:p-6 h-48 sm:h-64 lg:h-96">
+                            <p class="text-sm sm:text-base text-gray-600 dark:text-gray-300 text-center">
+                                Configuration control panel content area
+                            </p>
+                            <div class="mt-4 space-y-2">
+                                <div class="bg-primary-100 p-2 rounded text-xs">Parameter Settings</div>
+                                <div class="bg-success-light p-2 rounded text-xs">Model Selection</div>
+                                <div class="bg-warning-light p-2 rounded text-xs">Advanced Options</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Center main content area - Prediction canvas -->
+                <div class="
+                    flex-1 
+                    bg-white dark:bg-gray-800 
+                    min-w-0
+                    order-2 lg:order-2
+                ">
+                    <div class="p-3 sm:p-4 h-full">
+                        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4">
+                            Prediction Canvas
+                        </h3>
+                        <div class="
+                            bg-gray-100 dark:bg-gray-700 
+                            rounded-lg 
+                            h-64 sm:h-80 lg:h-full 
+                            flex items-center justify-center
+                        ">
+                            <div class="text-center px-4">
+                                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-300 mb-4">
+                                    Mesh prediction visualization canvas area
+                                </p>
+                                <div class="bg-gradient-to-r from-primary-start to-primary-end text-white p-4 rounded-lg">
+                                    <div class="text-xs opacity-75 mb-2">Prediction Status</div>
+                                    <div class="font-semibold">Ready</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right sidebar - Control panel -->
+                <div class="
+                    w-full lg:w-[320px] 
+                    bg-white dark:bg-gray-800 
+                    border-t lg:border-t-0 lg:border-l 
+                    border-gray-200 dark:border-gray-700 
+                    flex-shrink-0
+                    order-3 lg:order-3
+                ">
+                    <div class="p-3 sm:p-4 h-full">
+                        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4">
+                            Control Panel
+                        </h3>
+                        
+                        <div class="bg-gray-100 dark:bg-gray-700 rounded-lg p-3 sm:p-4 mb-3 sm:mb-4">
+                            <h4 class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 sm:mb-3">
+                                Demo Controls
+                            </h4>
+                            <div class="space-y-2 sm:space-y-3">
+                                <button class="
+                                    w-full bg-primary-600 hover:bg-primary-700 
+                                    text-white px-3 py-2 sm:px-4 
+                                    rounded-md text-xs sm:text-sm 
+                                    transition-colors duration-200
+                                    font-medium
+                                ">
+                                    Demo Logs
+                                </button>
+                                <button class="
+                                    w-full bg-success hover:bg-success/90 
+                                    text-white px-3 py-2 sm:px-4 
+                                    rounded-md text-xs sm:text-sm 
+                                    transition-colors duration-200
+                                    font-medium
+                                ">
+                                    Add Single Log
+                                </button>
+                                <button class="
+                                    w-full bg-error hover:bg-error/90 
+                                    text-white px-3 py-2 sm:px-4 
+                                    rounded-md text-xs sm:text-sm 
+                                    transition-colors duration-200
+                                    font-medium
+                                ">
+                                    Clear Logs
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="h-48 sm:h-60 lg:h-auto lg:flex-1">
+                            <div class="bg-gray-100 dark:bg-gray-700 rounded-lg p-3 h-full">
+                                <h5 class="text-xs font-medium text-gray-600 mb-2">Operation Log</h5>
+                                <div class="space-y-1 text-xs text-gray-500">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-2 h-2 bg-success rounded-full"></div>
+                                        <span>System initialization complete</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-2 h-2 bg-primary-500 rounded-full"></div>
+                                        <span>Loading model configuration</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-2 h-2 bg-warning rounded-full"></div>
+                                        <span>Waiting for user input</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentViewportWidth = null;
+        
+        function setViewportWidth(width) {
+            const viewport = document.getElementById('testViewport');
+            const indicator = document.getElementById('currentWidth');
+            
+            currentViewportWidth = width;
+            viewport.style.width = width + 'px';
+            viewport.style.maxWidth = width + 'px';
+            indicator.textContent = width;
+            
+            // Add visual feedback
+            viewport.style.border = '2px solid #3b82f6';
+            setTimeout(() => {
+                viewport.style.border = '2px solid #e5e7eb';
+            }, 1000);
+        }
+        
+        function resetViewport() {
+            const viewport = document.getElementById('testViewport');
+            const indicator = document.getElementById('currentWidth');
+            
+            currentViewportWidth = null;
+            viewport.style.width = '100%';
+            viewport.style.maxWidth = 'none';
+            indicator.textContent = window.innerWidth;
+        }
+        
+        // Update current width display
+        function updateWidthIndicator() {
+            const indicator = document.getElementById('currentWidth');
+            if (!currentViewportWidth) {
+                indicator.textContent = window.innerWidth;
+            }
+        }
+        
+        // Initialize and listen for window size changes
+        window.addEventListener('resize', updateWidthIndicator);
+        updateWidthIndicator();
+        
+        // Add dark theme toggle functionality
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key) {
+                    case '1':
+                        e.preventDefault();
+                        setViewportWidth(320);
+                        break;
+                    case '2':
+                        e.preventDefault();
+                        setViewportWidth(768);
+                        break;
+                    case '3':
+                        e.preventDefault();
+                        setViewportWidth(1024);
+                        break;
+                    case '4':
+                        e.preventDefault();
+                        setViewportWidth(1920);
+                        break;
+                    case '0':
+                        e.preventDefault();
+                        resetViewport();
+                        break;
+                }
+            }
+        });
+        
+        console.log('Responsive test page loaded');
+        console.log('Shortcuts: Ctrl+1(320px), Ctrl+2(768px), Ctrl+3(1024px), Ctrl+4(1920px), Ctrl+0(reset)');
+    </script>
+</body>
+</html>
