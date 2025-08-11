@@ -12,9 +12,12 @@ class RLReferencePointSelector(ReferencePointSelector):
 
     def select_reference_point(self, boundary, **info):
         n = info.get('n', self.n)
+        invalid_points_index = info.get('invalid_points_index', set())
         min_interior_angle = 360
         min_i = 0
         for i in range(boundary.size()):
+            if i in invalid_points_index:
+                continue
             avg_interior_angle = get_avg_interior_angle(boundary, i, n)
             if avg_interior_angle < min_interior_angle:
                 min_interior_angle = avg_interior_angle
@@ -22,7 +25,7 @@ class RLReferencePointSelector(ReferencePointSelector):
         return min_i
 
     def get_interior_angle(self, boundary, ref_index, n=2):
-        return get_avg_interior_angle(boundary, ref_index, n, log=True)
+        return get_avg_interior_angle(boundary, ref_index, n)
 
 
 class RandomReferencePointSelector(ReferencePointSelector):

@@ -231,9 +231,11 @@ class Boundary:
     def size(self) -> int:
         return len(self._verts)
 
-    def get_ref_vertex(self, n):
+    def get_ref_vertex(self, n, invalid_points_index=None):
         return (
-            RLReferencePointSelector().select_reference_point(self, **{'n': n}))
+            RLReferencePointSelector().select_reference_point(self,
+                                                              **{'n': n,
+                                                                 'invalid_points_index': invalid_points_index}))
 
     # ------------------------------------------------------------
     # 修改器方法

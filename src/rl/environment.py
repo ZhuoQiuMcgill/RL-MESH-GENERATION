@@ -72,6 +72,7 @@ class MeshEnv(gym.Env):
         self.total_element_quality = 0.0
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
         self.action_count = {}
+        self.invalid_points_index = set()
 
     def _reset_episode_stats(self) -> None:
         self.episode_reward = 0.0
@@ -98,6 +99,7 @@ class MeshEnv(gym.Env):
         self.total_element_quality = 0.0
         self.invalid_action_count = 0
         self.action_count = {}
+        self.invalid_points_index = set()
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
 
         self._reset_episode_stats()
@@ -138,6 +140,7 @@ class MeshEnv(gym.Env):
                     + 1 * (boundary_quality_reward - 1)
                     + self.speed_penalty(generated_element)
             )
+            self.invalid_points_index = set()
             self.generated_elements += 1
             self.total_element_quality += element_quality_reward
             terminated = self._is_terminated()
@@ -148,7 +151,8 @@ class MeshEnv(gym.Env):
         else:
             reward = self.invalid_penalty()
             self.invalid_action_count += 1
-            if self.invalid_action_count >= 100:
+            self.invalid_points_index.add(reference_vertex_idx)
+            if self.invalid_action_count >= min(self.boundary.size(), 100):
                 terminated = True
             else:
                 terminated = False
@@ -205,7 +209,7 @@ class MeshEnv(gym.Env):
             self.action_count[action_name]["rewards"] = [reward]
 
     def _get_reference_vertex(self):
-        return self.boundary.get_ref_vertex(self.n)
+        return self.boundary.get_ref_vertex(self.n, self.invalid_points_index)
 
     def _get_obs(self):
         """
