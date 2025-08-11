@@ -232,6 +232,8 @@ class Boundary:
         return len(self._verts)
 
     def get_ref_vertex(self, n, invalid_points_index=None):
+        if invalid_points_index is None:
+            invalid_points_index = set()
         return (
             RLReferencePointSelector().select_reference_point(self,
                                                               **{'n': n,
