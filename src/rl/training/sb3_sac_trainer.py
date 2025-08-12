@@ -30,47 +30,47 @@ class _EpisodeCallback(BaseCallback):
         self._best_reward = -inf
         self._best_episode = 0
 
-        # 新增：训练过程中的loss和alpha数据收集
+        # New: Training metrics data collection for loss and alpha
         self.training_metrics = {
             "actor_losses": [],
             "critic_losses": [],
             "alphas": [],
-            "timesteps": []  # 记录对应的timestep
+            "timesteps": []  # Record corresponding timesteps
         }
 
-        # 当前最新的metrics值（用于实时显示）
+        # Current latest metrics values (for real-time display)
         self._latest_actor_loss = 0.0
         self._latest_critic_loss = 0.0
         self._latest_alpha = 0.0
 
-        # 新增：自动评估相关参数
+        # New: Auto evaluation related parameters
         self.evaluation_frequency = evaluation_frequency
         self.n_eval_episodes = n_eval_episodes
         self.training_session_dir = training_session_dir
-        self.stop_event = stop_event  # 停止事件
+        self.stop_event = stop_event  # Stop event
 
-        # 评估状态跟踪
+        # Evaluation state tracking
         self._eval_count = 0
         self._last_eval_reward = 0.0
         self._best_eval_reward = -inf
         self._eval_rewards_history = []
         self._best_model_path = None
         
-        # 日志控制开关
+        # Log control switch
         self.enable_verbose_logging = enable_verbose_logging
         
-        # 保存条件控制开关
+        # Save condition control switch
         self.require_completed_for_save = require_completed_for_save
 
     def _on_step(self) -> bool:
-        # 检查停止事件
+        # Check stop event
         if self.stop_event and self.stop_event.is_set():
             import logging
             logger = logging.getLogger(__name__)
-            logger.info("检测到停止信号，终止训练")
-            return False  # 返回False停止训练
+            logger.info("Stop signal detected, terminating training")
+            return False  # Return False to stop training
 
-        # 收集训练过程中的loss和alpha数据
+        # Collect loss and alpha data during training
         self._collect_training_metrics()
 
         infos = self.locals.get("infos", [])
@@ -101,7 +101,7 @@ class _EpisodeCallback(BaseCallback):
             if not detail['is_completed']:
                 self._current_timesteps += 1
 
-            # 检查是否需要进行自动评估（只有在训练未停止时才进行）
+            # Check if automatic evaluation is needed (only when training is not stopped)
             if (self.evaluation_frequency > 0 and
                     self._current_episode % self.evaluation_frequency == 0 and
                     (not self.stop_event or not self.stop_event.is_set())):
@@ -111,36 +111,36 @@ class _EpisodeCallback(BaseCallback):
 
     def _collect_training_metrics(self):
         """
-        收集训练过程中的loss和alpha数据
+        Collect loss and alpha data during training
         """
         try:
             if self.model and hasattr(self.model, 'logger') and self.model.logger:
-                # 获取logger中记录的值
+                # Get values recorded in logger
                 name_to_value = getattr(self.model.logger, 'name_to_value', {})
 
                 if name_to_value:
                     current_timestep = self.model.num_timesteps
 
-                    # 获取actor loss
+                    # Get actor loss
                     if 'train/actor_loss' in name_to_value:
                         actor_loss = name_to_value['train/actor_loss']
                         self._latest_actor_loss = actor_loss
                         self.training_metrics["actor_losses"].append(actor_loss)
                         self.training_metrics["timesteps"].append(current_timestep)
 
-                    # 获取critic loss
+                    # Get critic loss
                     if 'train/critic_loss' in name_to_value:
                         critic_loss = name_to_value['train/critic_loss']
                         self._latest_critic_loss = critic_loss
                         self.training_metrics["critic_losses"].append(critic_loss)
 
-                    # 获取alpha (entropy coefficient)
+                    # Get alpha (entropy coefficient)
                     if 'train/ent_coef' in name_to_value:
                         alpha = name_to_value['train/ent_coef']
                         self._latest_alpha = alpha
                         self.training_metrics["alphas"].append(alpha)
 
-            # 如果logger中没有数据，尝试直接从policy中获取alpha
+            # If no data in logger, try to get alpha directly from policy
             if self._latest_alpha == 0.0 and self.model and hasattr(self.model, 'policy'):
                 try:
                     if hasattr(self.model.policy, 'log_ent_coef'):
@@ -159,9 +159,9 @@ class _EpisodeCallback(BaseCallback):
                             if len(self.training_metrics["timesteps"]) == 0:
                                 self.training_metrics["timesteps"].append(self.model.num_timesteps)
                 except Exception as e:
-                    pass  # 静默处理，避免影响训练
+                    pass  # Silent handling to avoid affecting training
         except Exception as e:
-            # 静默处理异常，避免影响训练过程
+            # Silent exception handling to avoid affecting training process
             pass
 
     def _perform_evaluation(self):

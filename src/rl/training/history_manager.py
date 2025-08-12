@@ -13,7 +13,7 @@ def get_training_history_dir(training_id):
 
 def save_episode_details(details, best_episode, path):
     """
-    将所有的detail都保存成一个JSON文件，格式为
+    Save all details to a JSON file with format:
     {"size": n, "best_episode": m, "details": [detail]}
     :param details: list of detail dict, check _EpisodeCallback for the structure of detail dict
     :param best_episode: int
@@ -22,19 +22,19 @@ def save_episode_details(details, best_episode, path):
     """
     filename = os.path.join(path, "details.json")
 
-    # 确保目录存在
+    # Ensure directory exists
     os.makedirs(path, exist_ok=True)
 
-    # 只保存generated_elements > 0的episode
+    # Only save episodes with generated_elements > 0
     non_zero_generated_details = []
     non_zero_generated_episodes = []
 
     for detail in details:
-        if detail.get("generated_elements", 0) > 0:  # generated_elements是生成元素数量
+        if detail.get("generated_elements", 0) > 0:  # generated_elements is the number of generated elements
             non_zero_generated_details.append(detail)
             non_zero_generated_episodes.append(detail.get("episode_number"))
 
-    # 构建保存的数据结构
+    # Construct the data structure to save
     data = {
         "size": len(non_zero_generated_details),
         "best_episode": best_episode,
@@ -42,7 +42,7 @@ def save_episode_details(details, best_episode, path):
         "details": non_zero_generated_details
     }
 
-    # 保存到JSON文件
+    # Save to JSON file
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
@@ -59,24 +59,24 @@ class HistoryManager:
         self.non_zero_generated_episodes = []
         self.logger = logging.getLogger(__name__)
         
-        # 智能缓存和文件监控相关属性
-        self._cache_lock = Lock()  # 线程安全锁
-        self._data_loaded = False  # 数据是否已加载的标志
-        self._file_last_modified = None  # 文件最后修改时间
-        self._cache_valid = False  # 缓存是否有效
+        # Smart caching and file monitoring related attributes
+        self._cache_lock = Lock()  # Thread safety lock
+        self._data_loaded = False  # Flag indicating whether data has been loaded
+        self._file_last_modified = None  # Last modified time of file
+        self._cache_valid = False  # Whether cache is valid
 
     def focus_on(self, training_id):
         """
-        聚焦到指定的训练ID
+        Focus on the specified training ID
         :param training_id: str
         """
-        # 检查training_id是否存在
+        # Check if training_id exists
         training_path = get_training_history_dir(training_id)
         if not os.path.exists(training_path):
             raise FileNotFoundError(f"Training ID not found: {training_id}")
 
         with self._cache_lock:
-            # 如果切换到新的training_id，清除旧缓存
+            # Clear old cache if switching to a new training_id
             if self.id != training_id:
                 self._clear_cache()
             
@@ -107,8 +107,8 @@ class HistoryManager:
 
     def _get_file_modified_time(self):
         """
-        获取details.json文件的最后修改时间
-        :return: float 修改时间戳，如果文件不存在返回None
+        Get the last modified time of details.json file
+        :return: float modification timestamp, None if file doesn't exist
         """
         if not self.path:
             return None
@@ -120,26 +120,26 @@ class HistoryManager:
         try:
             return os.path.getmtime(filename)
         except Exception as e:
-            self.logger.warning(f"无法获取文件修改时间 {filename}: {e}")
+            self.logger.warning(f"Unable to get file modification time {filename}: {e}")
             return None
 
     def _is_file_modified(self):
         """
-        检查文件是否被修改
-        :return: bool 文件是否被修改
+        Check if file has been modified
+        :return: bool whether file has been modified
         """
         current_modified_time = self._get_file_modified_time()
         
-        # 如果文件不存在，认为没有修改
+        # If file doesn't exist, consider it unmodified
         if current_modified_time is None:
             return False
         
-        # 如果是第一次检查，记录当前时间
+        # If this is the first check, record current time
         if self._file_last_modified is None:
             self._file_last_modified = current_modified_time
-            return True  # 第一次加载认为需要读取
+            return True  # First load is considered as needing to read
         
-        # 比较修改时间
+        # Compare modification times
         if current_modified_time != self._file_last_modified:
             self._file_last_modified = current_modified_time
             return True
@@ -148,7 +148,7 @@ class HistoryManager:
 
     def _clear_cache(self):
         """
-        清除缓存数据
+        Clear cache data
         """
         self.detail_data = None
         self.best_episode = 0
@@ -157,24 +157,24 @@ class HistoryManager:
         self._data_loaded = False
         self._file_last_modified = None
         self._cache_valid = False
-        self.logger.debug("缓存已清除")
+        self.logger.debug("Cache cleared")
 
     def _ensure_data_loaded(self):
         """
-        确保数据已加载，只有在需要时才重新读取文件
+        Ensure data is loaded, only re-read file when necessary
         """
-        # 检查缓存是否有效
+        # Check if cache is valid
         if self._cache_valid and self._data_loaded and not self._is_file_modified():
-            self.logger.debug("使用缓存数据，跳过文件读取")
+            self.logger.debug("Using cached data, skipping file read")
             return
         
-        # 需要重新加载数据
-        self.logger.debug("重新加载数据文件")
+        # Need to reload data
+        self.logger.debug("Reloading data file")
         self._load_data_from_file()
 
     def _load_data_from_file(self):
         """
-        从文件加载数据的内部方法
+        Internal method to load data from file
         """
         if not self.path:
             self._clear_cache()
@@ -183,7 +183,7 @@ class HistoryManager:
         filename = os.path.join(self.path, "details.json")
 
         if not os.path.exists(filename):
-            # 如果文件不存在，初始化空数据
+            # If file doesn't exist, initialize empty data
             self.detail_data = []
             self.size = 0
             self.best_episode = 0
@@ -202,28 +202,28 @@ class HistoryManager:
             self.best_episode = data.get("best_episode", 0)
             self.non_zero_generated_episodes = data.get("non_zero_generated_episodes_index", [])
 
-            # 更新缓存状态
+            # Update cache status
             self._data_loaded = True
             self._cache_valid = True
             self._file_last_modified = self._get_file_modified_time()
 
-            self.logger.info(f"成功加载训练数据: {self.id}, size={self.size}, best_episode={self.best_episode}")
-            self.logger.info(f"非零generated_elements的episodes: {len(self.non_zero_generated_episodes)}个")
+            self.logger.info(f"Successfully loaded training data: {self.id}, size={self.size}, best_episode={self.best_episode}")
+            self.logger.info(f"Episodes with non-zero generated_elements: {len(self.non_zero_generated_episodes)} episodes")
 
         except Exception as e:
             self.logger.error(f"Error reading data from {filename}: {e}")
-            # 如果读取失败，初始化空数据但标记缓存无效
+            # If read failed, initialize empty data but mark cache as invalid
             self.detail_data = []
             self.size = 0
             self.best_episode = 0
             self.non_zero_generated_episodes = []
             self._data_loaded = True
-            self._cache_valid = False  # 标记缓存无效，下次会重试
+            self._cache_valid = False  # Mark cache invalid, will retry next time
 
     def read_data(self):
         """
         Read json file and update [self.detail_data, self.size, self.best_episode, self.non_zero_generated_episodes]
-        保留此方法以保持向后兼容性，但现在使用智能缓存
+        Keep this method for backward compatibility, but now uses smart caching
         :return:
         """
         with self._cache_lock:
@@ -232,35 +232,35 @@ class HistoryManager:
     def get_episode_data(self, episode_index):
         """
         Return a single detail data, only return when is focused
-        根据index获取数据，即使episode_number很大也要返回对应的数据
-        现在使用智能缓存，避免重复读取文件
-        :param episode_index: int 在non_zero_generated_episodes中的索引
+        Get data by index, even if episode_number is large, return corresponding data
+        Now uses smart caching to avoid repeated file reading
+        :param episode_index: int index in non_zero_generated_episodes
         :return: single detail dict
         """
         if not self.focused:
             raise RuntimeError("HistoryManager is not focused on any training ID")
 
         with self._cache_lock:
-            # 使用智能缓存机制确保数据已加载
+            # Use smart caching mechanism to ensure data is loaded
             self._ensure_data_loaded()
 
             if episode_index < 0 or episode_index >= len(self.detail_data):
                 raise IndexError(f"Episode index {episode_index} out of range (0-{len(self.detail_data) - 1})")
 
-            # 根据index直接返回对应的detail数据
-            # 这里的episode_index是在non_zero_generated_episodes中的索引
+            # Return corresponding detail data directly by index
+            # Here episode_index is the index in non_zero_generated_episodes
             episode_data = self.detail_data[episode_index]
 
-            # 记录实际的episode_number供调试使用
+            # Record actual episode_number for debugging purposes
             actual_episode_number = episode_data.get("episode_number", "unknown")
-            self.logger.debug(f"获取Episode index={episode_index}, 实际episode_number={actual_episode_number}")
+            self.logger.debug(f"Get Episode index={episode_index}, actual episode_number={actual_episode_number}")
 
             return episode_data
 
     def get_episode_by_number(self, episode_number):
         """
-        根据episode_number获取数据
-        :param episode_number: int 实际的episode编号
+        Get data by episode_number
+        :param episode_number: int actual episode number
         :return: single detail dict or None if not found
         """
         if not self.focused:
@@ -269,7 +269,7 @@ class HistoryManager:
         with self._cache_lock:
             self._ensure_data_loaded()
 
-            # 在非零generated_elements的episodes中查找
+            # Search in episodes with non-zero generated_elements
             for detail in self.detail_data:
                 if detail.get("episode_number") == episode_number:
                     return detail
@@ -278,9 +278,9 @@ class HistoryManager:
 
     def get_episode_index_by_number(self, episode_number):
         """
-        根据episode_number获取其在non_zero_generated_episodes中的索引
-        :param episode_number: int 实际的episode编号
-        :return: int 索引位置，如果不存在返回-1
+        Get the index of episode_number in non_zero_generated_episodes
+        :param episode_number: int actual episode number
+        :return: int index position, return -1 if not found
         """
         if not self.focused:
             raise RuntimeError("HistoryManager is not focused on any training ID")
@@ -288,7 +288,7 @@ class HistoryManager:
         with self._cache_lock:
             self._ensure_data_loaded()
 
-            # 在详细数据中查找episode_number对应的索引
+            # Search for the index corresponding to episode_number in detailed data
             for index, detail in enumerate(self.detail_data):
                 if detail.get("episode_number") == episode_number:
                     return index
@@ -297,7 +297,7 @@ class HistoryManager:
 
     def update_data(self, new_details, new_best_episode):
         """
-        更新当前训练的数据并保存到文件
+        Update current training data and save to file
         :param new_details: list of detail dict
         :param new_best_episode: int
         :return: None
@@ -306,15 +306,15 @@ class HistoryManager:
             raise RuntimeError("HistoryManager is not focused on any training ID")
 
         try:
-            # 调用保存函数，会自动过滤非零步数的数据
+            # Call save function, will automatically filter non-zero step data
             save_episode_details(new_details, new_best_episode, self.path)
 
             with self._cache_lock:
-                # 标记缓存无效，强制重新加载
+                # Mark cache invalid, force reload
                 self._cache_valid = False
                 self._ensure_data_loaded()
 
-            self.logger.info(f"成功更新训练数据: {self.id}, new_size={self.size}, new_best_episode={self.best_episode}")
+            self.logger.info(f"Successfully updated training data: {self.id}, new_size={self.size}, new_best_episode={self.best_episode}")
 
         except Exception as e:
             self.logger.error(f"Error updating data for {self.id}: {e}")
@@ -322,8 +322,8 @@ class HistoryManager:
 
     def get_best_episode_index(self):
         """
-        获取最佳episode在non_zero_generated_episodes中的索引
-        :return: int 最佳episode的索引，如果不存在返回-1
+        Get the index of best episode in non_zero_generated_episodes
+        :return: int index of best episode, return -1 if not found
         """
         if not self.focused:
             raise RuntimeError("HistoryManager is not focused on any training ID")
@@ -334,8 +334,8 @@ class HistoryManager:
 
     def get_statistics(self):
         """
-        获取训练统计信息
-        :return: dict 包含统计信息
+        Get training statistics information
+        :return: dict containing statistics information
         """
         if not self.focused:
             raise RuntimeError("HistoryManager is not focused on any training ID")
@@ -357,7 +357,7 @@ class HistoryManager:
             lengths = [detail.get("l", 0) for detail in self.detail_data]
 
             return {
-                "total_episodes": len(self.non_zero_generated_episodes),  # 只计算非零generated_elements的
+                "total_episodes": len(self.non_zero_generated_episodes),  # Only count episodes with non-zero generated_elements
                 "non_zero_episodes": len(self.detail_data),
                 "best_episode": self.best_episode,
                 "best_episode_index": self.get_best_episode_index(),
@@ -375,14 +375,14 @@ class HistoryManager:
 
     def is_focused(self):
         """
-        检查是否已聚焦到某个训练ID
+        Check if focused on a training ID
         :return: bool
         """
         return self.focused
 
     def clear_focus(self):
         """
-        清除当前聚焦状态
+        Clear current focus state
         :return: None
         """
         with self._cache_lock:
@@ -390,12 +390,12 @@ class HistoryManager:
             self.path = None
             self.focused = False
             self._clear_cache()
-            self.logger.info("已清除聚焦状态")
+            self.logger.info("Focus state cleared")
 
     def get_cache_status(self):
         """
-        获取缓存状态信息，用于调试和监控
-        :return: dict 缓存状态信息
+        Get cache status information for debugging and monitoring
+        :return: dict cache status information
         """
         return {
             "focused": self.focused,
@@ -409,21 +409,21 @@ class HistoryManager:
 
     def force_refresh(self):
         """
-        强制刷新缓存，重新从文件加载数据
+        Force refresh cache, reload data from file
         :return: None
         """
         if not self.focused:
             raise RuntimeError("HistoryManager is not focused on any training ID")
         
         with self._cache_lock:
-            self.logger.info(f"强制刷新缓存: {self.id}")
+            self.logger.info(f"Force refresh cache: {self.id}")
             self._cache_valid = False
             self._ensure_data_loaded()
 
     def is_cache_valid(self):
         """
-        检查当前缓存是否有效
-        :return: bool 缓存是否有效
+        Check if current cache is valid
+        :return: bool whether cache is valid
         """
         if not self._cache_valid or not self._data_loaded:
             return False
