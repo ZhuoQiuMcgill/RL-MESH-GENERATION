@@ -3,21 +3,21 @@ import numpy as np
 
 def ray_segment_intersection(ray_origin: np.ndarray, ray_direction: np.ndarray,
                              segment_start: np.ndarray, segment_end: np.ndarray):
-    """计算射线与线段的交点"""
-    # 线段方向向量
+    """Calculate intersection point between ray and line segment"""
+    # Segment direction vector
     segment_vec = segment_end - segment_start
 
-    # 检查平行性
+    # Check for parallelism
     cross_product = ray_direction[0] * segment_vec[1] - ray_direction[1] * segment_vec[0]
     if abs(cross_product) < 1e-10:
         return None
 
-    # 计算参数
+    # Calculate parameters
     to_segment_start = segment_start - ray_origin
     t = (to_segment_start[0] * segment_vec[1] - to_segment_start[1] * segment_vec[0]) / cross_product
     s = (to_segment_start[0] * ray_direction[1] - to_segment_start[1] * ray_direction[0]) / cross_product
 
-    # 检查交点是否在射线和线段上
+    # Check if intersection point is on ray and segment
     if t >= 0 and 0 <= s <= 1:
         intersection = ray_origin + t * ray_direction
         return intersection
@@ -42,35 +42,35 @@ def orientation(p, q, r) -> int:
 
 def point_on_line_segment(point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> bool:
     """
-    检查点是否在线段上
+    Check if a point lies on a line segment
 
     Args:
-        point: 要检查的点
-        line_start: 线段起点
-        line_end: 线段终点
+        point: The point to check
+        line_start: Start point of the line segment
+        line_end: End point of the line segment
 
     Returns:
-        bool: 如果点在线段上返回True，否则返回False
+        bool: True if the point is on the line segment, False otherwise
     """
-    # 使用向量叉积判断点是否在线段上
-    # 如果点在线段上，则叉积应该为0，且点应该在线段的范围内
+    # Use vector cross product to determine if point is on line segment
+    # If point is on segment, cross product should be 0, and point should be within segment range
 
-    # 向量
+    # Vectors
     v1 = point - line_start
     v2 = line_end - line_start
 
-    # 叉积（在2D中是标量）
+    # Cross product (scalar in 2D)
     cross_product = v1[0] * v2[1] - v1[1] * v2[0]
 
-    # 如果叉积不为0（考虑浮点精度），点不在直线上
+    # If cross product is not 0 (considering floating point precision), point is not on the line
     if abs(cross_product) > 1e-10:
         return False
 
-    # 检查点是否在线段范围内
+    # Check if point is within segment range
     dot_product = np.dot(v1, v2)
     squared_length = np.dot(v2, v2)
 
-    if squared_length == 0:  # 线段长度为0
+    if squared_length == 0:  # Segment length is 0
         return np.allclose(point, line_start)
 
     param = dot_product / squared_length

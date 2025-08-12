@@ -1,31 +1,31 @@
-# 直接导入不会造成循环依赖的模块
+# Direct imports that won't cause circular dependencies
 from .angle import euclidean_distance, get_interior_angle, is_angle_in_slice, normalize_coordinates, decode_coordinate, \
     calculate_polygon_area, valid_element_angle, get_avg_interior_angle
 from .segment import ray_segment_intersection, orientation, point_on_line_segment, line_segments_intersect, \
     segments_overlap_interior, point_to_segment_distance
 
 
-# 延迟导入会造成循环依赖的模块
+# Lazy import modules that would cause circular dependencies
 def _get_importer_module():
-    """延迟导入importer模块以避免循环依赖"""
+    """Lazy import importer module to avoid circular dependencies"""
     from .importer import MeshImporter, create_default_importer
     return MeshImporter, create_default_importer
 
 
 def _get_checkpoint_manager_module():
-    """延迟导入checkpoint_manager模块"""
+    """Lazy import checkpoint_manager module"""
     from .checkpoint_manager import CheckpointManager, get_checkpoint_manager
     return CheckpointManager, get_checkpoint_manager
 
 
 def _get_plotter_module():
-    """延迟导入rl_ploter模块"""
+    """Lazy import rl_ploter module"""
     from .rl_ploter import plot_reward_change, plot_training_metrics, plot_action_distribution, \
         plot_action_reward_distribution
     return plot_reward_change, plot_training_metrics, plot_action_distribution, plot_action_reward_distribution
 
 
-# 通过属性访问实现延迟导入
+# Implement lazy import through attribute access
 def __getattr__(name):
     if name == 'MeshImporter':
         MeshImporter, _ = _get_importer_module()
@@ -54,9 +54,9 @@ def __getattr__(name):
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
-# 定义模块的公共API（用于显式导入时的参考）
+# Define module's public API (reference for explicit imports)
 __all__ = [
-    # 延迟导入的项目
+    # Lazy imported items
     'MeshImporter',
     'create_default_importer',
     'CheckpointManager',
@@ -66,7 +66,7 @@ __all__ = [
     'plot_action_distribution',
     'plot_action_reward_distribution',
 
-    # 直接导入的项目
+    # Directly imported items
     'euclidean_distance',
     'get_interior_angle',
     'is_angle_in_slice',
@@ -83,8 +83,8 @@ __all__ = [
     'get_avg_interior_angle'
 ]
 
-# 版本信息
+# Version information
 __version__ = '1.2.0'
 
-# 模块作者信息
+# Module author information
 __author__ = 'ZhuoQiuMcgill'

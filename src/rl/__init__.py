@@ -1,55 +1,55 @@
-# 导入智能体相关类
+# Import agent-related classes
 try:
     from .agent.sac_agent import SACAgent
 except ImportError:
-    # 如果自制SAC未实现，则跳过
+    # Skip if custom SAC is not implemented
     SACAgent = None
 
 from .agent.sb3_sac_agent import SB3SACAgent
 
-# 导入网络结构
+# Import network architectures
 try:
     from .agent.network import Actor, Critic
 except ImportError:
-    # 如果网络结构未实现，则跳过
+    # Skip if network architectures are not implemented
     Actor = None
     Critic = None
 
 
-# 导入训练器
+# Import trainer
 from .training.sb3_sac_trainer import SB3SACTrainer
 
-# 导入环境
+# Import environment
 from .environment import MeshEnv
 
-# 导入配置加载函数
+# Import configuration loading function
 from .config import load_config
 
-# 定义模块的公共API
+# Define module's public API
 __all__ = [
-    # 智能体
+    # Agents
     'SB3SACAgent',
     'SB3SACTrainer',
 
-    # 环境
+    # Environment
     'MeshEnv',
 
-    # 配置
+    # Configuration
     'load_config'
 ]
 
-# 条件导入的类（如果实现了则添加到__all__中）
+# Conditionally imported classes (add to __all__ if implemented)
 if SACAgent is not None:
     __all__.append('SACAgent')
 
 if Actor is not None and Critic is not None:
     __all__.extend(['Actor', 'Critic'])
 
-# 版本信息
+# Version information
 __version__ = '1.1.0'
 
-# 模块作者信息
+# Module author information
 __author__ = 'ZhuoQiuMcgill'
 
-# 模块说明
-__description__ = '网格生成强化学习模块，提供SAC算法和训练环境'
+# Module description
+__description__ = 'Mesh generation reinforcement learning module, providing SAC algorithm and training environment'

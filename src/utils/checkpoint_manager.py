@@ -1,7 +1,7 @@
 """
-Checkpoint管理器
+Checkpoint Manager
 
-负责管理训练检查点的加载、验证和信息获取功能。
+Responsible for managing the loading, validation, and information retrieval of training checkpoints.
 """
 
 import os
@@ -14,27 +14,27 @@ import logging
 
 
 class CheckpointManager:
-    """检查点管理器"""
+    """Checkpoint Manager"""
 
     def __init__(self, checkpoint_dir: str = None):
         """
-        初始化检查点管理器
+        Initialize checkpoint manager
 
         Args:
-            checkpoint_dir: 检查点目录，默认为项目根目录下的data/checkpoints
+            checkpoint_dir: Checkpoint directory, defaults to data/checkpoints under project root
         """
         self.checkpoint_dir = checkpoint_dir or os.path.join(os.getcwd(), "data", "checkpoints")
         self.logger = logging.getLogger(__name__)
 
-        # 确保检查点目录存在
+        # Ensure checkpoint directory exists
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
     def list_available_checkpoints(self) -> List[Dict[str, Any]]:
         """
-        列出所有可用的检查点
+        List all available checkpoints
 
         Returns:
-            List[Dict[str, Any]]: 检查点信息列表
+            List[Dict[str, Any]]: List of checkpoint information
         """
         checkpoints = []
 
@@ -44,30 +44,30 @@ class CheckpointManager:
         try:
             for filename in os.listdir(self.checkpoint_dir):
                 if filename.endswith('.pth'):
-                    checkpoint_name = filename[:-4]  # 移除.pth扩展名
+                    checkpoint_name = filename[:-4]  # Remove .pth extension
                     checkpoint_path = os.path.join(self.checkpoint_dir, filename)
 
-                    # 获取检查点信息
+                    # Get checkpoint information
                     checkpoint_info = self.get_checkpoint_info(checkpoint_name)
                     if checkpoint_info:
                         checkpoints.append(checkpoint_info)
 
         except Exception as e:
-            self.logger.error(f"列出检查点时发生错误: {e}")
+            self.logger.error(f"Error occurred while listing checkpoints: {e}")
 
-        # 按修改时间倒序排列
+        # Sort by modification time in descending order
         checkpoints.sort(key=lambda x: x.get('modified_time', 0), reverse=True)
         return checkpoints
 
     def get_checkpoint_info(self, checkpoint_name: str) -> Optional[Dict[str, Any]]:
         """
-        获取检查点的详细信息
+        Get detailed checkpoint information
 
         Args:
-            checkpoint_name: 检查点名称（不包含.pth扩展名）
+            checkpoint_name: Checkpoint name (without .pth extension)
 
         Returns:
-            Optional[Dict[str, Any]]: 检查点信息，如果检查点不存在或无效则返回None
+            Optional[Dict[str, Any]]: Checkpoint information, returns None if checkpoint doesn't exist or is invalid
         """
         checkpoint_path = os.path.join(self.checkpoint_dir, f"{checkpoint_name}.pth")
 
@@ -75,23 +75,23 @@ class CheckpointManager:
             return None
 
         try:
-            # 获取文件信息
+            # Get file information
             file_stat = os.stat(checkpoint_path)
             file_size = file_stat.st_size
             modified_time = file_stat.st_mtime
             modified_datetime = datetime.fromtimestamp(modified_time).strftime("%Y-%m-%d %H:%M:%S")
 
-            # 尝试加载检查点以验证其有效性并获取训练信息
+            # Try to load checkpoint to validate it and get training information
             checkpoint_data = torch.load(checkpoint_path, map_location='cpu')
 
-            # 提取训练信息
+            # Extract training information
             training_timesteps = checkpoint_data.get('training_timesteps', 0)
             learning_rate = checkpoint_data.get('learning_rate', 0.0)
             gamma = checkpoint_data.get('gamma', 0.0)
             tau = checkpoint_data.get('tau', 0.0)
             has_replay_buffer = checkpoint_data.get('has_replay_buffer', False)
 
-            # 检查是否有必要的网络参数
+            # Check for required network parameters
             has_actor = 'actor_state_dict' in checkpoint_data
             has_critic = 'critic_state_dict' in checkpoint_data
             has_critic_target = 'critic_target_state_dict' in checkpoint_data
@@ -111,12 +111,12 @@ class CheckpointManager:
                 'has_actor': has_actor,
                 'has_critic': has_critic,
                 'has_critic_target': has_critic_target,
-                'is_valid': has_actor and has_critic,  # 至少需要actor和critic
+                'is_valid': has_actor and has_critic,  # At least need actor and critic
                 'checkpoint_path': checkpoint_path
             }
 
         except Exception as e:
-            self.logger.error(f"获取检查点信息失败 {checkpoint_name}: {e}")
+            self.logger.error(f"Failed to get checkpoint info {checkpoint_name}: {e}")
             return {
                 'name': checkpoint_name,
                 'file_path': checkpoint_path,
@@ -139,61 +139,61 @@ class CheckpointManager:
 
     def validate_checkpoint(self, checkpoint_name: str) -> bool:
         """
-        验证检查点是否有效
+        Validate if checkpoint is valid
 
         Args:
-            checkpoint_name: 检查点名称
+            checkpoint_name: Checkpoint name
 
         Returns:
-            bool: 检查点是否有效
+            bool: Whether the checkpoint is valid
         """
         checkpoint_info = self.get_checkpoint_info(checkpoint_name)
         return checkpoint_info is not None and checkpoint_info.get('is_valid', False)
 
     def load_checkpoint(self, checkpoint_name: str) -> Optional[Dict[str, Any]]:
         """
-        加载检查点数据
+        Load checkpoint data
 
         Args:
-            checkpoint_name: 检查点名称
+            checkpoint_name: Checkpoint name
 
         Returns:
-            Optional[Dict[str, Any]]: 检查点数据，加载失败时返回None
+            Optional[Dict[str, Any]]: Checkpoint data, returns None if loading fails
         """
         checkpoint_path = os.path.join(self.checkpoint_dir, f"{checkpoint_name}.pth")
 
         if not os.path.exists(checkpoint_path):
-            self.logger.error(f"检查点文件不存在: {checkpoint_path}")
+            self.logger.error(f"Checkpoint file does not exist: {checkpoint_path}")
             return None
 
         try:
             checkpoint_data = torch.load(checkpoint_path, map_location='cpu')
-            self.logger.info(f"成功加载检查点: {checkpoint_name}")
+            self.logger.info(f"Successfully loaded checkpoint: {checkpoint_name}")
             return checkpoint_data
         except Exception as e:
-            self.logger.error(f"加载检查点失败 {checkpoint_name}: {e}")
+            self.logger.error(f"Failed to load checkpoint {checkpoint_name}: {e}")
             return None
 
     def load_replay_buffer(self, checkpoint_name: str) -> Optional[Any]:
         """
-        加载检查点对应的经验回放缓冲区
+        Load replay buffer corresponding to checkpoint
 
         Args:
-            checkpoint_name: 检查点名称
+            checkpoint_name: Checkpoint name
 
         Returns:
-            Optional[Any]: 经验回放缓冲区，加载失败时返回None
+            Optional[Any]: Replay buffer, returns None if loading fails
         """
-        # 首先检查checkpoint中是否标记有replay buffer
+        # First check if checkpoint is marked as having replay buffer
         checkpoint_info = self.get_checkpoint_info(checkpoint_name)
         if not checkpoint_info or not checkpoint_info.get('has_replay_buffer', False):
             return None
 
-        # 尝试在原始训练目录中查找replay buffer
-        # 假设checkpoint名称包含training_id信息
+        # Try to find replay buffer in original training directory
+        # Assume checkpoint name contains training_id information
         history_dir = os.path.join(os.getcwd(), "data", "history")
 
-        # 尝试多种可能的replay buffer文件路径
+        # Try multiple possible replay buffer file paths
         possible_paths = [
             os.path.join(self.checkpoint_dir, f"{checkpoint_name}_replay_buffer.pkl"),
             os.path.join(history_dir, checkpoint_name, "model", f"{checkpoint_name}_replay_buffer.pkl")
@@ -204,48 +204,48 @@ class CheckpointManager:
                 try:
                     with open(buffer_path, 'rb') as f:
                         replay_buffer = pickle.load(f)
-                    self.logger.info(f"成功加载经验回放缓冲区: {buffer_path}")
+                    self.logger.info(f"Successfully loaded replay buffer: {buffer_path}")
                     return replay_buffer
                 except Exception as e:
-                    self.logger.warning(f"加载经验回放缓冲区失败 {buffer_path}: {e}")
+                    self.logger.warning(f"Failed to load replay buffer {buffer_path}: {e}")
 
-        self.logger.warning(f"未找到检查点 {checkpoint_name} 对应的经验回放缓冲区")
+        self.logger.warning(f"Replay buffer not found for checkpoint {checkpoint_name}")
         return None
 
     def delete_checkpoint(self, checkpoint_name: str) -> bool:
         """
-        删除指定的检查点
+        Delete the specified checkpoint
 
         Args:
-            checkpoint_name: 检查点名称
+            checkpoint_name: Checkpoint name
 
         Returns:
-            bool: 删除是否成功
+            bool: Whether deletion was successful
         """
         checkpoint_path = os.path.join(self.checkpoint_dir, f"{checkpoint_name}.pth")
 
         if not os.path.exists(checkpoint_path):
-            self.logger.warning(f"要删除的检查点不存在: {checkpoint_path}")
+            self.logger.warning(f"Checkpoint to delete does not exist: {checkpoint_path}")
             return False
 
         try:
             os.remove(checkpoint_path)
-            self.logger.info(f"成功删除检查点: {checkpoint_name}")
+            self.logger.info(f"Successfully deleted checkpoint: {checkpoint_name}")
             return True
         except Exception as e:
-            self.logger.error(f"删除检查点失败 {checkpoint_name}: {e}")
+            self.logger.error(f"Failed to delete checkpoint {checkpoint_name}: {e}")
             return False
 
     def copy_checkpoint_from_history(self, training_id: str, checkpoint_name: str = None) -> bool:
         """
-        从历史训练目录复制检查点到checkpoints目录
+        Copy checkpoint from history training directory to checkpoints directory
 
         Args:
-            training_id: 历史训练ID
-            checkpoint_name: 目标检查点名称，如果不提供则使用training_id
+            training_id: History training ID
+            checkpoint_name: Target checkpoint name, uses training_id if not provided
 
         Returns:
-            bool: 复制是否成功
+            bool: Whether copy was successful
         """
         if checkpoint_name is None:
             checkpoint_name = training_id
@@ -255,37 +255,37 @@ class CheckpointManager:
         target_path = os.path.join(self.checkpoint_dir, f"{checkpoint_name}.pth")
 
         if not os.path.exists(source_path):
-            self.logger.error(f"源检查点文件不存在: {source_path}")
+            self.logger.error(f"Source checkpoint file does not exist: {source_path}")
             return False
 
         try:
             import shutil
             shutil.copy2(source_path, target_path)
 
-            # 同时复制replay buffer（如果存在）
+            # Also copy replay buffer (if exists)
             source_buffer_path = os.path.join(history_dir, training_id, "model", f"{training_id}_replay_buffer.pkl")
             if os.path.exists(source_buffer_path):
                 target_buffer_path = os.path.join(self.checkpoint_dir, f"{checkpoint_name}_replay_buffer.pkl")
                 shutil.copy2(source_buffer_path, target_buffer_path)
-                self.logger.info(f"同时复制了经验回放缓冲区: {target_buffer_path}")
+                self.logger.info(f"Also copied replay buffer: {target_buffer_path}")
 
-            self.logger.info(f"成功复制检查点: {source_path} -> {target_path}")
+            self.logger.info(f"Successfully copied checkpoint: {source_path} -> {target_path}")
             return True
         except Exception as e:
-            self.logger.error(f"复制检查点失败: {e}")
+            self.logger.error(f"Failed to copy checkpoint: {e}")
             return False
 
 
-# 全局检查点管理器实例
+# Global checkpoint manager instance
 _checkpoint_manager = None
 
 
 def get_checkpoint_manager() -> CheckpointManager:
     """
-    获取全局检查点管理器实例
+    Get global checkpoint manager instance
 
     Returns:
-        CheckpointManager: 检查点管理器实例
+        CheckpointManager: Checkpoint manager instance
     """
     global _checkpoint_manager
     if _checkpoint_manager is None:

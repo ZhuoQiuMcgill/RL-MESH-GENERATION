@@ -558,7 +558,8 @@ export class TrainingManager {
             this.canvasRenderer.renderScene(
                 renderData.meshData,
                 renderData.boundaryData,
-                renderData.refPointInfo
+                renderData.refPointInfo,
+                renderData.actionAttempted
             );
             // Hide empty state when mesh data is being rendered
             this.showEmptyState(false);

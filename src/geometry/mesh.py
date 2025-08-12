@@ -1,7 +1,7 @@
 """
-网格类定义
+Mesh class definition
 
-提供网格的构建、维护和查询功能
+Provides mesh construction, maintenance and query functionality
 """
 import copy
 
@@ -50,48 +50,48 @@ class Mesh:
 
     def get_adjacency_dict(self):
         """
-        返回网格的邻接关系字典，格式适合前端可视化
+        Return the mesh adjacency relationship dictionary, formatted for frontend visualization
 
         Returns:
-            Dict[str, List[List[float]]]: 字符串化的顶点坐标到邻接顶点列表的映射
+            Dict[str, List[List[float]]]: Mapping from stringified vertex coordinates to adjacent vertex lists
         """
         adjacency_dict = {}
         for vertex, neighbors in self.mesh.items():
-            # 将顶点坐标转换为字符串格式 "[x,y]"
+            # Convert vertex coordinates to string format "[x,y]"
             vertex_key = f"[{vertex[0]},{vertex[1]}]"
-            # 邻接顶点保持为坐标列表格式
+            # Keep adjacent vertices in coordinate list format
             adjacency_dict[vertex_key] = [[neighbor[0], neighbor[1]] for neighbor in neighbors]
 
         return adjacency_dict
 
     # ──────────────────────── other utility methods ────────────────
     def get_vertices(self):
-        """返回网格中所有顶点的列表"""
+        """Return a list of all vertices in the mesh"""
         return list(self.mesh.keys())
 
     def get_vertex_count(self):
-        """返回网格中顶点的数量"""
+        """Return the number of vertices in the mesh"""
         return len(self.mesh)
 
     def get_edge_count(self):
-        """返回网格中边的数量（每条边计算一次）"""
+        """Return the number of edges in the mesh (each edge counted once)"""
         total_degree = sum(len(neighbors) for neighbors in self.mesh.values())
-        return total_degree // 2  # 每条边被计算了两次
+        return total_degree // 2  # Each edge is counted twice
 
     def has_vertex(self, vertex):
-        """检查顶点是否在网格中"""
+        """Check if a vertex exists in the mesh"""
         return vertex in self.mesh
 
     def get_neighbors(self, vertex):
-        """获取指定顶点的所有邻接顶点"""
+        """Get all adjacent vertices of the specified vertex"""
         if vertex not in self.mesh:
             raise ValueError(f"Vertex {vertex} not found in the mesh.")
         return copy.deepcopy(self.mesh[vertex])
 
     def __str__(self):
-        """返回网格的字符串表示"""
+        """Return string representation of the mesh"""
         return f"Mesh(vertices={self.get_vertex_count()}, edges={self.get_edge_count()})"
 
     def __repr__(self):
-        """返回网格的详细字符串表示"""
+        """Return detailed string representation of the mesh"""
         return f"Mesh(vertices={self.get_vertex_count()}, edges={self.get_edge_count()}, adjacency={dict(self.mesh)})"

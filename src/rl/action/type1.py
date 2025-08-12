@@ -75,7 +75,7 @@ class ActionType1(ActionType):
         # new vertex to insert
         v2 = tuple(coords[0])
 
-        # --- 1. angle‑quality term (q1) -----------------------------------------
+        # --- 1. angle-quality term (q1) -----------------------------------------
         # angles are measured at v1 and v3
         angle_1 = get_interior_angle(v2, v3, boundary.get_vertex_by_index(reference_vertex_idx + 2))
         angle_2 = get_interior_angle(boundary.get_vertex_by_index(reference_vertex_idx - 2), v1, v2)

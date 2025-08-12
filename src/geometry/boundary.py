@@ -15,31 +15,31 @@ from src.utils.segment import (
 
 
 class Boundary:
-    """顺时针排列顶点的封闭多边形边界"""
+    """Closed polygonal boundary with clockwise-ordered vertices"""
 
     def __init__(self, vertices: List[Tuple[float, float]]):
         """
-        使用顺时针排列的(x, y)元组列表初始化边界
+        Initialize boundary using a list of (x, y) tuples arranged clockwise
 
         Args:
-            vertices: 顶点坐标列表，按顺时针顺序排列
+            vertices: List of vertex coordinates, arranged in clockwise order
 
         Raises:
-            ValueError: 当顶点数量少于3个时
+            ValueError: When the number of vertices is less than 3
         """
         if len(vertices) < 3:
             raise ValueError("A boundary must have at least three vertices.")
         self._verts = np.asarray(vertices, dtype=float)  # shape (N, 2)
 
     # ------------------------------------------------------------
-    # 只读辅助方法
+    # Read-only helper methods
     # ------------------------------------------------------------
     def get_vertices(self):
         """
-        返回顶点的副本作为元组列表
+        Return a copy of vertices as a list of tuples
 
         Returns:
-            List[Tuple[float, float]]: 顶点坐标列表的副本
+            List[Tuple[float, float]]: Copy of vertex coordinate list
         """
         return [tuple(v) for v in self._verts]
 
@@ -64,15 +64,15 @@ class Boundary:
         if self.size() == 0:
             raise IndexError("no vertices in boundary")
 
-        idx = n % self.size()  # 支持负数和越界
+        idx = n % self.size()  # Support negative numbers and overflow
         return tuple(self._verts[idx])
 
     def get_edges(self):
         """
-        返回边的列表，每条边由(前一个顶点, 当前顶点)元组表示
+        Return a list of edges, each edge represented by (previous vertex, current vertex) tuple
 
         Returns:
-            List[Tuple[Tuple[float, float], Tuple[float, float]]]: 边的列表
+            List[Tuple[Tuple[float, float], Tuple[float, float]]]: List of edges
         """
         return [(tuple(self._verts[i - 1]), tuple(self._verts[i]))
                 for i in range(len(self._verts))]
@@ -235,19 +235,18 @@ class Boundary:
         if invalid_points_index is None:
             invalid_points_index = set()
         return (
-            RLReferencePointSelector().select_reference_point(self,
-                                                              **{'n': n,
-                                                                 'invalid_points_index': invalid_points_index}))
+            RLReferencePointSelector().select_reference_point(self, **{'n': n,
+                                                                       'invalid_points_index': invalid_points_index}))
 
     # ------------------------------------------------------------
-    # 修改器方法
+    # Modifier methods
     # ------------------------------------------------------------
     def remove_vertex(self, vertex: Tuple[float, float]):
         """
-        如果存在则移除指定顶点，否则静默忽略
+        Remove the specified vertex if it exists, otherwise ignore silently
 
         Args:
-            vertex: 要移除的顶点坐标(x, y)
+            vertex: Vertex coordinates to remove (x, y)
         """
         mask = (self._verts == vertex).all(axis=1)
         if mask.any():
@@ -255,14 +254,14 @@ class Boundary:
 
     def insert_vertex(self, vertex: Tuple[float, float], position: int):
         """
-        在指定位置插入顶点
+        Insert vertex at the specified position
 
         Args:
-            vertex: 要插入的顶点坐标(x, y)
-            position: 插入位置索引(0 ≤ pos ≤ len)
+            vertex: Vertex coordinates to insert (x, y)
+            position: Insert position index (0 ≤ pos ≤ len)
 
         Raises:
-            IndexError: 当位置超出范围时
+            IndexError: When position is out of range
         """
         if not (0 <= position <= len(self._verts)):
             raise IndexError("position out of range")
@@ -354,17 +353,17 @@ class Boundary:
         return fan_shape.process(self.get_vertices())
 
     # ------------------------------------------------------------
-    # 私有辅助方法
+    # Private helper methods
     # ------------------------------------------------------------
     def _point_on_boundary_edge(self, point: Tuple[float, float]) -> bool:
         """
-        检查点是否在边界的某个边上
+        Check if a point lies on any boundary edge
 
         Args:
-            point: 要检查的点坐标(x, y)
+            point: Point coordinates to check (x, y)
 
         Returns:
-            bool: 如果点在边界的某个边上返回True，否则返回False
+            bool: True if the point lies on any boundary edge, False otherwise
         """
         point_array = np.array(point, dtype=float)
 
@@ -379,13 +378,13 @@ class Boundary:
 
     def _point_in_polygon(self, point: Tuple[float, float]) -> bool:
         """
-        使用射线投射算法判断点是否在多边形内部
+        Use ray casting algorithm to determine if point is inside polygon
 
         Args:
-            point: 要检查的点坐标(x, y)
+            point: Point coordinates to check (x, y)
 
         Returns:
-            bool: 如果点在多边形内部返回True，否则返回False
+            bool: True if point is inside polygon, False otherwise
         """
         x, y = point
         n = len(self._verts)

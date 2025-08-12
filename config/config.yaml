@@ -10,24 +10,9 @@ paths:
   custom_dir: "custom"
   examples_dir: "examples"
 
-  # 结果和输出目录
-  results_dir: "results"
-  logs_dir: "logs"
-  models_dir: "models"
-
-  # 缓存和临时目录
-  cache_dir: ".cache"
-  temp_dir: ".temp"
-
-  # 工具目录
-  tools_dir: "tools"
-
-  # 配置文件目录
-  config_dir: "config"
-
   # 默认的mesh文件名（用于演示）
   default_meshes:
-    - "1"
+    - "basic1"
 
 # Stable-Baselines3 SAC配置
 # 注意：前端只会修改training.max_timesteps和environment.max_steps
@@ -43,7 +28,7 @@ sb3_sac:
   learning_starts: 10000
 
   # 训练批次大小 - 每次从缓冲区采样的经验数量
-  batch_size: 100
+  batch_size: 128
 
   # 软更新系数 - 目标网络更新的速度
   tau: 0.005

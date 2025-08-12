@@ -1017,6 +1017,10 @@ class TrainingManager:
             self.current_stats["mesh_data"] = mesh_data if mesh_data else {}
             self.current_stats["boundary_vertices_data"] = boundary_vertices if boundary_vertices else []
             self.current_stats["reference_point_info"] = ref_info if ref_info else None
+            
+            # Update action attempted information for frontend visualization
+            latest_action_attempted = trainer_status.get("latest_action_attempted")
+            self.current_stats["latest_action_attempted"] = latest_action_attempted if latest_action_attempted else None
 
             # 获取缓冲区大小
             if hasattr(self.trainer, 'model') and hasattr(self.trainer.model, 'replay_buffer'):

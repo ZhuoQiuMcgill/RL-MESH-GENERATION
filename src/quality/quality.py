@@ -95,7 +95,7 @@ def quality_hybrid_ar(element: List[Point],
                       beta: float = 0.5) -> float:
     """
     hybrid × (aspect‑ratio penalty)^β
-    β≥1 可以加重对长条的惩罚
+    β≥1 can increase penalty for elongated elements
     """
     if not _validate(element):
         return 0.0

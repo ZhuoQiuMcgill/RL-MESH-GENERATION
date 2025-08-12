@@ -760,11 +760,13 @@ class SB3SACTrainer:
             "avg_reward_100": self._sanitize_value(self._cb.avg_reward_100()),
             "is_completed": last_detail.get('is_completed', False),
             "avg_element_quality": self._sanitize_value(last_detail.get('avg_element_quality', 0.0)),
-            # 训练指标
+            # Action attempt information for visualization
+            "latest_action_attempted": last_detail.get('action_attempted'),
+            # Training metrics
             "recent_actor_loss": self._sanitize_value(latest_metrics.get("actor_loss", 0.0)),
             "recent_critic_loss": self._sanitize_value(latest_metrics.get("critic_loss", 0.0)),
             "current_alpha": self._sanitize_value(latest_metrics.get("alpha", 0.0)),
-            # 评估信息
+            # Evaluation information
             "eval_count": eval_info.get("eval_count", 0),
             "last_eval_reward": self._sanitize_value(eval_info.get("last_eval_reward", 0.0)),
             "best_eval_reward": self._sanitize_value(eval_info.get("best_eval_reward", 0.0)),

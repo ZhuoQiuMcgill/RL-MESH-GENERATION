@@ -22,7 +22,11 @@ export class CanvasRenderer {
             boundaryVertexRadius: 4,
             boundaryLineWidth: 3,
             meshVertexLineWidth: 1.5,
-            referencePointRadius: 8
+            referencePointRadius: 8,
+            // Action attempted default sizes
+            actionAttemptedLineWidth: 4,
+            actionAttemptedVertexRadius: 8,
+            actionAttemptedVertexLineWidth: 1.5
         };
 
         this.setupCanvas();
@@ -85,7 +89,8 @@ export class CanvasRenderer {
                     this.renderScene(
                         this.lastRenderData.meshData,
                         this.lastRenderData.boundaryVertices,
-                        this.lastRenderData.refPointInfo
+                        this.lastRenderData.refPointInfo,
+                        this.lastRenderData.actionAttempted
                     );
                 }
             } else {
@@ -276,17 +281,19 @@ export class CanvasRenderer {
     }
 
     /**
-     * Unified rendering of Mesh and Boundary - Fixed version
+     * Unified rendering of Mesh and Boundary - Enhanced version with action attempt visualization
      * @param {Object} meshData - Mesh data
      * @param {Array} boundaryVertices - Boundary vertex data
      * @param {Object} refPointInfo - Reference point information
+     * @param {Object} actionAttempted - Action attempted data for visualization
      */
-    renderScene(meshData, boundaryVertices, refPointInfo = null) {
+    renderScene(meshData, boundaryVertices, refPointInfo = null, actionAttempted = null) {
         // Cache render data
         this.lastRenderData = {
             meshData: meshData,
             boundaryVertices: boundaryVertices,
             refPointInfo: refPointInfo,
+            actionAttempted: actionAttempted,
             isPreview: false
         };
 
@@ -319,7 +326,7 @@ export class CanvasRenderer {
             context: 'training'
         });
 
-        // Render in layers
+        // Render in layers - order matters for visibility
         if (meshData && Object.keys(meshData).length > 0) {
             this.renderMeshWithTransform(meshData, transform);
         }
@@ -330,6 +337,11 @@ export class CanvasRenderer {
 
         if (refPointInfo) {
             this.renderReferencePointInfo(refPointInfo, transform, boundaryVertices);
+        }
+
+        // Render action attempt visualization - draw on top
+        if (actionAttempted) {
+            this.renderActionAttempted(actionAttempted, transform);
         }
     }
 
@@ -665,6 +677,73 @@ export class CanvasRenderer {
     }
 
     /**
+     * Render action attempted visualization - Shows what action the AI is trying to take
+     * @param {Object} actionAttempted - Action attempt data from backend
+     * @param {Object} transform - Transformation parameters
+     */
+    renderActionAttempted(actionAttempted, transform) {
+        if (!actionAttempted || !transform) {
+            console.debug('No action attempted data or transform');
+            return;
+        }
+
+        console.log('🎯 RENDERING ACTION ATTEMPTED:', actionAttempted);
+
+        try {
+            // Handle edge visualization
+            if (actionAttempted.edge && Array.isArray(actionAttempted.edge)) {
+                console.log('📏 Drawing edges:', actionAttempted.edge.length);
+                
+                this.ctx.save();
+                this.ctx.strokeStyle = '#8B0000'; // Deep red - very visible
+                this.ctx.lineWidth = this.adaptiveSizes.actionAttemptedLineWidth; // Use adaptive line width
+                this.ctx.setLineDash([8, 4]); // Medium dashed pattern
+                this.ctx.lineCap = 'round';
+                
+                actionAttempted.edge.forEach((edgePair, index) => {
+                    if (Array.isArray(edgePair) && edgePair.length === 2) {
+                        const [start, end] = edgePair;
+                        if (isValidCoordinate(start) && isValidCoordinate(end)) {
+                            const startScreen = this.worldToScreen(start, transform);
+                            const endScreen = this.worldToScreen(end, transform);
+                            
+                            console.log(`Edge ${index}: [${start}] -> [${end}] = Screen [${startScreen}] -> [${endScreen}]`);
+                            
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(startScreen[0], startScreen[1]);
+                            this.ctx.lineTo(endScreen[0], endScreen[1]);
+                            this.ctx.stroke();
+                        }
+                    }
+                });
+                
+                this.ctx.restore();
+            }
+            
+            // Handle vertex visualization
+            if (actionAttempted.vertex && isValidCoordinate(actionAttempted.vertex)) {
+                console.log('🔹 Drawing vertex:', actionAttempted.vertex);
+                
+                const vertexScreen = this.worldToScreen(actionAttempted.vertex, transform);
+                console.log('Vertex screen position:', vertexScreen);
+                
+                this.ctx.save();
+                this.ctx.fillStyle = '#8B0000'; // Deep red
+                
+                // Draw simple red circle with adaptive radius
+                this.ctx.beginPath();
+                this.ctx.arc(vertexScreen[0], vertexScreen[1], this.adaptiveSizes.actionAttemptedVertexRadius, 0, 2 * Math.PI);
+                this.ctx.fill();
+                
+                this.ctx.restore();
+            }
+            
+        } catch (error) {
+            console.error('❌ Error rendering action attempted:', error);
+        }
+    }
+
+    /**
      * Draw vertex
      * @param {Array} position - Screen coordinates [x, y]
      * @param {number} radius - Radius
@@ -702,7 +781,11 @@ export class CanvasRenderer {
                 boundaryVertexRadius: 4,
                 boundaryLineWidth: 3,
                 meshVertexLineWidth: 1.5,
-                referencePointRadius: 8
+                referencePointRadius: 8,
+                // Action attempted default sizes
+                actionAttemptedLineWidth: 4,
+                actionAttemptedVertexRadius: 8,
+                actionAttemptedVertexLineWidth: 1.5
             };
             return;
         }
@@ -777,7 +860,11 @@ export class CanvasRenderer {
             boundaryVertexRadius: Math.max(1.0, Math.min(8, baseSizes.boundaryVertexRadius * sizeMultiplier)),
             boundaryLineWidth: Math.max(0.5, Math.min(8, baseSizes.boundaryLineWidth * sizeMultiplier)),
             meshVertexLineWidth: Math.max(0.3, Math.min(4, baseSizes.meshVertexLineWidth * sizeMultiplier)),
-            referencePointRadius: Math.max(2, Math.min(16, baseSizes.referencePointRadius * sizeMultiplier))
+            referencePointRadius: Math.max(2, Math.min(16, baseSizes.referencePointRadius * sizeMultiplier)),
+            // Action attempted adaptive sizes (calculated based on base values)
+            actionAttemptedLineWidth: Math.max(2, Math.min(10, 4 * sizeMultiplier)),
+            actionAttemptedVertexRadius: Math.max(4, Math.min(16, 8 * sizeMultiplier)),
+            actionAttemptedVertexLineWidth: Math.max(0.8, Math.min(3, 1.5 * sizeMultiplier))
         };
 
         // Debug logging

@@ -12,6 +12,7 @@ export class UIController {
         this.meshData = null;
         this.boundaryData = null;
         this.refPointInfo = null;
+        this.actionAttempted = null; // Store action attempted data for visualization
         this.checkpoints = []; // Store checkpoint list
         
         // Time estimation tracking
@@ -145,6 +146,11 @@ export class UIController {
         }
         if (stats.boundary_vertices_data) {
             this.boundaryData = stats.boundary_vertices_data;
+        }
+        
+        // Update action attempted data for visualization
+        if (stats.latest_action_attempted) {
+            this.actionAttempted = stats.latest_action_attempted;
         }
     }
 
@@ -746,7 +752,8 @@ export class UIController {
         return {
             meshData: this.meshData,
             boundaryData: this.boundaryData,
-            refPointInfo: this.refPointInfo
+            refPointInfo: this.refPointInfo,
+            actionAttempted: this.actionAttempted
         };
     }
 

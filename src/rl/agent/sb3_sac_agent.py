@@ -17,19 +17,19 @@ from ..config import load_config
 
 class SB3SACAgent:
     """
-    使用Stable-Baselines3的SAC智能体包装器
-    提供与自制SAC相同的接口，但内部使用SB3的实现
-    确保所有SAC参数都从config.yaml中读取
+    SAC Agent wrapper using Stable-Baselines3
+    Provides the same interface as custom SAC, but uses SB3's implementation internally
+    Ensures all SAC parameters are read from config.yaml
     """
 
     def __init__(self, env, device="cuda", config=None):
         """
-        初始化SB3 SAC智能体
+        Initialize SB3 SAC Agent
 
         Args:
-            env: gymnasium环境
-            device: 训练设备
-            config: 配置字典，如果为None则从config.yaml加载
+            env: gymnasium environment
+            device: training device
+            config: configuration dictionary, if None will load from config.yaml
         """
         if not SB3_AVAILABLE:
             raise ImportError(

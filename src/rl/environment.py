@@ -73,6 +73,7 @@ class MeshEnv(gym.Env):
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
         self.action_count = {}
         self.invalid_points_index = set()
+        self.stoped = False
 
     def _reset_episode_stats(self) -> None:
         self.episode_reward = 0.0
@@ -100,6 +101,7 @@ class MeshEnv(gym.Env):
         self.invalid_action_count = 0
         self.action_count = {}
         self.invalid_points_index = set()
+        self.stoped = False
         self.min_area, self.critical_area = self.initial_boundary.get_min_and_critical_area()
 
         self._reset_episode_stats()
@@ -128,11 +130,13 @@ class MeshEnv(gym.Env):
 
         action_valid = action_result['action_valid']
         action_name = action_result['action_name']
+        action_attempted = action_result['action_attempted']
         element_quality_reward = action_result['element_quality_reward']
         boundary_quality_reward = action_result['boundary_quality_reward']
         generated_element = action_result['generated_element']
 
         self.current_step += 1
+
         # Calculate reward and termination
         if action_valid:
             reward = (
@@ -151,11 +155,17 @@ class MeshEnv(gym.Env):
         else:
             reward = self.invalid_penalty()
             self.invalid_action_count += 1
-            self.invalid_points_index.add(reference_vertex_idx)
-            if self.invalid_action_count >= min(self.boundary.size(), 100):
+
+            # MARK: I DON'T KNOW WHY BUT IT WORKS IN THE ORIGINAL PROJECT
+            # =============================================================================
+            # self.invalid_points_index.add(reference_vertex_idx)
+            if self.invalid_action_count >= 100:
                 terminated = True
+                self.stoped = True
             else:
                 terminated = False
+            # =============================================================================
+
             complete = False
             truncated = False
             term_reason = "invalid_action"
@@ -190,7 +200,8 @@ class MeshEnv(gym.Env):
                               "is_completed": complete,
                               "generated_elements": self.generated_elements,
                               "action_count": self.action_count,
-                              "avg_element_quality": avg_element_quality}
+                              "avg_element_quality": avg_element_quality,
+                              "action_attempted": action_attempted}
 
         return observation, reward, terminated, truncated, info
 
@@ -221,7 +232,7 @@ class MeshEnv(gym.Env):
 
         # 1. reference vertex and geometric info
         get_type = "exclude ref"
-        reference_idx = self.boundary.get_ref_vertex(self.n)
+        reference_idx = self._get_reference_vertex()
         ref_v = self.boundary.get_vertex_by_index(reference_idx)
         right_neighbor_v = self.boundary.get_vertex_by_index(reference_idx - 1)
         neighbor_coords = self.boundary.get_neighbors(reference_idx, self.n, get_type=get_type)
@@ -256,10 +267,12 @@ class MeshEnv(gym.Env):
         # 7. cache info for debugging/visualization
         if get_type == "exclude ref":
             neighbor_coords.insert(self.n, ref_v)
-        self.last_reference_info = {
-            "ref_vertex": tuple(ref_v),
-            "local_env_vertices": [tuple(v) for v in neighbor_coords]
-        }
+
+        if not self.stoped:
+            self.last_reference_info = {
+                "ref_vertex": tuple(ref_v),
+                "local_env_vertices": [tuple(v) for v in neighbor_coords]
+            }
 
         return np.array(state_components, dtype=np.float32)
 

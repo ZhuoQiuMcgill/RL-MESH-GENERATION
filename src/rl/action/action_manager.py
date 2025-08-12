@@ -9,7 +9,7 @@ from src.utils import euclidean_distance, decode_coordinate
 
 
 class ActionManager:
-    _EPS = 0.0001
+    _EPS = 0.00001
 
     def __init__(self, alpha=2, n=2, max_steps=1000, action_config=None):
         """
@@ -93,7 +93,7 @@ class ActionManager:
             spaces.Box: Action space with shape (3,) and range [-1, 1]
         """
         # return spaces.Box(low=-1, high=1, shape=(self.action_dim,), dtype=np.float32)
-        return spaces.Box(low=np.array([-1, 0, -1.5]), high=np.array([1, 1.5, 1.5]), dtype=np.float32)
+        return spaces.Box(low=np.array([-1, 0, -1.5]), high=np.array([1, 1.5, 0]), dtype=np.float32)
 
     def decode_action(self, action, boundary, reference_vertex_idx, command=False):
         type_logit = action[0]
@@ -274,6 +274,23 @@ class ActionManager:
             'boundary_quality_reward': -0.1,
             'generated_element': None
         }
+
+        if action_name == "type0_left":
+            result['action_attempted'] = {
+                'edge' : [(boundary.get_vertex_by_index(ref_idx - 2), boundary.get_vertex_by_index(ref_idx + 1))],
+                'vertex' : None
+            }
+        elif action_name == "type0_right":
+            result['action_attempted'] = {
+                'edge': [(boundary.get_vertex_by_index(ref_idx - 1), boundary.get_vertex_by_index(ref_idx + 2))],
+                'vertex': None
+            }
+        else:
+            result['action_attempted'] = {
+                'edge': [(boundary.get_vertex_by_index(ref_idx - 1), new_coords[0]),
+                         (boundary.get_vertex_by_index(ref_idx + 1), new_coords[0])],
+                'vertex': new_coords[0]
+            }
 
         # Check validity
         action_valid = self.is_valid(boundary, ref_idx, action_instance, action_name, new_coords)

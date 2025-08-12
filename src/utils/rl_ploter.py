@@ -7,9 +7,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# 允许重复加载 Intel OpenMP 库，避免 libiomp5md.dll 冲突
+# Allow reloading Intel OpenMP library to avoid libiomp5md.dll conflicts
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-# 屏蔽 matplotlib.font_manager 的 DEBUG 日志
+# Suppress matplotlib.font_manager DEBUG logs
 logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
@@ -19,33 +19,33 @@ def plot_reward_change(episode_rewards: List[float],
                        episode_lengths: List[int],
                        save_path: str) -> str:
     """
-    绘制训练过程中各 episode reward 随累计 timesteps 的变化曲线，
-    并把图例和统计信息放到图表外部。
+    Plot the curve of episode rewards vs cumulative timesteps during training,
+    with legends and statistics placed outside the chart.
 
     Args:
-        episode_rewards: 各 episode 的 reward 列表，长度为 N。
-        episode_lengths: 各 episode 对应的步数列表，长度也应为 N。
-        save_path: 图表保存路径。
+        episode_rewards: List of rewards for each episode, length N.
+        episode_lengths: List of steps for each episode, length should also be N.
+        save_path: Chart save path.
     Returns:
-        str: 最终保存的文件路径。
+        str: Final saved file path.
     """
-    # 校验 & 截断
+    # Validation & truncation
     rewards = np.array(episode_rewards, dtype=float)
     lengths = np.array(episode_lengths, dtype=float)
     if rewards.ndim != 1 or lengths.ndim != 1:
-        raise ValueError("episode_rewards 和 episode_lengths 必须都是一维列表")
+        raise ValueError("episode_rewards and episode_lengths must both be one-dimensional lists")
     if rewards.shape[0] != lengths.shape[0]:
-        logger.warning(f"Rewards 长度 {len(rewards)} 与 Lengths 长度 {len(lengths)} 不一致，截断到最小长度")
+        logger.warning(f"Rewards length {len(rewards)} and Lengths length {len(lengths)} do not match, truncating to minimum length")
         m = min(len(rewards), len(lengths))
         rewards = rewards[:m]
         lengths = lengths[:m]
 
-    # 计算横轴（累计 timesteps）
+    # Calculate x-axis (cumulative timesteps)
     x_data = np.cumsum(lengths)
     if x_data.shape[0] != rewards.shape[0]:
-        raise ValueError("x_data 与 rewards 长度不匹配")
+        raise ValueError("x_data and rewards length mismatch")
 
-    # 配色
+    # Color scheme
     bg_color = '#1a1a1a'
     primary_color = '#ff6b35'
     secondary_color = '#ffa726'
@@ -54,18 +54,18 @@ def plot_reward_change(episode_rewards: List[float],
     grid_color = '#333333'
     card_bg = '#2a2a2a'
 
-    # 创建图和轴，预留右侧空间
+    # Create figure and axes, reserve right side space
     plt.style.use('default')
     fig, ax = plt.subplots(figsize=(12, 7), facecolor=bg_color)
     ax.set_facecolor(bg_color)
-    fig.subplots_adjust(right=0.75)  # 留 25% 空间给外部图例和文本
+    fig.subplots_adjust(right=0.75)  # Reserve 25% space for external legends and text
 
-    # 主曲线（减小线条粗细）
+    # Main curve (reduce line thickness)
     ax.plot(x_data, rewards,
             color=primary_color, linewidth=1.5,
             alpha=0.9, label='Episode Reward', zorder=3)
 
-    # 移动平均（减小线条粗细）
+    # Moving average (reduce line thickness)
     if len(rewards) > 10:
         window = min(20, len(rewards) // 5)
         ma = np.convolve(rewards, np.ones(window) / window, mode='valid')
@@ -73,33 +73,33 @@ def plot_reward_change(episode_rewards: List[float],
                 color=secondary_color, linewidth=2,
                 alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
 
-    # 100窗口移动平均线（新增）
+    # 100-window moving average line (newly added)
     if len(rewards) > 100:
         ma_100 = np.convolve(rewards, np.ones(100) / 100, mode='valid')
         ax.plot(x_data[99:], ma_100,
                 color='#4fc3f7', linewidth=1.8,
                 alpha=0.9, label='Moving Avg (100)', zorder=4)
 
-    # 少量点时加散点
+    # Add scatter points when few data points
     if len(x_data) <= 100:
         ax.scatter(x_data, rewards,
                    color=accent_color, s=30,
                    alpha=0.7, edgecolors=bg_color,
                    linewidth=1, zorder=5)
-    # 填充
+    # Fill area
     if len(rewards) > 5:
         ax.fill_between(x_data, rewards,
                         alpha=0.15, color=primary_color,
                         zorder=1)
 
-    # 坐标与标题
+    # Axes and title
     ax.set_xlabel('Timesteps', fontsize=13, color=text_color, fontweight='500')
     ax.set_ylabel('Reward', fontsize=13, color=text_color, fontweight='500')
     ax.set_title('Training Progress by Timesteps',
                  fontsize=16, color=text_color,
                  fontweight='600', pad=20)
 
-    # 网格 & 边框
+    # Grid & borders
     ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
     ax.set_axisbelow(True)
     for spine in ['top', 'right']:
@@ -112,7 +112,7 @@ def plot_reward_change(episode_rewards: List[float],
     ax.tick_params(axis='x', length=6, width=1.5, color=grid_color)
     ax.tick_params(axis='y', length=6, width=1.5, color=grid_color)
 
-    # 图例：放在右侧外部（修复位置对齐）
+    # Legend: place on the right side externally (fix position alignment)
     legend = ax.legend(loc='upper left',
                        bbox_to_anchor=(1.02, 1.0),
                        borderaxespad=0, fancybox=True, fontsize=11)
@@ -123,7 +123,7 @@ def plot_reward_change(episode_rewards: List[float],
     for txt in legend.get_texts():
         txt.set_color(text_color)
 
-    # 统计信息：放在右侧外部（修复位置对齐）
+    # Statistics: place on the right side externally (fix position alignment)
     total_ts = int(lengths.sum())
     stats = (
         f"Episodes:     {len(rewards):,}\n"
@@ -144,7 +144,7 @@ def plot_reward_change(episode_rewards: List[float],
                        linewidth=1.5),
              transform=ax.transAxes)
 
-    # 保存 & 关闭
+    # Save & close
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.tight_layout(pad=2.0)
     plt.savefig(save_path, dpi=300,
@@ -156,24 +156,24 @@ def plot_reward_change(episode_rewards: List[float],
 
 def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_dir: str):
     """
-    绘制训练过程中的actor loss, critic loss和alpha变化曲线
+    Plot training curves for actor loss, critic loss, and alpha changes
     
     Args:
-        actor_losses: actor loss数据列表
-        critic_losses: critic loss数据列表  
-        alphas: alpha数据列表
-        timesteps: 对应的时间步数列表
-        save_dir: 保存目录路径
+        actor_losses: List of actor loss data
+        critic_losses: List of critic loss data  
+        alphas: List of alpha data
+        timesteps: Corresponding timestep list
+        save_dir: Save directory path
         
     Returns:
-        dict: 包含生成的图片路径
+        dict: Dictionary containing generated plot paths
     """
     import os
     
-    # 确保保存目录存在
+    # Ensure save directory exists
     os.makedirs(save_dir, exist_ok=True)
     
-    # 配色方案
+    # Color scheme
     bg_color = '#1a1a1a'
     primary_color = '#ff6b35'
     secondary_color = '#ffa726'  
@@ -184,19 +184,19 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
     plt.style.use('default')
     saved_plots = {}
     
-    # 绘制Actor Loss
+    # Plot Actor Loss
     if actor_losses and len(actor_losses) > 0:
         fig, ax = plt.subplots(figsize=(10, 6), facecolor=bg_color)
         ax.set_facecolor(bg_color)
         
-        # 确保数据长度一致
+        # Ensure data length consistency
         plot_timesteps = timesteps[:len(actor_losses)]
         
         ax.plot(plot_timesteps, actor_losses, 
                 color=primary_color, linewidth=1.5, alpha=0.9, 
                 label='Actor Loss', zorder=3)
         
-        # 添加移动平均
+        # Add moving average
         if len(actor_losses) > 10:
             window = min(50, len(actor_losses) // 5)
             ma = np.convolve(actor_losses, np.ones(window) / window, mode='valid')
@@ -210,7 +210,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         ax.set_title('Actor Loss During Training', 
                      fontsize=14, color=text_color, fontweight='600', pad=15)
         
-        # 设置网格和样式
+        # Set grid and styling
         ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
         ax.set_axisbelow(True)
         for spine in ['top', 'right']:
@@ -219,7 +219,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         ax.spines['bottom'].set_color(grid_color)
         ax.tick_params(colors=text_color, labelsize=10)
         
-        # 图例
+        # Legend
         legend = ax.legend(loc='upper right', fontsize=10)
         legend.get_frame().set_facecolor('#2a2a2a')
         legend.get_frame().set_edgecolor(grid_color)
@@ -232,38 +232,38 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         plt.savefig(actor_loss_path, dpi=300, facecolor=bg_color, edgecolor='none')
         plt.close(fig)
         saved_plots['actor_loss'] = actor_loss_path
-        logger.info(f"Actor loss图表已保存: {actor_loss_path}")
+        logger.info(f"Actor loss chart saved: {actor_loss_path}")
     
-    # 绘制Critic Loss
+    # Plot Critic Loss
     if critic_losses and len(critic_losses) > 0:
         fig, ax = plt.subplots(figsize=(10, 6), facecolor=bg_color)
         ax.set_facecolor(bg_color)
         
         plot_timesteps = timesteps[:len(critic_losses)]
         
-        # 智能Y轴缩放：处理初期极高值问题
+        # Smart Y-axis scaling: handle initial extreme values
         critic_losses_array = np.array(critic_losses)
         
-        # 计算百分位数来确定合理的Y轴范围
+        # Calculate percentiles to determine reasonable Y-axis range
         q25, q75 = np.percentile(critic_losses_array, [25, 75])
         iqr = q75 - q25
         
-        # 如果有超过30%的数据点在后70%的时间范围内，使用后70%数据来设定Y轴
+        # If more than 30% of data points are in the later 70% time range, use later 70% data to set Y-axis
         if len(critic_losses) > 100:
             later_portion = critic_losses_array[int(len(critic_losses) * 0.3):]
             later_q95 = np.percentile(later_portion, 95)
             later_q5 = np.percentile(later_portion, 5)
             
-            # 如果初期的极值远大于后期数据，使用后期数据的范围
+            # If initial extreme values are much larger than later data, use later data range
             if np.max(critic_losses_array[:int(len(critic_losses) * 0.3)]) > later_q95 * 3:
                 y_max = later_q95 * 1.1
                 y_min = max(0, later_q5 * 0.9)
             else:
-                # 使用全部数据的95%分位数
+                # Use 95th percentile of all data
                 y_max = np.percentile(critic_losses_array, 95)
                 y_min = max(0, np.percentile(critic_losses_array, 5))
         else:
-            # 数据量少时使用全部数据
+            # Use all data when data volume is small
             y_max = np.percentile(critic_losses_array, 95)
             y_min = max(0, np.percentile(critic_losses_array, 5))
         
@@ -271,7 +271,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
                 color=accent_color, linewidth=1.5, alpha=0.9,
                 label='Critic Loss', zorder=3)
         
-        # 添加移动平均
+        # Add moving average
         if len(critic_losses) > 10:
             window = min(50, len(critic_losses) // 5)
             ma = np.convolve(critic_losses, np.ones(window) / window, mode='valid')
@@ -280,7 +280,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
                     color=secondary_color, linewidth=2,
                     alpha=0.95, label=f'Moving Avg ({window})', zorder=4)
         
-        # 设置智能Y轴范围
+        # Set smart Y-axis range
         ax.set_ylim(y_min, y_max)
         
         ax.set_xlabel('Timesteps', fontsize=12, color=text_color, fontweight='500')
@@ -288,7 +288,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         ax.set_title('Critic Loss During Training',
                      fontsize=14, color=text_color, fontweight='600', pad=15)
         
-        # 设置网格和样式
+        # Set grid and styling
         ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
         ax.set_axisbelow(True)
         for spine in ['top', 'right']:
@@ -297,7 +297,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         ax.spines['bottom'].set_color(grid_color)
         ax.tick_params(colors=text_color, labelsize=10)
         
-        # 图例
+        # Legend
         legend = ax.legend(loc='upper right', fontsize=10)
         legend.get_frame().set_facecolor('#2a2a2a')
         legend.get_frame().set_edgecolor(grid_color)
@@ -310,9 +310,9 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         plt.savefig(critic_loss_path, dpi=300, facecolor=bg_color, edgecolor='none')
         plt.close(fig)
         saved_plots['critic_loss'] = critic_loss_path
-        logger.info(f"Critic loss图表已保存: {critic_loss_path}")
+        logger.info(f"Critic loss chart saved: {critic_loss_path}")
     
-    # 绘制Alpha (Entropy Coefficient)
+    # Plot Alpha (Entropy Coefficient)
     if alphas and len(alphas) > 0:
         fig, ax = plt.subplots(figsize=(10, 6), facecolor=bg_color)
         ax.set_facecolor(bg_color)
@@ -323,7 +323,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
                 color='#ff8f65', linewidth=1.5, alpha=0.9,
                 label='Alpha (Entropy Coefficient)', zorder=3)
         
-        # 添加移动平均
+        # Add moving average
         if len(alphas) > 10:
             window = min(50, len(alphas) // 5)
             ma = np.convolve(alphas, np.ones(window) / window, mode='valid')
@@ -337,7 +337,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         ax.set_title('Alpha (Entropy Coefficient) During Training',
                      fontsize=14, color=text_color, fontweight='600', pad=15)
         
-        # 设置网格和样式
+        # Set grid and styling
         ax.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0)
         ax.set_axisbelow(True)
         for spine in ['top', 'right']:
@@ -346,7 +346,7 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         ax.spines['bottom'].set_color(grid_color)
         ax.tick_params(colors=text_color, labelsize=10)
         
-        # 图例
+        # Legend
         legend = ax.legend(loc='upper right', fontsize=10)
         legend.get_frame().set_facecolor('#2a2a2a')
         legend.get_frame().set_edgecolor(grid_color)  
@@ -359,24 +359,24 @@ def plot_training_metrics(actor_losses, critic_losses, alphas, timesteps, save_d
         plt.savefig(alpha_path, dpi=300, facecolor=bg_color, edgecolor='none')
         plt.close(fig)
         saved_plots['alpha'] = alpha_path
-        logger.info(f"Alpha图表已保存: {alpha_path}")
+        logger.info(f"Alpha chart saved: {alpha_path}")
     
     return saved_plots
 
 
 def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> str:
     """
-    绘制动作分布图，显示每种动作类型的valid/invalid统计
+    Plot action distribution chart showing valid/invalid statistics for each action type
     
     Args:
-        action_counts_list: 包含多个episode的action count数据的列表
-                           每个元素是形如 {"type1": {"valid": 10, "invalid": 2}, ...} 的字典
-        save_path: 图表保存路径
+        action_counts_list: List containing action count data from multiple episodes
+                           Each element is a dict like {"type1": {"valid": 10, "invalid": 2}, ...}
+        save_path: Chart save path
         
     Returns:
-        str: 最终保存的文件路径
+        str: Final saved file path
     """
-    # 合并所有episodes的action count数据
+    # Merge action count data from all episodes
     combined_counts = {}
     for episode_counts in action_counts_list:
         if not episode_counts:
@@ -388,58 +388,58 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
             combined_counts[action_name]["invalid"] += counts.get("invalid", 0)
     
     if not combined_counts:
-        logger.warning("没有动作统计数据可用于绘制分布图")
+        logger.warning("No action statistics data available for plotting distribution chart")
         return save_path
     
-    # 配色方案
+    # Color scheme
     bg_color = '#1a1a1a'
     text_color = '#e8e8e8'
     grid_color = '#333333'
     card_bg = '#2a2a2a'
     
-    # 准备数据
+    # Prepare data
     action_names = list(combined_counts.keys())
     valid_counts = [combined_counts[name]["valid"] for name in action_names]
     invalid_counts = [combined_counts[name]["invalid"] for name in action_names]
     total_counts = [v + i for v, i in zip(valid_counts, invalid_counts)]
     
-    # 创建统一的颜色调色板 - 每个动作类型使用不同的基色
+    # Create unified color palette - each action type uses different base colors
     action_base_colors = {
-        'type0_left': '#2196F3',    # 蓝色
-        'type0_right': '#4CAF50',   # 绿色
-        'type1': '#FF9800',         # 橙色
-        'type2': '#9C27B0',         # 紫色
-        'type3': '#F44336',         # 红色
-        'type4': '#00BCD4',         # 青色
-        'type5': '#795548',         # 棕色
-        'type6': '#607D8B'          # 蓝灰色
+        'type0_left': '#2196F3',    # Blue
+        'type0_right': '#4CAF50',   # Green
+        'type1': '#FF9800',         # Orange
+        'type2': '#9C27B0',         # Purple
+        'type3': '#F44336',         # Red
+        'type4': '#00BCD4',         # Cyan
+        'type5': '#795548',         # Brown
+        'type6': '#607D8B'          # Blue-gray
     }
     
-    # 为未定义的动作类型生成颜色
+    # Generate colors for undefined action types
     import matplotlib.cm as cm
     base_cmap = cm.get_cmap('tab10')
     for i, name in enumerate(action_names):
         if name not in action_base_colors:
             action_base_colors[name] = base_cmap(i % 10)
     
-    # 计算总体统计
+    # Calculate overall statistics
     total_actions = sum(total_counts)
     total_valid = sum(valid_counts)
     success_rate = (total_valid / total_actions * 100) if total_actions > 0 else 0
     
-    # 创建图表，在标题中包含统计信息
+    # Create chart with statistics in title
     plt.style.use('default')
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7), facecolor=bg_color)
     main_title = f'Action Distribution Analysis | Total Actions: {total_actions:,} ({success_rate:.1f}% Valid)'
     fig.suptitle(main_title, fontsize=14, color=text_color, fontweight='600', y=0.98)
     
-    # 左图：堆叠柱状图显示valid/invalid分布
+    # Left chart: stacked bar chart showing valid/invalid distribution
     ax1.set_facecolor(bg_color)
     x_pos = np.arange(len(action_names))
     
-    # 使用浅色和深色版本表示valid/invalid
+    # Use light and dark versions to represent valid/invalid
     def lighten_color(color, amount=0.3):
-        """将颜色变浅"""
+        """Lighten color"""
         import matplotlib.colors as mc
         try:
             c = mc.cnames[color]
@@ -449,7 +449,7 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
         return tuple(c + (1 - c) * amount)
     
     def darken_color(color, amount=0.3):
-        """将颜色变深"""
+        """Darken color"""
         import matplotlib.colors as mc
         try:
             c = mc.cnames[color]
@@ -458,14 +458,14 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
         c = np.array(mc.to_rgb(c))
         return tuple(c * (1 - amount))
     
-    # 为每个动作类型创建颜色
+    # Create colors for each action type
     valid_colors = [lighten_color(action_base_colors[name], 0.2) for name in action_names]
     invalid_colors = [darken_color(action_base_colors[name], 0.3) for name in action_names]
     
     bars1 = ax1.bar(x_pos, valid_counts, color=valid_colors, alpha=0.9, label='Valid Actions')
     bars2 = ax1.bar(x_pos, invalid_counts, bottom=valid_counts, color=invalid_colors, alpha=0.9, label='Invalid Actions')
     
-    # 在柱状图上添加数值标签（仅显示段值，不显示总计）
+    # Add value labels on bar chart (only show segment values, not totals)
     for i, (valid, invalid, total) in enumerate(zip(valid_counts, invalid_counts, total_counts)):
         if total > 0:
             # Valid count label
@@ -484,7 +484,7 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
     ax1.set_xticklabels(action_names, rotation=45, ha='right', color=text_color)
     ax1.tick_params(colors=text_color, labelsize=10)
     
-    # 设置网格和样式
+    # Set grid and styling
     ax1.grid(True, alpha=0.2, color=grid_color, linewidth=1, zorder=0, axis='y')
     ax1.set_axisbelow(True)
     for spine in ['top', 'right']:
@@ -492,7 +492,7 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
     ax1.spines['left'].set_color(grid_color)
     ax1.spines['bottom'].set_color(grid_color)
     
-    # 图例
+    # Legend
     legend1 = ax1.legend(loc='upper right', fontsize=10)
     legend1.get_frame().set_facecolor(card_bg)
     legend1.get_frame().set_edgecolor(grid_color)
@@ -500,10 +500,10 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
     for txt in legend1.get_texts():
         txt.set_color(text_color)
     
-    # 右图：饼图显示总体动作分布
+    # Right chart: pie chart showing overall action distribution
     ax2.set_facecolor(bg_color)
     
-    # 只显示总次数大于0的动作，使用统一的基色
+    # Only show actions with total count > 0, using unified base colors
     pie_names = []
     pie_counts = []
     pie_colors = []
@@ -517,7 +517,7 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
         wedges, texts, autotexts = ax2.pie(pie_counts, labels=pie_names, colors=pie_colors,
                                           autopct='%1.1f%%', startangle=90, textprops={'color': text_color})
         
-        # 设置百分比文字样式
+        # Set percentage text styling
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontweight('bold')
@@ -525,29 +525,29 @@ def plot_action_distribution(action_counts_list: List[Dict], save_path: str) -> 
     
     ax2.set_title('Total Action Distribution', fontsize=12, color=text_color, fontweight='600', pad=20)
     
-    # 保存图表
+    # Save chart
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.subplots_adjust(top=0.85, bottom=0.15, left=0.08, right=0.95, wspace=0.3)
     plt.savefig(save_path, dpi=300, facecolor=bg_color, edgecolor='none', bbox_inches='tight')
     plt.close(fig)
     
-    logger.info(f"Action distribution图表已保存: {save_path}")
+    logger.info(f"Action distribution chart saved: {save_path}")
     return save_path
 
 
 def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: str) -> str:
     """
-    绘制动作奖励分布图，显示每种动作类型的奖励分布情况
+    Plot action reward distribution chart showing reward distribution for each action type
     
     Args:
-        action_counts_list: 包含多个episode的action count数据的列表
-                           每个元素是形如 {"type1": {"valid": 10, "invalid": 2, "rewards": [...]}, ...} 的字典
-        save_path: 图表保存路径
+        action_counts_list: List containing action count data from multiple episodes
+                           Each element is a dict like {"type1": {"valid": 10, "invalid": 2, "rewards": [...]}, ...}
+        save_path: Chart save path
         
     Returns:
-        str: 最终保存的文件路径
+        str: Final saved file path
     """
-    # 合并所有episodes的reward数据
+    # Merge reward data from all episodes
     combined_rewards = {}
     for episode_counts in action_counts_list:
         if not episode_counts:
@@ -555,35 +555,35 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
         for action_name, counts in episode_counts.items():
             if action_name not in combined_rewards:
                 combined_rewards[action_name] = []
-            # 获取奖励数据，确保是列表
+            # Get reward data, ensure it's a list
             rewards = counts.get("rewards", [])
             if isinstance(rewards, list):
                 combined_rewards[action_name].extend(rewards)
     
     if not combined_rewards or not any(combined_rewards.values()):
-        logger.warning("没有奖励数据可用于绘制分布图")
+        logger.warning("No reward data available for plotting distribution chart")
         return save_path
     
-    # 配色方案
+    # Color scheme
     bg_color = '#1a1a1a'
     text_color = '#e8e8e8'
     grid_color = '#333333'
     
-    # 动作类型颜色 - 与action distribution图保持一致
+    # Action type colors - consistent with action distribution chart
     action_colors = {
-        'type0_left': '#2196F3',    # 蓝色
-        'type0_right': '#4CAF50',   # 绿色
-        'type1': '#FF9800',         # 橙色
+        'type0_left': '#2196F3',    # Blue
+        'type0_right': '#4CAF50',   # Green
+        'type1': '#FF9800',         # Orange
     }
     
-    # 过滤出有数据的动作类型
+    # Filter out action types with data
     valid_actions = {name: rewards for name, rewards in combined_rewards.items() if rewards}
     
     if not valid_actions:
-        logger.warning("没有有效的奖励数据")
+        logger.warning("No valid reward data")
         return save_path
     
-    # 创建图表
+    # Create chart
     plt.style.use('default')
     num_actions = len(valid_actions)
     
@@ -595,7 +595,7 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
     else:
         fig, axes = plt.subplots(1, 3, figsize=(15, 6), facecolor=bg_color)
     
-    # 计算总体统计
+    # Calculate overall statistics
     total_rewards = []
     for rewards in valid_actions.values():
         total_rewards.extend(rewards)
@@ -603,7 +603,7 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
     overall_mean = np.mean(total_rewards) if total_rewards else 0
     overall_std = np.std(total_rewards) if total_rewards else 0
     
-    # 清晰的标题层次结构
+    # Clear title hierarchy
     main_title = 'Reward Distribution by Action Type'
     subtitle = f'Total Samples: {len(total_rewards):,} | Overall Mean: {overall_mean:.3f} ± {overall_std:.3f}'
     
@@ -611,7 +611,7 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
     fig.text(0.5, 0.90, subtitle, ha='center', fontsize=12, color=text_color, 
              fontweight='400', transform=fig.transFigure)
     
-    # 预先计算所有直方图以确定统一的Y轴范围
+    # Pre-calculate all histograms to determine uniform Y-axis range
     all_hist_data = []
     for action_name, rewards in valid_actions.items():
         if rewards:
@@ -619,11 +619,11 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
             counts, _ = np.histogram(rewards, bins=n_bins)
             all_hist_data.extend(counts)
     
-    # 设置统一的Y轴最大值
+    # Set uniform Y-axis maximum value
     max_frequency = max(all_hist_data) if all_hist_data else 100
-    y_max = max_frequency * 1.1  # 添加10%的余量
+    y_max = max_frequency * 1.1  # Add 10% margin
     
-    # 为每个动作类型绘制分布图
+    # Plot distribution chart for each action type
     for idx, (action_name, rewards) in enumerate(valid_actions.items()):
         ax = axes[idx] if num_actions > 1 else axes[0]
         ax.set_facecolor(bg_color)
@@ -631,51 +631,51 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
         if not rewards:
             continue
             
-        # 获取颜色
+        # Get color
         color = action_colors.get(action_name, '#666666')
         
-        # 绘制直方图
-        n_bins = min(30, max(10, len(rewards) // 10))  # 自适应bin数量
+        # Plot histogram
+        n_bins = min(30, max(10, len(rewards) // 10))  # Adaptive bin count
         counts, bins, patches = ax.hist(rewards, bins=n_bins, color=color, alpha=0.7, 
                                        edgecolor='white', linewidth=0.8)
         
-        # 绘制密度曲线
+        # Plot density curve
         try:
             from scipy import stats
             if len(rewards) > 1:
-                # 计算核密度估计
+                # Calculate kernel density estimation
                 kde = stats.gaussian_kde(rewards)
                 x_range = np.linspace(min(rewards), max(rewards), 100)
                 density = kde(x_range)
-                # 缩放密度以匹配直方图
+                # Scale density to match histogram
                 density_scaled = density * len(rewards) * (bins[1] - bins[0])
                 ax.plot(x_range, density_scaled, color=color, linewidth=2, alpha=0.9)
         except ImportError:
-            # 如果没有scipy，跳过密度曲线
+            # Skip density curve if scipy is not available
             pass
         
-        # 添加统计线
+        # Add statistical lines
         mean_reward = np.mean(rewards)
         median_reward = np.median(rewards)
         
-        # 均值线
+        # Mean line
         ax.axvline(mean_reward, color='red', linestyle='--', linewidth=2, alpha=0.8, 
                   label=f'Mean: {mean_reward:.3f}')
-        # 中位数线  
+        # Median line  
         ax.axvline(median_reward, color='orange', linestyle='--', linewidth=2, alpha=0.8,
                   label=f'Median: {median_reward:.3f}')
         
-        # 设置标题和标签
+        # Set title and labels
         std_reward = np.std(rewards)
         ax.set_title(f'{action_name}\n({len(rewards)} samples, σ={std_reward:.3f})', 
                     fontsize=12, color=text_color, fontweight='600', pad=20)
         ax.set_xlabel('Reward Value', fontsize=10, color=text_color)
         ax.set_ylabel('Frequency', fontsize=10, color=text_color)
         
-        # 设置统一的Y轴范围
+        # Set uniform Y-axis range
         ax.set_ylim(0, y_max)
         
-        # 设置网格和样式
+        # Set grid and styling
         ax.grid(True, alpha=0.2, color=grid_color, linewidth=1)
         ax.set_axisbelow(True)
         for spine in ['top', 'right']:
@@ -684,7 +684,7 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
         ax.spines['bottom'].set_color(grid_color)
         ax.tick_params(colors=text_color, labelsize=9)
         
-        # 图例
+        # Legend
         legend = ax.legend(loc='upper right', fontsize=9)
         legend.get_frame().set_facecolor('#2a2a2a')
         legend.get_frame().set_edgecolor(grid_color)
@@ -692,18 +692,18 @@ def plot_action_reward_distribution(action_counts_list: List[Dict], save_path: s
         for txt in legend.get_texts():
             txt.set_color(text_color)
     
-    # 隐藏多余的子图
+    # Hide excess subplots
     if num_actions < len(axes):
         for idx in range(num_actions, len(axes)):
             axes[idx].set_visible(False)
     
-    # 保存图表
+    # Save chart
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.subplots_adjust(top=0.80, bottom=0.12, left=0.08, right=0.95, wspace=0.25)
     plt.savefig(save_path, dpi=300, facecolor=bg_color, edgecolor='none', bbox_inches='tight')
     plt.close(fig)
     
-    logger.info(f"Action reward distribution图表已保存: {save_path}")
+    logger.info(f"Action reward distribution chart saved: {save_path}")
     return save_path
 
 
@@ -711,77 +711,77 @@ def plot_avg_element_quality(avg_qualities: List[float],
                             episode_lengths: List[int],
                             save_path: str) -> str:
     """
-    绘制训练过程中平均元素质量随累计时间步的变化曲线
+    Plot the curve of average element quality vs cumulative timesteps during training
     
     Args:
-        avg_qualities: 各episode的平均元素质量列表
-        episode_lengths: 各episode对应的步数列表
-        save_path: 图表保存路径
+        avg_qualities: List of average element quality for each episode
+        episode_lengths: List of steps for each episode
+        save_path: Chart save path
         
     Returns:
-        str: 最终保存的文件路径
+        str: Final saved file path
     """
-    # 数据校验和预处理
+    # Data validation and preprocessing
     qualities = np.array(avg_qualities, dtype=float)
     lengths = np.array(episode_lengths, dtype=float)
     
     if qualities.ndim != 1 or lengths.ndim != 1:
-        raise ValueError("avg_qualities 和 episode_lengths 必须都是一维列表")
+        raise ValueError("avg_qualities and episode_lengths must both be one-dimensional lists")
     
     if qualities.shape[0] != lengths.shape[0]:
-        logger.warning(f"Qualities 长度 {len(qualities)} 与 Lengths 长度 {len(lengths)} 不一致，截断到最小长度")
+        logger.warning(f"Qualities length {len(qualities)} and Lengths length {len(lengths)} do not match, truncating to minimum length")
         m = min(len(qualities), lengths)
         qualities = qualities[:m]
         lengths = lengths[:m]
     
     if len(qualities) == 0:
-        logger.warning("没有平均元素质量数据可用于绘制")
+        logger.warning("No average element quality data available for plotting")
         return save_path
         
-    # 计算累计时间步
+    # Calculate cumulative timesteps
     cumulative_steps = np.cumsum(lengths)
     
-    # 配色方案
+    # Color scheme
     bg_color = '#1a1a1a'
-    primary_color = '#4CAF50'  # 绿色主色调
-    secondary_color = '#81C784'  # 浅绿色
+    primary_color = '#4CAF50'  # Green primary color
+    secondary_color = '#81C784'  # Light green
     text_color = '#e8e8e8'
     grid_color = '#333333'
     
-    # 创建图表
+    # Create chart
     fig, ax = plt.subplots(figsize=(12, 8), facecolor=bg_color)
     ax.set_facecolor(bg_color)
     
-    # 绘制主曲线
+    # Plot main curve
     ax.plot(cumulative_steps, qualities, color=primary_color, linewidth=2.5, 
             alpha=0.9, label='Avg Element Quality')
     
-    # 添加数据点
+    # Add data points
     ax.scatter(cumulative_steps, qualities, color=secondary_color, s=25, 
               alpha=0.7, zorder=5)
     
-    # 计算并绘制移动平均线（平滑曲线）
+    # Calculate and plot moving average line (smooth curve)
     if len(qualities) >= 10:
-        window_size = max(5, len(qualities) // 20)  # 窗口大小为数据点数的5%，最小为5
+        window_size = max(5, len(qualities) // 20)  # Window size is 5% of data points, minimum 5
         moving_avg = np.convolve(qualities, np.ones(window_size)/window_size, mode='valid')
         moving_steps = cumulative_steps[window_size-1:]
         
         ax.plot(moving_steps, moving_avg, color='#FFA726', linewidth=3, 
                 alpha=0.8, label=f'Moving Average ({window_size} episodes)')
     
-    # 添加统计信息
+    # Add statistical information
     mean_quality = np.mean(qualities)
     max_quality = np.max(qualities)
     min_quality = np.min(qualities)
     final_quality = qualities[-1]
     
-    # 绘制统计线
+    # Plot statistical lines
     ax.axhline(mean_quality, color='red', linestyle='--', linewidth=2, 
                alpha=0.7, label=f'Mean: {mean_quality:.4f}')
     ax.axhline(max_quality, color='orange', linestyle=':', linewidth=2, 
                alpha=0.6, label=f'Max: {max_quality:.4f}')
     
-    # 设置标题和标签
+    # Set title and labels
     title = f'Average Element Quality Over Training\n'
     title += f'Final: {final_quality:.4f} | Range: [{min_quality:.4f}, {max_quality:.4f}]'
     ax.set_title(title, fontsize=16, color=text_color, fontweight='600', pad=20)
@@ -789,43 +789,43 @@ def plot_avg_element_quality(avg_qualities: List[float],
     ax.set_xlabel('Cumulative Training Steps', fontsize=12, color=text_color)
     ax.set_ylabel('Average Element Quality', fontsize=12, color=text_color)
     
-    # 设置网格和样式
+    # Set grid and styling
     ax.grid(True, alpha=0.3, color=grid_color, linewidth=1)
     ax.set_axisbelow(True)
     
-    # 移除顶部和右侧边框
+    # Remove top and right borders
     for spine in ['top', 'right']:
         ax.spines[spine].set_visible(False)
     ax.spines['left'].set_color(grid_color)
     ax.spines['bottom'].set_color(grid_color)
     
-    # 设置刻度颜色
+    # Set tick colors
     ax.tick_params(colors=text_color, labelsize=10)
     
-    # 图例
+    # Legend
     legend = ax.legend(loc='best', fontsize=11, framealpha=0.9)
     legend.get_frame().set_facecolor('#2a2a2a')
     legend.get_frame().set_edgecolor(grid_color)
     for txt in legend.get_texts():
         txt.set_color(text_color)
     
-    # 添加统计文本框
+    # Add statistics text box
     stats_text = f'Episodes: {len(qualities)}\n'
     stats_text += f'Total Steps: {int(cumulative_steps[-1])}\n'
     stats_text += f'Std Dev: {np.std(qualities):.4f}\n'
     stats_text += f'Improvement: {final_quality - qualities[0]:.4f}'
     
-    # 在右下角添加统计信息
+    # Add statistics information in bottom right corner
     ax.text(0.98, 0.02, stats_text, transform=ax.transAxes, 
             fontsize=10, color=text_color, ha='right', va='bottom',
             bbox=dict(boxstyle='round,pad=0.5', facecolor='#2a2a2a', 
                      edgecolor=grid_color, alpha=0.9))
     
-    # 保存图表
+    # Save chart
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, facecolor=bg_color, edgecolor='none', bbox_inches='tight')
     plt.close(fig)
     
-    logger.info(f"Average element quality图表已保存: {save_path}")
+    logger.info(f"Average element quality chart saved: {save_path}")
     return save_path

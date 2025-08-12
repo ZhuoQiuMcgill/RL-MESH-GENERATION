@@ -69,7 +69,7 @@ class ActionType(ABC):
         Returns:
             float: Quality value in [0, 1]
         """
-        return quality_robust(element)
+        return quality_hybrid(element)
 
     @staticmethod
     def calculate_angle_quality(angle1, angle2, M_angle):
