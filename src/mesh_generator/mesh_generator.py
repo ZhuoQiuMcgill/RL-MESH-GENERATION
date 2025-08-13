@@ -1,7 +1,6 @@
 from src.geometry import *
 from src.rl.action import ACTION_COMMAND_MAPPING
 from src.rl.action.action_manager import ActionManager
-from src.interfaces import Command
 from copy import deepcopy
 
 
@@ -30,7 +29,7 @@ class MeshGenerator:
         self.current_activated_ref_selector = None
         self.ref_selector_config = {}
 
-        # Geometry objects - these are the master copies
+        # Geometry objects - these are the master-copies
         self.initial_boundary = Boundary(boundary_vertices)
         self.boundary = deepcopy(self.initial_boundary)
         self.mesh = Mesh(self.boundary)
@@ -81,7 +80,7 @@ class MeshGenerator:
         # Update completion status based on current boundary size
         if self.check_complete():
             self.is_completed = True
-            
+
         if self.current_activated_ref_selector is None:
             # Fallback to boundary's default reference selection
             reference_vertex_idx = self.boundary.get_ref_vertex(2)  # Default n=2
@@ -127,28 +126,23 @@ class MeshGenerator:
         if self.current_activated_predictor is None:
             raise RuntimeError("No predictor activated. Call update_activated_predictor() first.")
 
-        # Check completion status BEFORE starting any step processing
+        # Check the completion status BEFORE starting any step processing
         if self.check_complete():
             self.is_completed = True
             return {
                 'success': False,
-                'element': None,
-                'command': None,
+                'code' : 2,
                 'message': 'Generation completed - boundary size <= 4'
-            }
-
-        if self.is_completed:
-            return {
-                'success': False,
-                'element': None,
-                'command': None,
-                'message': 'Generation already marked as completed'
             }
 
         try:
             # Get current state information
             state_info = self.get_current_state_info()
-            
+            action_valid = True
+            invalid_ref_list = set()
+            max_retry_num = min(100, self.boundary.size())
+            current_retry_num = 0
+
             # If a specific reference index is provided, use it. Otherwise, use the one from the state.
             if ref_idx is not None:
                 reference_vertex_idx = ref_idx
@@ -156,110 +150,99 @@ class MeshGenerator:
             else:
                 reference_vertex_idx = state_info['reference_vertex_idx']
 
-            # Use predictor to make decision
-            prediction = self.current_activated_predictor.predict(state_info)
-            action_vector = prediction['action_vector']
+            while True:
+                if not action_valid:
+                    reference_vertex_idx = RLReferencePointSelector().select_reference_point(self.boundary,
+                                                                                             **{"n": 2,
+                                                                                                "invalid_point_list": invalid_ref_list})
+                # Use predictor to make a decision
+                prediction = self.current_activated_predictor.predict(state_info)
+                action_vector = prediction['action_vector']
 
-            # Use ActionManager to decode action properly
-            action_name, new_coords, action_attempted = self.action_manager.decode_action(
-                action_vector, self.boundary, reference_vertex_idx, command=True
-            )
-
-            # Map action names to command classes
-            action_name_to_command = {
-                'type0_left': ACTION_COMMAND_MAPPING[0],  # ActionType0LeftCommand
-                'type0_right': ACTION_COMMAND_MAPPING[1],  # ActionType0RightCommand
-                'type1': ACTION_COMMAND_MAPPING[2]  # ActionType1Command
-            }
-
-            command_class = action_name_to_command.get(action_name)
-            if command_class is None:
-                raise ValueError(f"Unknown action name: {action_name}")
-
-            # Create command with appropriate parameters
-            if action_name in ['type0_left', 'type0_right']:
-                command = command_class(
-                    self.boundary,
-                    self.mesh,
-                    reference_vertex_idx
+                # Use ActionManager to decode action properly
+                action_name, new_coords, action_attempted = self.action_manager.decode_action(
+                    action_vector, self.boundary, reference_vertex_idx, command=True
                 )
-            elif action_name == 'type1':
-                if not new_coords:
-                    raise ValueError("ActionType1 requires new_coords from ActionManager")
-                command = command_class(
-                    self.boundary,
-                    self.mesh,
-                    reference_vertex_idx,
-                    new_coords[0]  # new_coords is a list
-                )
-            else:
-                raise ValueError(f"Unsupported action name: {action_name}")
 
-            # Get validation details before attempting execution
-            is_valid = command.is_valid()
-            validation_message = None
-            if not is_valid:
-                # Try to get specific validation failure reason
-                try:
-                    # Attempt to get detailed error by trying to execute and catching the error
-                    command.execute()
-                except Exception as e:
-                    validation_message = str(e)
-            
-            # Prepare action information for frontend
-            action_info = {
-                'action_type': action_name,
-                'reference_vertex_idx': reference_vertex_idx,
-                'new_coords': new_coords if new_coords else None,
-                'is_valid': is_valid,
-                'validation_message': validation_message,
-                'action_attempted': action_attempted
-            }
-            
-            if not is_valid:
-                return {
-                    'success': False,
-                    'element': None,
-                    'command': command,
-                    'action_info': action_info,
-                    'message': f'Invalid action {action_name} at reference {reference_vertex_idx}' + 
-                              (f': {validation_message}' if validation_message else '')
+                # Map action names to command classes
+                action_name_to_command = {
+                    'type0_left': ACTION_COMMAND_MAPPING[0],  # ActionType0LeftCommand
+                    'type0_right': ACTION_COMMAND_MAPPING[1],  # ActionType0RightCommand
+                    'type1': ACTION_COMMAND_MAPPING[2]  # ActionType1Command
                 }
 
-            # Execute command - this returns new boundary and mesh
-            new_boundary, new_mesh, element = command.execute()
+                command_class = action_name_to_command.get(action_name)
+                if command_class is None:
+                    raise ValueError(f"Unknown action name: {action_name}")
 
-            # Update current state with new objects
-            self.boundary = new_boundary
-            self.mesh = new_mesh
-            self.generated_elements.append(element)
+                # Create command with appropriate parameters
+                if action_name in ['type0_left', 'type0_right']:
+                    command = command_class(
+                        self.boundary,
+                        self.mesh,
+                        reference_vertex_idx
+                    )
+                elif action_name == 'type1':
+                    if not new_coords:
+                        raise ValueError("ActionType1 requires new_coords from ActionManager")
+                    command = command_class(
+                        self.boundary,
+                        self.mesh,
+                        reference_vertex_idx,
+                        new_coords[0]
+                    )
+                else:
+                    raise ValueError(f"Unsupported action name: {action_name}")
 
-            # Store command for potential undo
-            self.command_history.append(command)
-            self.current_step += 1
+                # Get validation details before attempting execution
+                is_valid = command.is_valid()
 
-            # Prepare action information for successful execution
-            action_info = {
-                'action_type': action_name,
-                'reference_vertex_idx': reference_vertex_idx,
-                'new_coords': new_coords if new_coords else None,
-                'is_valid': True,
-                'validation_message': None
-            }
-            
-            return {
-                'success': True,
-                'element': element,
-                'command': command,
-                'action_info': action_info,
-                'message': f'Successfully executed action {action_name}'
-            }
+                if not is_valid:
+                    if current_retry_num > max_retry_num:
+                        return {
+                            'success': False,
+                            'code': 1,
+                            'action_attempted': action_attempted
+                        }
+                    action_valid = False
+                    current_retry_num += 1
+                    continue
+
+
+                # Execute command - this returns new boundary and mesh
+                new_boundary, new_mesh, element = command.execute()
+
+                # Update current state with new objects
+                self.boundary = new_boundary
+                self.mesh = new_mesh
+                self.generated_elements.append(element)
+
+                # Store command for potential undo
+                self.command_history.append(command)
+                self.current_step += 1
+
+                # Prepare action information for successful execution
+                action_info = {
+                    'action_type': action_name,
+                    'reference_vertex_idx': reference_vertex_idx,
+                    'new_coords': new_coords if new_coords else None,
+                    'is_valid': is_valid,
+                    'action_attempted': action_attempted
+                }
+
+                return {
+                    'success': True,
+                    'code': 0,
+                    'element': element,
+                    'command': command,
+                    'action_info': action_info,
+                    'message': f'Successfully executed action {action_name}'
+                }
 
         except Exception as e:
             return {
                 'success': False,
-                'element': None,
-                'command': None,
+                'code': 3,
                 'message': f'Step failed: {str(e)}'
             }
 
