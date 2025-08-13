@@ -13,7 +13,7 @@ from src.rl.training.history_manager import save_episode_details
 
 
 class _EpisodeCallback(BaseCallback):
-    def __init__(self, evaluation_frequency=10, n_eval_episodes=10, training_session_dir=None, stop_event=None, enable_verbose_logging=False, require_completed_for_save=True):
+    def __init__(self, evaluation_frequency=10, evaluation_starts=0, n_eval_episodes=10, training_session_dir=None, stop_event=None, enable_verbose_logging=False, require_completed_for_save=True):
         super().__init__()
         self._current_episode = 0
         self._current_timesteps = 0
@@ -45,6 +45,7 @@ class _EpisodeCallback(BaseCallback):
 
         # New: Auto evaluation related parameters
         self.evaluation_frequency = evaluation_frequency
+        self.evaluation_starts = evaluation_starts
         self.n_eval_episodes = n_eval_episodes
         self.training_session_dir = training_session_dir
         self.stop_event = stop_event  # Stop event
@@ -103,6 +104,7 @@ class _EpisodeCallback(BaseCallback):
 
             # Check if automatic evaluation is needed (only when training is not stopped)
             if (self.evaluation_frequency > 0 and
+                    self._current_episode >= self.evaluation_starts and
                     self._current_episode % self.evaluation_frequency == 0 and
                     (not self.stop_event or not self.stop_event.is_set())):
                 self._perform_evaluation()
@@ -166,19 +168,19 @@ class _EpisodeCallback(BaseCallback):
 
     def _perform_evaluation(self):
         """
-        执行自动评估并保存最佳模型
+        Execute automatic evaluation and save best model
         """
         try:
             import logging
             logger = logging.getLogger(__name__)
 
-            # 检查停止事件
+            # Check stop event
             if self.stop_event and self.stop_event.is_set():
-                logger.info("检测到停止信号，跳过评估")
+                logger.info("Stop signal detected, skipping evaluation")
                 return
 
             if self.enable_verbose_logging:
-                logger.info(f"开始第{self._eval_count + 1}次自动评估 (Episode {self._current_episode})")
+                logger.info(f"Starting evaluation #{self._eval_count + 1} (Episode {self._current_episode})")
 
             # 使用当前环境进行评估
             eval_env = self.model.env
@@ -564,12 +566,14 @@ class SB3SACTrainer:
         # 获取评估配置
         training_config = self.config.get("training", {})
         evaluation_frequency = training_config.get("evaluation_frequency", 10)
+        evaluation_starts = training_config.get("evaluation_starts", 0)
         n_eval_episodes = training_config.get("n_eval_episodes", 10)
         require_completed_for_save = training_config.get("require_completed_for_save", True)
 
         # 创建回调函数，传入评估参数和停止事件
         self._cb = _EpisodeCallback(
             evaluation_frequency=evaluation_frequency,
+            evaluation_starts=evaluation_starts,
             n_eval_episodes=n_eval_episodes,
             training_session_dir=training_session_dir,
             stop_event=stop_event,

@@ -5,11 +5,13 @@ from gymnasium import spaces
 from .type0_left import ActionType0Left
 from .type0_right import ActionType0Right
 from .type1 import ActionType1
-from src.utils import euclidean_distance, decode_coordinate
+from src.utils import euclidean_distance, decode_coordinate, get_interior_angle
 
 
 class ActionManager:
-    _EPS = 0.00001
+    _EPS = 0.1
+    _ANGLE_EPS = 30
+    _ACTION_CHANGE = True
 
     def __init__(self, alpha=2, n=2, max_steps=1000, action_config=None):
         """
@@ -133,16 +135,52 @@ class ActionManager:
             x, y = decode_coordinate(ref_v, right_neighbor_v, scale_factor, new_r, new_theta)
 
             new_coords.append((x, y))
-            eps_dist = boundary.get_avg_vertex_distance() * self._EPS
 
-            if euclidean_distance((x, y), boundary.get_vertex_by_index(reference_vertex_idx + 2)) <= eps_dist:
-                # type1 -> type0_right
-                action_name = self.enabled_actions[1]
-                action_instance = self.action_types[action_name]
-            elif euclidean_distance((x, y), boundary.get_vertex_by_index(reference_vertex_idx - 2)) <= eps_dist:
-                # type1 -> type0_left
-                action_name = self.enabled_actions[0]
-                action_instance = self.action_types[action_name]
+            if self._ACTION_CHANGE:
+                point_merged = False
+
+                # Point Merging
+                eps_dist = base_len * self._EPS
+                if euclidean_distance((x, y), boundary.get_vertex_by_index(reference_vertex_idx + 2)) <= eps_dist:
+                    # type1 -> type0_right
+                    action_name = self.enabled_actions[1]
+                    action_instance = self.action_types[action_name]
+                    point_merged = True
+                    # print("Point Merge: type1 -> type0_right")
+                elif euclidean_distance((x, y), boundary.get_vertex_by_index(reference_vertex_idx - 2)) <= eps_dist:
+                    # type1 -> type0_left
+                    action_name = self.enabled_actions[0]
+                    action_instance = self.action_types[action_name]
+                    point_merged = True
+                    # print("Point Merge: type1 -> type0_left")
+
+                # Angle Merging
+                if not point_merged:
+                    right_outer_angle = get_interior_angle(
+                        boundary.get_vertex_by_index(reference_vertex_idx - 2),
+                        boundary.get_vertex_by_index(reference_vertex_idx - 1),
+                        (x, y)
+                    )
+                    if right_outer_angle > 180:
+                        right_outer_angle = right_outer_angle - 360
+
+                    left_outer_angle = get_interior_angle(
+                        (x, y),
+                        boundary.get_vertex_by_index(reference_vertex_idx + 1),
+                        boundary.get_vertex_by_index(reference_vertex_idx + 2),
+                    )
+                    if left_outer_angle > 180:
+                        left_outer_angle = left_outer_angle - 360
+                    if 0 < abs(right_outer_angle) < self._ANGLE_EPS:
+                        # type1 -> type0_left
+                        action_name = self.enabled_actions[0]
+                        action_instance = self.action_types[action_name]
+                        # print(f"Right Angle Merge ({right_outer_angle}): type1 -> type0_left")
+                    elif 0 < abs(left_outer_angle) < self._ANGLE_EPS:
+                        # type1 -> type0_right
+                        action_name = self.enabled_actions[1]
+                        action_instance = self.action_types[action_name]
+                        # print(f"Left Angle Merge ({left_outer_angle}): type1 -> type0_left")
 
         if command:
             return action_name, new_coords
@@ -167,7 +205,8 @@ class ActionManager:
             if action_name in ["type0_left", "type0_right"]:
                 return action_instance.is_valid(boundary, reference_vertex_idx, alpha=self.alpha, n=self.n)
             elif action_name == "type1":
-                return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0], alpha=self.alpha, n=self.n)
+                return action_instance.is_valid(boundary, reference_vertex_idx, new_coords[0], alpha=self.alpha,
+                                                n=self.n)
             else:
                 return False
         except Exception as e:
@@ -277,8 +316,8 @@ class ActionManager:
 
         if action_name == "type0_left":
             result['action_attempted'] = {
-                'edge' : [(boundary.get_vertex_by_index(ref_idx - 2), boundary.get_vertex_by_index(ref_idx + 1))],
-                'vertex' : None
+                'edge': [(boundary.get_vertex_by_index(ref_idx - 2), boundary.get_vertex_by_index(ref_idx + 1))],
+                'vertex': None
             }
         elif action_name == "type0_right":
             result['action_attempted'] = {

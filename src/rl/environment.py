@@ -292,7 +292,7 @@ class MeshEnv(gym.Env):
         return punish / self.generated_elements
 
     def _is_terminated(self):
-        return self.boundary.size() <= 4
+        return self.boundary.size() <= 5
 
     def render(self):
         pass

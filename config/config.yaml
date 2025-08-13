@@ -25,7 +25,7 @@ sb3_sac:
   buffer_size: 1000000
 
   # 开始训练前的随机探索步数 - 确保缓冲区有足够的经验
-  learning_starts: 10000
+  learning_starts: 2000
 
   # 训练批次大小 - 每次从缓冲区采样的经验数量
   batch_size: 128
@@ -104,9 +104,10 @@ training:
   # 每episode最大步数 - 与environment.max_steps保持一致
   max_steps_per_episode: 1000
 
-  # 自动评估配置
-  evaluation_frequency: 1      # 每多少个episode进行一次评估
-  n_eval_episodes: 1         # 每次评估运行多少个episode
+  # Auto evaluation configuration
+  evaluation_frequency: 1      # Every how many episodes to perform evaluation
+  evaluation_starts: 550       # From which episode to start evaluation (0 means start from the beginning)
+  n_eval_episodes: 1         # How many episodes to run per evaluation
   
   # 最佳模型保存条件配置
   require_completed_for_save: false   # 是否要求evaluation中必须有completed的episode才能保存最佳模型
