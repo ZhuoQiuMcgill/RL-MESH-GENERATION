@@ -157,7 +157,7 @@ class MeshGenerator:
                                                                                                 "invalid_point_list": invalid_ref_list,
                                                                                                 "predict_mode": True})
                     # print(f"Re-selecting reference vertex {reference_vertex_idx}")
-                    
+
                 # Use predictor to make a decision
                 prediction = self.current_activated_predictor.predict(state_info)
                 action_vector = prediction['action_vector']

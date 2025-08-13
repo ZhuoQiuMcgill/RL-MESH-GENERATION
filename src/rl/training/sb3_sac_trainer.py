@@ -370,13 +370,21 @@ class _EpisodeCallback(BaseCallback):
                         os.remove(self._best_model_path['eval_info_path'])
                         if self.enable_verbose_logging:
                             logger.info(f"已删除旧的评估信息: {self._best_model_path['eval_info_path']}")
+                    
+                    # 删除之前的replay buffer文件 (新增)
+                    if 'checkpoint_path' in self._best_model_path:
+                        old_buffer_path = self._best_model_path['checkpoint_path'].replace('.pth', '_replay_buffer.pkl')
+                        if os.path.exists(old_buffer_path):
+                            os.remove(old_buffer_path)
+                            if self.enable_verbose_logging:
+                                logger.info(f"已删除旧的replay buffer: {old_buffer_path}")
 
                 except Exception as e:
                     logger.warning(f"删除旧的最佳模型文件时发生错误: {e}")
             else:
                 # 如果没有记录的最佳模型路径，尝试清理目录中的所有最佳模型文件
                 try:
-                    for pattern in ["best_model_*.zip", "best_model_*.pth", "best_model_*_eval_info.json"]:
+                    for pattern in ["best_model_*.zip", "best_model_*.pth", "best_model_*_eval_info.json", "best_model_*_replay_buffer.pkl"]:
                         for file_path in glob.glob(os.path.join(best_model_dir, pattern)):
                             os.remove(file_path)
                             if self.enable_verbose_logging:
@@ -412,6 +420,21 @@ class _EpisodeCallback(BaseCallback):
                 checkpoint['log_ent_coef'] = self.model.policy.log_ent_coef.data.clone()
             elif hasattr(self.model.policy, 'ent_coef'):
                 checkpoint['ent_coef'] = self.model.policy.ent_coef
+
+            # 保存replay buffer (新增)
+            if hasattr(self.model, 'replay_buffer') and self.model.replay_buffer is not None:
+                buffer_path = os.path.join(best_model_dir, f"{best_model_name}_replay_buffer.pkl")
+                try:
+                    import pickle
+                    with open(buffer_path, 'wb') as f:
+                        pickle.dump(self.model.replay_buffer, f)
+                    logger.info(f"Best model replay buffer saved: {buffer_path}")
+                    checkpoint['has_replay_buffer'] = True
+                except Exception as e:
+                    logger.warning(f"Failed to save best model replay buffer: {e}")
+                    checkpoint['has_replay_buffer'] = False
+            else:
+                checkpoint['has_replay_buffer'] = False
 
             # 保存checkpoint
             checkpoint_path = os.path.join(best_model_dir, f"{best_model_name}.pth")
