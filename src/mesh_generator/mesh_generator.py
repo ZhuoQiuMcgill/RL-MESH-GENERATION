@@ -202,7 +202,10 @@ class MeshGenerator:
                         return {
                             'success': False,
                             'code': 1,
-                            'action_attempted': action_attempted
+                            'message': f'Invalid action after {max_retry_num} retries',
+                            'action_info': {
+                                'action_attempted': action_attempted
+                            }
                         }
                     action_valid = False
                     current_retry_num += 1

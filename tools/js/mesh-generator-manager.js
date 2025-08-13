@@ -132,6 +132,12 @@ export class MeshGeneratorManager {
         if (processAllBtn) {
             processAllBtn.addEventListener('click', () => this.processAllSteps());
         }
+        
+        // Add async process all button if it exists
+        const processAllAsyncBtn = document.getElementById('process-all-async-btn');
+        if (processAllAsyncBtn) {
+            processAllAsyncBtn.addEventListener('click', () => this.processAllStepsAsync());
+        }
         if (resetSessionBtn) {
             resetSessionBtn.addEventListener('click', () => this.resetSession());
         }
@@ -553,6 +559,15 @@ export class MeshGeneratorManager {
             
             const response = await this.apiRequest(`/session/${this.sessionId}/next`, 'POST');
             
+            // Handle new response format with code and action_attempted fields
+            if (response.code !== undefined) {
+                this.logMessage(`Step execution code: ${response.code}`, 'info');
+            }
+            
+            if (response.action_attempted !== undefined) {
+                this.logMessage(`Action attempted: ${response.action_attempted}`, 'info');
+            }
+            
             this.handleStepResult(response);
             this.logMessage('Next step executed', 'info');
             
@@ -585,8 +600,11 @@ export class MeshGeneratorManager {
                 this.lastGeneratedElement = null;
                 this.lastInvalidAction = null;
 
-                // Refresh the session status, which will trigger a re-render of the mesh
-                await this.refreshSessionStatus();
+                // Update reference point FIRST to ensure correct local env display
+                await this.updateCurrentReferencePoint();
+                
+                // Then refresh the session status, which will trigger a re-render with correct reference point
+                await this.refreshSessionStatus(true);
                 
                 // Update quality results after going to previous step
                 this.updateQualityResults();
@@ -600,77 +618,191 @@ export class MeshGeneratorManager {
         } finally {
             this.showLoading(false);
             this.setButtonLoading('prev-step-btn', false);
-            
-            // Update reference point after undo
-            if (this.sessionId) {
-                setTimeout(() => this.updateCurrentReferencePoint(), 100);
-            }
         }
     }
 
     /**
-     * Process all remaining steps in a single backend operation
+     * Process all remaining steps using async API with status polling
      */
     async processAllSteps() {
         if (!this.sessionId) return;
 
         try {
             this.showLoading(true);
-            this.setButtonLoading('process-all-btn', true);
+            this.lockProcessingButtons(true);
             
-            // Call the new process_all API without max_steps parameter
-            const response = await this.apiRequest(`/session/${this.sessionId}/process_all`, 'POST');
+            this.logMessage('Starting async mesh generation...', 'info');
             
-            const { steps_executed, completion_reason, step_history, final_status } = response;
+            // Start the async process
+            const startResponse = await this.apiRequest(`/session/${this.sessionId}/process_all`, 'POST');
             
-            this.logMessage(`Process All completed: ${steps_executed} steps (${completion_reason})`, 'success');
-            
-            // Process the step history to update UI state
-            if (step_history && step_history.length > 0) {
-                // Show final step result and status
-                const finalStep = step_history[step_history.length - 1];
-                this.handleStepResult({
-                    step_result: {
-                        success: finalStep.success,
-                        element: finalStep.element,
-                        message: finalStep.message,
-                        action_info: finalStep.action_info
-                    },
-                    status: final_status
-                });
-                
-                // Log completion details
-                if (completion_reason === 'mesh_completed') {
-                    this.logMessage('Mesh generation completed successfully!', 'success');
-                } else if (completion_reason === 'invalid_action') {
-                    this.logMessage('Process stopped due to invalid action', 'warning');
-                } else if (completion_reason === 'max_iterations_reached') {
-                    this.logMessage('Process stopped: safety limit reached (1000 steps)', 'warning');
-                }
-                
-                // Show step statistics
-                const successfulSteps = step_history.filter(step => step.success).length;
-                const failedSteps = step_history.length - successfulSteps;
-                this.logMessage(`Step statistics: ${successfulSteps} successful, ${failedSteps} failed`, 'info');
-                
-                // Inform user about undo capability
-                if (successfulSteps > 0) {
-                    this.logMessage(`You can now use the "Previous Step" button to review each of the ${successfulSteps} steps`, 'info');
-                }
+            if (!startResponse.processing_started) {
+                throw new Error('Failed to start async processing');
             }
             
-            // Refresh the session status to ensure UI is up-to-date
-            await this.refreshSessionStatus();
+            this.logMessage('Async processing started, monitoring progress...', 'info');
             
-            // Update reference point for final state
-            await this.updateCurrentReferencePoint();
+            // Start polling the status_async endpoint every second
+            let pollIntervalId = null;
+            let completed = false;
+            let lastMeshUpdateStep = -1; // Track when we last updated mesh visualization
+            
+            const pollStatus = async () => {
+                try {
+                    // Always request with mesh data for real-time canvas updates
+                    const response = await this.apiRequest(`/session/${this.sessionId}/status_async?include_mesh=true`, 'GET');
+                    
+                    // Update UI with current progress
+                    if (response.status) {
+                        this.updateSessionStatus(response.status);
+                        this.updateQualityResults();
+                        
+                        // Update canvas visualization with fresh mesh data (but without local env during processing)
+                        this.updateCanvasVisualizationAsync(response.status, response.processing?.is_processing || false);
+                        
+                        // Update progress information
+                        const currentStep = response.status.current_step || 0;
+                        if (currentStep !== lastMeshUpdateStep) {
+                            this.logMessage(
+                                `Progress: Step ${currentStep}, ` +
+                                `Elements: ${response.status.generated_elements_count || 0}, ` +
+                                `Boundary: ${response.status.boundary_size || 0}`,
+                                'info'
+                            );
+                            lastMeshUpdateStep = currentStep;
+                        }
+                    }
+                    
+                    // During async processing, we do NOT render the local environment
+                    // This prevents the stale local env display during processing
+                    
+                    // Check if processing is complete
+                    if (response.processing && !response.processing.is_processing) {
+                        completed = true;
+                        clearInterval(pollIntervalId);
+                        
+                        // Handle completion
+                        const reason = response.processing.completion_reason || 'unknown';
+                        const stepsProcessed = response.processing.steps_processed || 0;
+                        
+                        this.logMessage(
+                            `Process All completed: ${stepsProcessed} steps (${reason})`,
+                            'success'
+                        );
+                        
+                        // Log completion details
+                        if (reason === 'mesh_completed') {
+                            this.logMessage('Mesh generation completed successfully!', 'success');
+                        } else if (reason === 'invalid_action') {
+                            this.logMessage('Process stopped due to invalid action', 'warning');
+                        } else if (reason === 'max_iterations_reached') {
+                            this.logMessage('Process stopped: safety limit reached (10000 steps)', 'warning');
+                        } else if (reason === 'error') {
+                            this.logMessage('Process stopped due to error', 'error');
+                        }
+                        
+                        this.showLoading(false);
+                        this.lockProcessingButtons(false);
+                        
+                        // Clear any lingering invalid action state
+                        this.lastInvalidAction = null;
+                        
+                        // Force immediate completion state - disable buttons directly
+                        const nextBtn = document.getElementById('next-step-btn');
+                        const processAllBtn = document.getElementById('process-all-btn');
+                        const processAllAsyncBtn = document.getElementById('process-all-async-btn');
+                        
+                        if (nextBtn) {
+                            nextBtn.disabled = true;
+                            this.logMessage('Next Step button disabled - process completed', 'info');
+                        }
+                        if (processAllBtn) {
+                            processAllBtn.disabled = true;
+                            this.logMessage('Process All button disabled - process completed', 'info');
+                        }
+                        if (processAllAsyncBtn) {
+                            processAllAsyncBtn.disabled = true;
+                        }
+                        
+                        // Wait a moment then get final status for proper UI update
+                        setTimeout(async () => {
+                            try {
+                                // Get final status with mesh data
+                                const finalStatusResponse = await this.apiRequest(`/session/${this.sessionId}/status?include_mesh=true`, 'GET');
+                                if (finalStatusResponse.status) {
+                                    console.log('Final status retrieved:', {
+                                        is_completed: finalStatusResponse.status.is_completed,
+                                        current_step: finalStatusResponse.status.current_step,
+                                        boundary_size: finalStatusResponse.status.boundary_size
+                                    });
+                                    
+                                    // Update session status UI
+                                    this.updateSessionStatus(finalStatusResponse.status);
+                                    
+                                    // Get final reference point to show correct local env position
+                                    await this.updateCurrentReferencePoint();
+                                    
+                                    // If mesh is completed, don't show local env at all
+                                    if (reason === 'mesh_completed' && finalStatusResponse.status.boundary_size <= 4) {
+                                        this.logMessage('Mesh completed - hiding local environment (boundary ≤ 4 vertices)', 'info');
+                                        // Render without local environment
+                                        if (this.canvasRenderer) {
+                                            this.canvasRenderer.renderScene(
+                                                finalStatusResponse.status.mesh_data || null,
+                                                finalStatusResponse.status.boundary_vertices || null,
+                                                null // No local environment for completed mesh
+                                            );
+                                        }
+                                    } else {
+                                        // Regular final rendering with local env
+                                        this.updateCanvasVisualization(finalStatusResponse.status);
+                                    }
+                                }
+                            } catch (error) {
+                                console.error('Failed to get final status:', error);
+                            }
+                        }, 300);
+                        
+                        // Inform user about undo capability if steps were processed
+                        if (stepsProcessed > 0) {
+                            this.logMessage(`You can now use "Previous Step" to review each of the ${stepsProcessed} steps`, 'info');
+                        }
+                    }
+                    
+                    // Check if there was an error
+                    if (!response.success) {
+                        completed = true;
+                        clearInterval(pollIntervalId);
+                        throw new Error(response.error || 'Status polling failed');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error during async status polling:', error);
+                    completed = true;
+                    clearInterval(pollIntervalId);
+                    
+                    this.showError('Async processing error: ' + error.message);
+                    this.showLoading(false);
+                    this.lockProcessingButtons(false);
+                }
+            };
+            
+            // Start polling every second
+            pollIntervalId = setInterval(pollStatus, 1000);
+            
+            // Initial poll
+            await pollStatus();
+            
+            // If already completed in first poll, clean up
+            if (completed) {
+                clearInterval(pollIntervalId);
+            }
             
         } catch (error) {
             console.error('Failed to process all steps:', error);
             this.showError('Failed to process all steps: ' + error.message);
-        } finally {
             this.showLoading(false);
-            this.setButtonLoading('process-all-btn', false);
+            this.lockProcessingButtons(false);
         }
     }
 
@@ -844,8 +976,8 @@ export class MeshGeneratorManager {
             }
         }
         
-        // Refresh session status to get latest data
-        setTimeout(() => this.refreshSessionStatus(), 200);
+        // Refresh session status to get latest data with mesh data
+        setTimeout(() => this.refreshSessionStatus(true), 200);
     }
 
     /**
@@ -903,11 +1035,16 @@ export class MeshGeneratorManager {
     /**
      * Refresh session status
      */
-    async refreshSessionStatus() {
+    async refreshSessionStatus(includeMesh = false) {
         if (!this.sessionId) return;
 
         try {
-            const response = await this.apiRequest(`/session/${this.sessionId}/status`, 'GET');
+            // Use lightweight status by default, optionally include mesh data
+            const endpoint = includeMesh 
+                ? `/session/${this.sessionId}/status?include_mesh=true`
+                : `/session/${this.sessionId}/status`;
+                
+            const response = await this.apiRequest(endpoint, 'GET');
             this.updateSessionStatus(response.status);
         } catch (error) {
             console.error('Failed to refresh session status:', error);
@@ -951,11 +1088,37 @@ export class MeshGeneratorManager {
         if (!this.canvasRenderer || !status) return;
 
         try {
+            // Check if we have mesh data to render
+            const hasMeshData = status.mesh_data && Object.keys(status.mesh_data).length > 0;
+            const hasBoundaryData = status.boundary_vertices && Array.isArray(status.boundary_vertices) && status.boundary_vertices.length > 0;
+            
+            // If we don't have sufficient rendering data, try to get it
+            if (!hasMeshData && !hasBoundaryData) {
+                console.debug('No mesh/boundary data in status, checking cached data or fetching with mesh');
+                
+                // Check if canvas has cached render data we can use
+                if (this.canvasRenderer.lastRenderData && 
+                    (this.canvasRenderer.lastRenderData.meshData || this.canvasRenderer.lastRenderData.boundaryVertices)) {
+                    // Re-render using cached data with updated reference point
+                    this.canvasRenderer.renderScene(
+                        this.canvasRenderer.lastRenderData.meshData,
+                        this.canvasRenderer.lastRenderData.boundaryVertices,
+                        this.currentReferencePoint
+                    );
+                    this.showEmptyState(false);
+                    return;
+                }
+                
+                // If no cached data, fetch complete status with mesh data
+                setTimeout(() => this.refreshSessionStatus(true), 100);
+                return;
+            }
+            
             // Render the mesh scene with the latest data, including the current reference point
             this.canvasRenderer.renderScene(
                 status.mesh_data || null,
                 status.boundary_vertices || null,
-                this.currentReferencePoint // Pass the centrally managed reference point
+                this.currentReferencePoint
             );
             
             // Hide empty state when we have data to render
@@ -964,6 +1127,56 @@ export class MeshGeneratorManager {
         } catch (error) {
             console.error('Failed to update canvas visualization:', error);
             this.logMessage('Failed to update visualization: ' + error.message, 'error');
+        }
+    }
+
+    /**
+     * Update canvas visualization during async processing (without local environment)
+     */
+    updateCanvasVisualizationAsync(status, isProcessing) {
+        if (!this.canvasRenderer || !status) return;
+
+        try {
+            // Check if we have mesh data to render
+            const hasMeshData = status.mesh_data && Object.keys(status.mesh_data).length > 0;
+            const hasBoundaryData = status.boundary_vertices && Array.isArray(status.boundary_vertices) && status.boundary_vertices.length > 0;
+            
+            // If we don't have sufficient rendering data, try to get it
+            if (!hasMeshData && !hasBoundaryData) {
+                console.debug('No mesh/boundary data in status, checking cached data or fetching with mesh');
+                
+                // Check if canvas has cached render data we can use
+                if (this.canvasRenderer.lastRenderData && 
+                    (this.canvasRenderer.lastRenderData.meshData || this.canvasRenderer.lastRenderData.boundaryVertices)) {
+                    // Re-render using cached data WITHOUT reference point during processing
+                    this.canvasRenderer.renderScene(
+                        this.canvasRenderer.lastRenderData.meshData,
+                        this.canvasRenderer.lastRenderData.boundaryVertices,
+                        isProcessing ? null : this.currentReferencePoint
+                    );
+                    this.showEmptyState(false);
+                    return;
+                }
+                
+                // If no cached data, fetch complete status with mesh data
+                setTimeout(() => this.refreshSessionStatus(true), 100);
+                return;
+            }
+            
+            // During async processing, do NOT render local environment (reference point)
+            // This prevents stale local env display that doesn't update with the processing
+            this.canvasRenderer.renderScene(
+                status.mesh_data || null,
+                status.boundary_vertices || null,
+                isProcessing ? null : this.currentReferencePoint
+            );
+            
+            // Hide empty state when we have data to render
+            this.showEmptyState(false);
+            
+        } catch (error) {
+            console.error('Failed to update async canvas visualization:', error);
+            this.logMessage('Failed to update async visualization: ' + error.message, 'error');
         }
     }
 
@@ -1016,6 +1229,7 @@ export class MeshGeneratorManager {
         const nextBtn = document.getElementById('next-step-btn');
         const prevBtn = document.getElementById('prev-step-btn');
         const processAllBtn = document.getElementById('process-all-btn');
+        const processAllAsyncBtn = document.getElementById('process-all-async-btn');
         const resetBtn = document.getElementById('reset-session-btn');
         
         // Update current step
@@ -1034,6 +1248,9 @@ export class MeshGeneratorManager {
         }
         if (processAllBtn) {
             processAllBtn.disabled = !this.isSessionActive || status.is_completed;
+        }
+        if (processAllAsyncBtn) {
+            processAllAsyncBtn.disabled = !this.isSessionActive || status.is_completed;
         }
         if (resetBtn) {
             // Enable reset when session is active and has made some progress
@@ -1258,6 +1475,75 @@ export class MeshGeneratorManager {
             } else {
                 button.classList.remove('loading');
             }
+        }
+    }
+
+    /**
+     * Lock/unlock processing buttons during async processing
+     */
+    lockProcessingButtons(lock) {
+        const nextBtn = document.getElementById('next-step-btn');
+        const prevBtn = document.getElementById('prev-step-btn');
+        const processAllBtn = document.getElementById('process-all-btn');
+        const processAllAsyncBtn = document.getElementById('process-all-async-btn');
+        const resetBtn = document.getElementById('reset-session-btn');
+        const deleteBtn = document.getElementById('delete-session-btn');
+        
+        // Lock all processing-related buttons
+        if (nextBtn) {
+            nextBtn.disabled = lock;
+            if (lock) {
+                nextBtn.classList.add('processing-locked');
+            } else {
+                nextBtn.classList.remove('processing-locked');
+            }
+        }
+        if (prevBtn) {
+            prevBtn.disabled = lock;
+            if (lock) {
+                prevBtn.classList.add('processing-locked');
+            } else {
+                prevBtn.classList.remove('processing-locked');
+            }
+        }
+        if (processAllBtn) {
+            processAllBtn.disabled = lock;
+            if (lock) {
+                processAllBtn.classList.add('processing-locked');
+            } else {
+                processAllBtn.classList.remove('processing-locked');
+            }
+        }
+        if (processAllAsyncBtn) {
+            processAllAsyncBtn.disabled = lock;
+            if (lock) {
+                processAllAsyncBtn.classList.add('processing-locked');
+            } else {
+                processAllAsyncBtn.classList.remove('processing-locked');
+            }
+        }
+        if (resetBtn) {
+            resetBtn.disabled = lock;
+            if (lock) {
+                resetBtn.classList.add('processing-locked');
+            } else {
+                resetBtn.classList.remove('processing-locked');
+            }
+        }
+        if (deleteBtn) {
+            deleteBtn.disabled = lock;
+            if (lock) {
+                deleteBtn.classList.add('processing-locked');
+            } else {
+                deleteBtn.classList.remove('processing-locked');
+            }
+        }
+        
+        // Log the locking state
+        if (lock) {
+            this.logMessage('Processing buttons locked during async operation', 'info');
+        } else {
+            this.logMessage('Processing buttons unlocked', 'info');
         }
     }
 
@@ -1565,6 +1851,105 @@ export class MeshGeneratorManager {
         }
     }
 
+    /**
+     * Process all remaining steps asynchronously with status polling
+     */
+    async processAllStepsAsync() {
+        if (!this.sessionId) return;
+
+        try {
+            this.showLoading(true);
+            this.setButtonLoading('process-all-async-btn', true);
+            
+            this.logMessage('Starting async mesh generation...', 'info');
+            
+            // Start polling the status_async endpoint
+            let pollIntervalId = null;
+            let completed = false;
+            
+            const pollStatus = async () => {
+                try {
+                    const response = await this.apiRequest(`/session/${this.sessionId}/status_async`, 'GET');
+                    
+                    // Update UI with current progress
+                    if (response.status) {
+                        this.updateSessionStatus(response.status);
+                        this.updateQualityResults();
+                        
+                        // Update progress information
+                        this.logMessage(
+                            `Progress: Step ${response.status.current_step || 0}, ` +
+                            `Elements: ${response.status.generated_elements_count || 0}`,
+                            'info'
+                        );
+                    }
+                    
+                    // Check if processing is complete
+                    if (response.completed) {
+                        completed = true;
+                        clearInterval(pollIntervalId);
+                        
+                        // Handle completion
+                        const reason = response.completion_reason || 'unknown';
+                        this.logMessage(
+                            `Async processing completed: ${response.steps_executed || 0} steps (${reason})`,
+                            'success'
+                        );
+                        
+                        // Log completion details
+                        if (reason === 'mesh_completed') {
+                            this.logMessage('Mesh generation completed successfully!', 'success');
+                        } else if (reason === 'invalid_action') {
+                            this.logMessage('Process stopped due to invalid action', 'warning');
+                        } else if (reason === 'max_iterations_reached') {
+                            this.logMessage('Process stopped: safety limit reached (1000 steps)', 'warning');
+                        }
+                        
+                        // Final status update with mesh data
+                        await this.refreshSessionStatus(true);
+                        await this.updateCurrentReferencePoint();
+                        
+                        this.showLoading(false);
+                        this.setButtonLoading('process-all-async-btn', false);
+                    }
+                    
+                    // Check if there was an error
+                    if (response.error) {
+                        completed = true;
+                        clearInterval(pollIntervalId);
+                        throw new Error(response.error);
+                    }
+                    
+                } catch (error) {
+                    console.error('Error during async status polling:', error);
+                    completed = true;
+                    clearInterval(pollIntervalId);
+                    
+                    this.showError('Async processing error: ' + error.message);
+                    this.showLoading(false);
+                    this.setButtonLoading('process-all-async-btn', false);
+                }
+            };
+            
+            // Start polling every second
+            pollIntervalId = setInterval(pollStatus, 1000);
+            
+            // Initial poll
+            await pollStatus();
+            
+            // If already completed, clean up immediately
+            if (completed) {
+                clearInterval(pollIntervalId);
+            }
+            
+        } catch (error) {
+            console.error('Failed to start async processing:', error);
+            this.showError('Failed to start async processing: ' + error.message);
+            this.showLoading(false);
+            this.setButtonLoading('process-all-async-btn', false);
+        }
+    }
+    
     /**
      * Cleanup resources
      */

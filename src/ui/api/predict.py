@@ -259,7 +259,7 @@ def create_session():
 @predict_bp.route("/session/<session_id>/status", methods=["GET"])
 def get_session_status(session_id):
     """
-    Get current status of prediction session
+    Get current status of prediction session (lightweight version)
     
     Returns:
         JSON response with current generator status
@@ -273,7 +273,26 @@ def get_session_status(session_id):
 
         session = prediction_sessions[session_id]
         generator = session["generator"]
-        status = generator.get_status()
+        
+        # Return lightweight status without heavy mesh data
+        status = {
+            'current_step': generator.current_step,
+            'boundary_size': generator.boundary.size() if generator.boundary else 0,
+            'generated_elements_count': len(generator.generated_elements),
+            'is_completed': generator.is_completed,
+            'active_predictor': generator.current_activated_predictor.name() if generator.current_activated_predictor else None,
+            'can_undo': len(generator.command_history) > 0,
+            'total_steps_possible': max(0, generator.boundary.size() - 4) if generator.boundary else 0
+        }
+        
+        # Add mesh data only if specifically requested
+        if request.args.get('include_mesh', 'false').lower() == 'true':
+            try:
+                status['mesh_data'] = generator.mesh.get_adjacency_dict() if generator.mesh else {}
+                status['boundary_vertices'] = generator.boundary.get_vertices() if generator.boundary else []
+            except Exception:
+                status['mesh_data'] = {}
+                status['boundary_vertices'] = []
 
         return jsonify({
             "session_id": session_id,
@@ -450,12 +469,17 @@ def next_step(session_id):
         # Clear the used reference point to ensure a new one is selected for the next step
         session["current_ref_point_idx"] = None
 
-        # Create JSON-serializable version of step result (remove command object but keep action info)
+        # Extract the new code field and interpret it
+        result_code = step_result.get("code", 3)  # Default to error if not present
+        
+        # Create JSON-serializable version of step result with new fields
         serializable_step_result = {
             "success": step_result.get("success"),
+            "code": result_code,
             "element": step_result.get("element"),
             "message": step_result.get("message"),
-            "action_info": step_result.get("action_info")  # This is already JSON-serializable
+            "action_info": step_result.get("action_info")
+            # Removed redundant action_attempted - use action_info.action_attempted instead
         }
 
         # Record step in history (also remove command from history)
@@ -535,14 +559,14 @@ def prev_step(session_id):
 
 
 @predict_bp.route("/session/<session_id>/process_all", methods=["POST"])
-def process_all(session_id):
+def start_process_all(session_id):
     """
-    Execute all steps until invalid action or completion in a single backend operation.
-    This performs the complete mesh generation process and records all intermediate steps
-    for frontend replay and undo functionality.
+    Start asynchronous processing of all steps.
+    This endpoint starts background processing and returns immediately.
+    Use get_status_async to monitor progress.
     
     Returns:
-        JSON response with complete step history and final status
+        JSON response indicating processing has started
     """
     try:
         if session_id not in prediction_sessions:
@@ -554,115 +578,195 @@ def process_all(session_id):
         session = prediction_sessions[session_id]
         generator = session["generator"]
         
-        # Clear any existing history for clean process_all execution
-        initial_step = generator.current_step
-        current_app.logger.info(f"Starting process_all from step {initial_step}")
-
-        step_history = []
-        step_count = 0
-        completion_reason = None
-
-        # Execute steps until completion or failure - NO LIMITS
-        while True:
-            # Check if already completed
-            current_status = generator.get_status()
-            if current_status["is_completed"]:
-                completion_reason = "mesh_completed"
-                current_app.logger.info(f"Process completed: mesh generation finished after {step_count} steps")
-                break
-
-            # Execute next step
-            step_result = generator.step()
-            step_count += 1
-            
-            # Get updated status after this step
-            updated_status = generator.get_status()
-            
-            # Get current reference point for this step
-            current_ref_point = None
-            try:
-                ref_point_response = get_reference_point(session_id)
-                if ref_point_response.status_code == 200:
-                    current_ref_point = ref_point_response.get_json().get('reference_point')
-            except Exception as e:
-                current_app.logger.warning(f"Could not fetch reference point for step {step_count}: {e}")
-
-            # Create comprehensive step record
-            step_record = {
-                "step_number": initial_step + step_count,
-                "success": step_result.get("success"),
-                "element": step_result.get("element"),
-                "message": step_result.get("message"),
-                "action_info": step_result.get("action_info"),
-                "status_after_step": updated_status,
-                "reference_point": current_ref_point,
-                "timestamp": __import__("time").time()
-            }
-            
-            step_history.append(step_record)
-            
-            # Add each step to session history for undo functionality
-            session["history"].append({
-                "action": "next",
-                "result": {
-                    "success": step_result.get("success"),
-                    "element": step_result.get("element"),
-                    "message": step_result.get("message"),
-                    "action_info": step_result.get("action_info")
-                },
-                "timestamp": step_record["timestamp"]
-            })
-
-            # Check termination conditions
-            if not step_result["success"]:
-                completion_reason = "invalid_action"
-                current_app.logger.info(f"Process stopped: invalid action encountered at step {step_count}")
-                break
-            
-            if updated_status["is_completed"]:
-                completion_reason = "mesh_completed"
-                current_app.logger.info(f"Process completed: mesh generation finished after {step_count} steps")
-                break
-                
-            # Safety check to prevent infinite loops
-            if step_count >= 1000:
-                completion_reason = "max_iterations_reached"
-                current_app.logger.warning(f"Process stopped: reached safety limit of 1000 steps")
-                break
-
-        # Record the overall process_all operation
-        session["history"].append({
-            "action": "process_all",
-            "result": {
-                "steps_executed": step_count,
-                "completion_reason": completion_reason,
-                "initial_step": initial_step,
-                "final_step": initial_step + step_count
-            },
-            "timestamp": __import__("time").time()
-        })
-
-        # Get final status
-        final_status = generator.get_status()
+        # Check if already processing
+        if session.get("processing_status", {}).get("is_processing", False):
+            return jsonify({
+                "error": "Session is already processing",
+                "success": False
+            }), 400
         
-        current_app.logger.info(f"Process_all completed: {step_count} steps, reason: {completion_reason}")
+        # Mark session as processing
+        session["processing_status"] = {
+            "is_processing": True,
+            "start_time": __import__("time").time(),
+            "initial_step": generator.current_step,
+            "steps_processed": 0,
+            "completion_reason": None,
+            "last_code": 0
+        }
+        
+        current_app.logger.info(f"Started async process_all for session {session_id} from step {generator.current_step}")
+        
+        # Start background processing thread with Flask app context
+        import threading
+        app = current_app._get_current_object()
+        processing_thread = threading.Thread(
+            target=_background_process_all,
+            args=(app, session_id, session, generator)
+        )
+        processing_thread.daemon = True
+        processing_thread.start()
 
         return jsonify({
             "session_id": session_id,
-            "steps_executed": step_count,
-            "completion_reason": completion_reason,
-            "step_history": step_history,
-            "final_status": final_status,
-            "initial_step": initial_step,
-            "final_step": initial_step + step_count,
+            "message": "Processing started. Use get_status_async to monitor progress.",
+            "processing_started": True,
             "success": True
         })
 
     except Exception as e:
-        current_app.logger.error(f"Exception in process_all: {e}")
+        current_app.logger.error(f"Exception in start_process_all: {e}")
         traceback.print_exc()
         return jsonify({
-            "error": f"Failed to process all steps: {str(e)}",
+            "error": f"Failed to start processing: {str(e)}",
+            "success": False
+        }), 500
+
+
+def _background_process_all(app, session_id, session, generator):
+    """
+    Background processing function that runs in a separate thread
+    """
+    import time
+    
+    # Create application context for this thread
+    with app.app_context():
+        processing_status = session["processing_status"]
+        
+        try:
+            current_app.logger.info(f"Background processing started for session {session_id}")
+            
+            while processing_status["is_processing"]:
+                try:
+                    # Check if mesh is completed
+                    if generator.is_completed or generator.check_complete():
+                        processing_status["is_processing"] = False
+                        processing_status["completion_reason"] = "mesh_completed"
+                        processing_status["last_code"] = 2
+                        current_app.logger.info(f"Background processing completed for session {session_id}: mesh completed")
+                        break
+                    
+                    # Execute one step
+                    step_result = generator.step()
+                    result_code = step_result.get("code", 3)
+                    processing_status["last_code"] = result_code
+                    processing_status["steps_processed"] += 1
+                    
+                    # Record step in history
+                    serializable_step_result = {
+                        "success": step_result.get("success"),
+                        "code": result_code,
+                        "element": step_result.get("element"),
+                        "message": step_result.get("message"),
+                        "action_info": step_result.get("action_info")
+                    }
+                    
+                    session["history"].append({
+                        "action": "process_step",
+                        "result": serializable_step_result,
+                        "timestamp": time.time()
+                    })
+                    
+                    # Check termination conditions
+                    if result_code == 1:  # Invalid action
+                        processing_status["is_processing"] = False
+                        processing_status["completion_reason"] = "invalid_action"
+                        current_app.logger.info(f"Background processing stopped for session {session_id}: invalid action")
+                        break
+                    elif result_code == 2:  # Completed
+                        processing_status["is_processing"] = False
+                        processing_status["completion_reason"] = "mesh_completed"
+                        current_app.logger.info(f"Background processing completed for session {session_id}: mesh completed")
+                        break
+                    elif result_code == 3:  # Error
+                        processing_status["is_processing"] = False
+                        processing_status["completion_reason"] = "error"
+                        current_app.logger.error(f"Background processing error for session {session_id}")
+                        break
+                    elif processing_status["steps_processed"] >= 10000:  # Safety limit
+                        processing_status["is_processing"] = False
+                        processing_status["completion_reason"] = "max_iterations_reached"
+                        current_app.logger.info(f"Background processing stopped for session {session_id}: max iterations reached")
+                        break
+                    
+                    # Small delay to prevent overwhelming the system
+                    time.sleep(0.001)  # 1ms delay between steps
+                    
+                except Exception as step_error:
+                    current_app.logger.error(f"Error during background step execution for session {session_id}: {step_error}")
+                    processing_status["is_processing"] = False
+                    processing_status["completion_reason"] = "error"
+                    processing_status["last_code"] = 3
+                    break
+                    
+        except Exception as e:
+            current_app.logger.error(f"Exception in background processing for session {session_id}: {e}")
+            processing_status["is_processing"] = False
+            processing_status["completion_reason"] = "error"
+            processing_status["last_code"] = 3
+
+
+@predict_bp.route("/session/<session_id>/status_async", methods=["GET"])
+def get_status_async(session_id):
+    """
+    Get current status for asynchronous processing.
+    This endpoint is purely observational - it only reports current status 
+    without executing any steps. The actual processing happens in a separate thread/background.
+    
+    Returns:
+        JSON response with current status and processing information
+    """
+    try:
+        if session_id not in prediction_sessions:
+            return jsonify({
+                "error": f"Session not found: {session_id}",
+                "success": False
+            }), 404
+
+        session = prediction_sessions[session_id]
+        generator = session["generator"]
+        
+        # Get processing status (observer mode - no execution)
+        processing_status = session.get("processing_status", {
+            "is_processing": False,
+            "completion_reason": None,
+            "last_code": 0
+        })
+        
+        # Get current status snapshot
+        current_status = {
+            'current_step': generator.current_step,
+            'boundary_size': generator.boundary.size() if generator.boundary else 0,
+            'generated_elements_count': len(generator.generated_elements),
+            'is_completed': generator.is_completed,
+            'active_predictor': generator.current_activated_predictor.name() if generator.current_activated_predictor else None,
+            'can_undo': len(generator.command_history) > 0,
+            'total_steps_possible': max(0, generator.boundary.size() - 4) if generator.boundary else 0
+        }
+        
+        # Include mesh data if requested
+        include_mesh_data = request.args.get('include_mesh', 'false').lower() == 'true'
+        
+        if include_mesh_data:
+            try:
+                current_status['mesh_data'] = generator.mesh.get_adjacency_dict() if generator.mesh else {}
+                current_status['boundary_vertices'] = generator.boundary.get_vertices() if generator.boundary else []
+            except Exception:
+                current_status['mesh_data'] = {}
+                current_status['boundary_vertices'] = []
+        
+        return jsonify({
+            "session_id": session_id,
+            "status": current_status,
+            "processing": processing_status,
+            "success": True
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Exception in get_status_async: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "error": f"Failed to get async status: {str(e)}",
             "success": False
         }), 500
 
@@ -924,8 +1028,7 @@ def get_reference_point(session_id):
                 "interior_angle": interior_angle,
                 "local_env": local_env_vertices,
                 "n": n_val
-            },
-            "session_status": generator.get_status()
+            }
         }
 
         return jsonify({
@@ -1149,50 +1252,41 @@ def get_session_quality(session_id):
                 "success": False
             }), 400
         
-        # Calculate quality for each element
+        # Calculate quality for each element (optimized - no vertex data in response)
         quality_scores = []
+        valid_scores = []
+        error_count = 0
+        
         for i, element in enumerate(elements):
             try:
                 # Convert element to list of tuples if needed
                 if isinstance(element, list) and len(element) == 4:
                     element_tuples = [(float(v[0]), float(v[1])) for v in element]
                     quality_score = quality_manager.calculate_quality(method, element_tuples, gamma=gamma)
-                    quality_scores.append({
-                        "element_index": i,
-                        "quality_score": quality_score,
-                        "vertices": element
-                    })
+                    if quality_score is not None:
+                        valid_scores.append(quality_score)
                 else:
                     current_app.logger.warning(f"Invalid element format at index {i}: {element}")
+                    error_count += 1
                     
             except Exception as e:
                 current_app.logger.error(f"Failed to calculate quality for element {i}: {e}")
-                quality_scores.append({
-                    "element_index": i,
-                    "quality_score": None,
-                    "vertices": element,
-                    "error": str(e)
-                })
-        
-        # Calculate average quality
-        valid_scores = [score["quality_score"] for score in quality_scores if score["quality_score"] is not None]
-        average_quality = sum(valid_scores) / len(valid_scores) if valid_scores else None
+                error_count += 1
         
         # Calculate statistics
-        if valid_scores:
-            min_quality = min(valid_scores)
-            max_quality = max(valid_scores)
-        else:
-            min_quality = max_quality = None
+        average_quality = sum(valid_scores) / len(valid_scores) if valid_scores else None
+        min_quality = min(valid_scores) if valid_scores else None
+        max_quality = max(valid_scores) if valid_scores else None
         
+        # Return optimized response with only essential quality data
         return jsonify({
             "session_id": session_id,
             "element_count": len(elements),
             "valid_element_count": len(valid_scores),
+            "error_count": error_count,
             "average_quality": average_quality,
             "min_quality": min_quality,
             "max_quality": max_quality,
-            "quality_scores": quality_scores,
             "method": method,
             "gamma": gamma,
             "success": True
