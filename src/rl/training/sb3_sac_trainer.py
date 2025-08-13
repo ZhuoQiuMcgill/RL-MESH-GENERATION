@@ -187,6 +187,12 @@ class _EpisodeCallback(BaseCallback):
             if eval_env is None:
                 logger.warning("评估环境不可用，跳过评估")
                 return
+                
+            # 设置环境为评估模式
+            if hasattr(eval_env, 'set_eval_mode'):
+                eval_env.set_eval_mode(True)
+                if self.enable_verbose_logging:
+                    logger.debug("已设置环境为评估模式")
 
             # 执行评估
             episode_rewards = []
@@ -268,6 +274,12 @@ class _EpisodeCallback(BaseCallback):
                 'completion_rate': completion_rate
             })
 
+            # 恢复环境为训练模式
+            if hasattr(eval_env, 'set_eval_mode'):
+                eval_env.set_eval_mode(False)
+                if self.enable_verbose_logging:
+                    logger.debug("已恢复环境为训练模式")
+                    
             if self.enable_verbose_logging:
                 logger.info(f"评估完成: 平均奖励={mean_reward:.3f}±{std_reward:.3f}, 完成率={completion_rate:.2%} ({completed_count}/{len(completed_episodes)})")
                 # 调试日志：显示每个episode的完成状态

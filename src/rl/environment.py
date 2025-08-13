@@ -13,10 +13,13 @@ from src.utils import euclidean_distance, normalize_coordinates, calculate_polyg
 class MeshEnv(gym.Env):
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, initial_boundary: Boundary, n=None, g=None, alpha=None, beta=None, max_steps=None, config=None):
+    def __init__(self, initial_boundary: Boundary, n=None, g=None, alpha=None, beta=None, max_steps=None, config=None, eval_mode=False):
         super(MeshEnv, self).__init__()
         cfg = load_config() if config is None else config
         env_cfg = cfg.get("environment", {})
+        
+        # Evaluation mode flag
+        self.eval_mode = eval_mode
 
         self.initial_boundary = initial_boundary
         self.n = n if n is not None else env_cfg.get("n", 2)
@@ -74,6 +77,14 @@ class MeshEnv(gym.Env):
         self.action_count = {}
         self.invalid_points_index = set()
         self.stoped = False
+        
+    def set_eval_mode(self, eval_mode: bool):
+        """Set evaluation mode flag"""
+        self.eval_mode = eval_mode
+        
+    def is_eval_mode(self) -> bool:
+        """Check if environment is in evaluation mode"""
+        return self.eval_mode
 
     def _reset_episode_stats(self) -> None:
         self.episode_reward = 0.0
@@ -120,6 +131,10 @@ class MeshEnv(gym.Env):
         """
         Execute one environment step using ActionManager.
         """
+        # Evaluation mode specific logic can be added here
+        if self.eval_mode:
+            # Add any evaluation-specific preprocessing
+            pass
         # Get reference vertex
         reference_vertex_idx = self._get_reference_vertex()
 
@@ -158,7 +173,8 @@ class MeshEnv(gym.Env):
 
             # MARK: I DON'T KNOW WHY BUT IT WORKS IN THE ORIGINAL PROJECT
             # =============================================================================
-            # self.invalid_points_index.add(reference_vertex_idx)
+            if self.eval_mode:
+                self.invalid_points_index.add(reference_vertex_idx)
             if self.invalid_action_count >= 100:
                 terminated = True
                 self.stoped = True
@@ -182,7 +198,8 @@ class MeshEnv(gym.Env):
             "boundary_vertices": len(self.boundary.get_vertices()),
             "element_generated": generated_element is not None,
             "term_reason": term_reason,
-            "trunc_reason": trunc_reason
+            "trunc_reason": trunc_reason,
+            "eval_mode": self.eval_mode  # Add eval_mode to info
         }
 
         if terminated or truncated:
