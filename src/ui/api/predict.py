@@ -640,6 +640,8 @@ def _background_process_all(app, session_id, session, generator):
                 try:
                     # Check if mesh is completed
                     if generator.is_completed or generator.check_complete():
+                        # CRITICAL: Ensure generator's is_completed flag is properly set
+                        generator.is_completed = True
                         processing_status["is_processing"] = False
                         processing_status["completion_reason"] = "mesh_completed"
                         processing_status["last_code"] = 2

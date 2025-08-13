@@ -154,7 +154,10 @@ class MeshGenerator:
                 if not action_valid:
                     reference_vertex_idx = RLReferencePointSelector().select_reference_point(self.boundary,
                                                                                              **{"n": 2,
-                                                                                                "invalid_point_list": invalid_ref_list})
+                                                                                                "invalid_point_list": invalid_ref_list,
+                                                                                                "predict_mode": True})
+                    # print(f"Re-selecting reference vertex {reference_vertex_idx}")
+                    
                 # Use predictor to make a decision
                 prediction = self.current_activated_predictor.predict(state_info)
                 action_vector = prediction['action_vector']
@@ -207,6 +210,8 @@ class MeshGenerator:
                                 'action_attempted': action_attempted
                             }
                         }
+                    # print(f"Invalid action with ref: {reference_vertex_idx}, retrying-{current_retry_num}, invalid list {invalid_ref_list}")
+                    invalid_ref_list.add(reference_vertex_idx)
                     action_valid = False
                     current_retry_num += 1
                     continue
