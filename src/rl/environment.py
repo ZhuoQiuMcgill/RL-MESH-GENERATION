@@ -199,7 +199,7 @@ class MeshEnv(gym.Env):
             "element_generated": generated_element is not None,
             "term_reason": term_reason,
             "trunc_reason": trunc_reason,
-            "eval_mode": self.eval_mode  # Add eval_mode to info
+            "eval_mode": self.eval_mode
         }
 
         if terminated or truncated:

@@ -182,10 +182,29 @@ class ActionManager:
                         action_instance = self.action_types[action_name]
                         # print(f"Left Angle Merge ({left_outer_angle}): type1 -> type0_left")
 
-        if command:
-            return action_name, new_coords
+        if action_name == "type0_left":
+            action_attempted = {
+                'edge': [(boundary.get_vertex_by_index(reference_vertex_idx - 2),
+                          boundary.get_vertex_by_index(reference_vertex_idx + 1))],
+                'vertex': None
+            }
+        elif action_name == "type0_right":
+            action_attempted = {
+                'edge': [(boundary.get_vertex_by_index(reference_vertex_idx - 1),
+                          boundary.get_vertex_by_index(reference_vertex_idx + 2))],
+                'vertex': None
+            }
+        else:
+            action_attempted = {
+                'edge': [(boundary.get_vertex_by_index(reference_vertex_idx - 1), new_coords[0]),
+                         (boundary.get_vertex_by_index(reference_vertex_idx + 1), new_coords[0])],
+                'vertex': new_coords[0]
+            }
 
-        return action_name, action_instance, new_coords, reference_vertex_idx
+        if command:
+            return action_name, new_coords, action_attempted
+
+        return action_name, action_instance, new_coords, reference_vertex_idx, action_attempted
 
     def is_valid(self, boundary, reference_vertex_idx, action_instance, action_name, new_coords):
         """
@@ -303,7 +322,8 @@ class ActionManager:
                 - generated_element: list or None
         """
         # Decode action
-        action_name, action_instance, new_coords, ref_idx = self.decode_action(action, boundary, reference_vertex_idx)
+        action_name, action_instance, new_coords, ref_idx, action_attempted = self.decode_action(action, boundary,
+                                                                                                 reference_vertex_idx)
 
         # Initialize default values
         result = {
@@ -311,25 +331,9 @@ class ActionManager:
             'action_name': action_name,
             'element_quality_reward': 0.0,
             'boundary_quality_reward': -0.1,
-            'generated_element': None
+            'generated_element': None,
+            'action_attempted': action_attempted
         }
-
-        if action_name == "type0_left":
-            result['action_attempted'] = {
-                'edge': [(boundary.get_vertex_by_index(ref_idx - 2), boundary.get_vertex_by_index(ref_idx + 1))],
-                'vertex': None
-            }
-        elif action_name == "type0_right":
-            result['action_attempted'] = {
-                'edge': [(boundary.get_vertex_by_index(ref_idx - 1), boundary.get_vertex_by_index(ref_idx + 2))],
-                'vertex': None
-            }
-        else:
-            result['action_attempted'] = {
-                'edge': [(boundary.get_vertex_by_index(ref_idx - 1), new_coords[0]),
-                         (boundary.get_vertex_by_index(ref_idx + 1), new_coords[0])],
-                'vertex': new_coords[0]
-            }
 
         # Check validity
         action_valid = self.is_valid(boundary, ref_idx, action_instance, action_name, new_coords)
@@ -370,7 +374,6 @@ class ActionManager:
         return {
             "enabled_actions": self.enabled_actions,
             "total_enabled": len(self.enabled_actions),
-            "auto_remap": self.auto_remap,
             "action_mapping": self.action_logit_mapping,
             "descriptions": self.get_action_descriptions()
         }

@@ -161,7 +161,7 @@ class MeshGenerator:
             action_vector = prediction['action_vector']
 
             # Use ActionManager to decode action properly
-            action_name, new_coords = self.action_manager.decode_action(
+            action_name, new_coords, action_attempted = self.action_manager.decode_action(
                 action_vector, self.boundary, reference_vertex_idx, command=True
             )
 
@@ -212,7 +212,8 @@ class MeshGenerator:
                 'reference_vertex_idx': reference_vertex_idx,
                 'new_coords': new_coords if new_coords else None,
                 'is_valid': is_valid,
-                'validation_message': validation_message
+                'validation_message': validation_message,
+                'action_attempted': action_attempted
             }
             
             if not is_valid:
