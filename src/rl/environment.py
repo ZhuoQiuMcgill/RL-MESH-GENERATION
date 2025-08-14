@@ -152,6 +152,9 @@ class MeshEnv(gym.Env):
 
         self.current_step += 1
 
+        # Local flag: only when exceeding invalid threshold we will request bootstrap
+        bootstrap_needed = False
+
         # Calculate reward and termination
         if action_valid:
             reward = (
@@ -171,21 +174,26 @@ class MeshEnv(gym.Env):
             reward = self.invalid_penalty()
             self.invalid_action_count += 1
 
+            complete = False
+            truncated = False
+            terminated = False
+            trunc_reason = None
+            term_reason = None
+
+
             # MARK: I DON'T KNOW WHY BUT IT WORKS IN THE ORIGINAL PROJECT
             # =============================================================================
             if self.eval_mode:
                 self.invalid_points_index.add(reference_vertex_idx)
             if self.invalid_action_count >= 100:
-                terminated = True
+                truncated = True
                 self.stoped = True
-            else:
-                terminated = False
+                trunc_reason = "invalid_action"
+                # Request bootstrap only in this specific case (not time-limit based)
+                bootstrap_needed = True
             # =============================================================================
 
-            complete = False
-            truncated = False
-            term_reason = "invalid_action"
-            trunc_reason = None
+
 
         # Update episode statistics
         self._update_episode_stats(reward)
@@ -201,6 +209,12 @@ class MeshEnv(gym.Env):
             "trunc_reason": trunc_reason,
             "eval_mode": self.eval_mode
         }
+
+        # Only when exceeding 100 invalid actions, signal bootstrap to the trainer/algorithm
+        # Note: We deliberately use SB3's timeout-compatible keys for bootstrapping semantics
+        if bootstrap_needed:
+            info["TimeLimit.truncated"] = True  # used by SB3 to treat this as bootstrap-able truncation
+            info["terminal_observation"] = observation  # provide terminal observation for bootstrap
 
         if terminated or truncated:
             avg_element_quality = 0

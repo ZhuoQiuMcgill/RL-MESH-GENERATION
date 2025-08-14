@@ -25,10 +25,10 @@ sb3_sac:
   buffer_size: 100000
 
   # 开始训练前的随机探索步数 - 确保缓冲区有足够的经验
-  learning_starts: 2000
+  learning_starts: 10000
 
   # 训练批次大小 - 每次从缓冲区采样的经验数量
-  batch_size: 256
+  batch_size: 128
 
   # 软更新系数 - 目标网络更新的速度
   tau: 0.005
@@ -106,7 +106,7 @@ training:
 
   # Auto evaluation configuration
   evaluation_frequency: 1      # Every how many episodes to perform evaluation
-  evaluation_starts: 550       # From which episode to start evaluation (0 means start from the beginning)
+  evaluation_starts: 500       # From which episode to start evaluation (0 means start from the beginning)
   n_eval_episodes: 1         # How many episodes to run per evaluation
   
   # 最佳模型保存条件配置
