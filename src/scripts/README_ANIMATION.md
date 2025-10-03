@@ -128,7 +128,10 @@ data/animation_data/{MESH_NAME}_sequence.json
         "reference_vertex_idx": 2,
         "reference_coords": [0.5, 0.5],
         "neighbors": [[0.3,0.4], [0.4,0.5], ...],
-        "n": 2
+        "fan_points": [[0.6,0.7], null, [0.8,0.6]],
+        "n": 2,
+        "g": 3,
+        "beta": 6
       },
       "action": null,
       "generated_element": null,
@@ -182,7 +185,10 @@ data/animation_data/{MESH_NAME}_sequence.json
 | `reference_vertex_idx` | int | Index of reference vertex in boundary |
 | `reference_coords` | array | [x, y] coordinates of reference vertex |
 | `neighbors` | array | List of neighbor coordinates (includes ref) |
+| `fan_points` | array | Fan sector sampled points (can contain null) |
 | `n` | int | Number of neighbors on each side |
+| `g` | int | Number of fan sectors |
+| `beta` | float | Fan radius factor (multiplier of base length) |
 
 ### Action Object
 
@@ -259,9 +265,52 @@ class MeshGeneration(Scene):
             self.wait(0.5)
 ```
 
+## Fan Points Explanation
+
+### What are Fan Points?
+
+Fan points are **sampled boundary vertices** within a fan-shaped sector around the reference point. They provide information about the boundary structure in the action space.
+
+### How Fan Points Work
+
+1. **Fan Construction**:
+   - Center: Reference vertex
+   - Radius: `beta × average_neighbor_length` (default: 6× average edge length)
+   - Angular range: From right neighbor to left neighbor (clockwise)
+
+2. **Sector Sampling**:
+   - The fan is divided into `g` equal sectors (default: 3)
+   - For each sector, find the **closest boundary vertex** within the radius
+   - If no vertex exists in a sector, that entry is `null`
+
+3. **Example** (with g=3):
+   ```
+   Sector 0: [0.6, 0.7]  ← Found a vertex at this location
+   Sector 1: null         ← No vertex found in this sector
+   Sector 2: [0.8, 0.6]  ← Found a vertex here
+   ```
+
+### Why Fan Points Matter
+
+- They help the RL model understand the **local boundary geometry**
+- They indicate **potential action space** for Type1 actions (adding new vertices)
+- They provide spatial awareness beyond immediate neighbors
+- Null values indicate "free space" where new vertices could be placed
+
+### Parameters
+
+- **`g` (default: 3)**: Number of fan sectors
+  - More sectors = finer sampling resolution
+  - Typical values: 3-5
+
+- **`beta` (default: 6)**: Fan radius multiplier
+  - Larger beta = wider search area
+  - Typical values: 4-8
+
 ## Notes
 
 - The script **does not modify any source code** - it only reads data through existing APIs
 - All data is captured in real-time during generation
 - The output is deterministic given the same model and mesh
 - Coordinates are stored as-is without normalization for visualization flexibility
+- **Fan points are essential** for understanding the RL model's perception of the action space

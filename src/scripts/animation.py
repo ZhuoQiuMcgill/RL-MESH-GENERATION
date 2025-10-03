@@ -73,19 +73,24 @@ VERBOSE = True                         # Print detailed progress information
 # ============================================================================
 
 
-def get_local_env(generator, n):
+def get_local_env(generator, n, g, beta):
     """Extract local environment data around the reference point.
     
     Args:
         generator: MeshGenerator instance
         n: Number of neighbors on each side of reference point
+        g: Number of fan sector points
+        beta: Fan radius factor
         
     Returns:
         dict: Local environment data containing:
             - reference_vertex_idx: Index of the reference vertex
             - reference_coords: Coordinates of reference vertex
             - neighbors: List of neighbor coordinates
+            - fan_points: List of fan sector sampled points (can contain None)
             - n: Number of neighbors parameter
+            - g: Number of fan sectors
+            - beta: Fan radius factor
     """
     state_info = generator.get_current_state_info()
     boundary = state_info['boundary']
@@ -94,20 +99,33 @@ def get_local_env(generator, n):
     # Get neighbor vertices (includes reference point)
     local_env_vertices = boundary.get_neighbors(ref_idx, n)
     
+    # Get fan sector points
+    try:
+        fan_points = boundary.get_fan_points(ref_idx, n, beta, g)
+        # Convert to list format, preserving None values
+        fan_points_list = [list(p) if p is not None else None for p in fan_points]
+    except Exception:
+        fan_points_list = [None] * g
+    
     return {
         'reference_vertex_idx': ref_idx,
         'reference_coords': list(boundary.get_vertex_by_index(ref_idx)),
         'neighbors': [list(v) for v in local_env_vertices],
-        'n': n
+        'fan_points': fan_points_list,
+        'n': n,
+        'g': g,
+        'beta': beta
     }
 
 
-def capture_current_state(generator, n, action=None, element=None, is_initial=False):
+def capture_current_state(generator, n, g, beta, action=None, element=None, is_initial=False):
     """Capture complete state at current step.
     
     Args:
         generator: MeshGenerator instance
         n: Number of neighbors for local environment
+        g: Number of fan sector points
+        beta: Fan radius factor
         action: Action information dict (None for initial state)
         element: Generated element vertices (None if no element generated)
         is_initial: Whether this is the initial state
@@ -122,7 +140,7 @@ def capture_current_state(generator, n, action=None, element=None, is_initial=Fa
         'step': generator.current_step,
         'mesh_points': status['mesh_data'],
         'boundary': status['boundary_vertices'],
-        'local_env': get_local_env(generator, n),
+        'local_env': get_local_env(generator, n, g, beta),
         'action': action,
         'generated_element': element if element else None,
         'is_initial': is_initial,
@@ -132,12 +150,14 @@ def capture_current_state(generator, n, action=None, element=None, is_initial=Fa
     return state
 
 
-def generate_sequence(generator, predictor_n, max_steps, verbose):
+def generate_sequence(generator, predictor_n, predictor_g, predictor_beta, max_steps, verbose):
     """Generate complete state sequence from initial boundary to completion.
     
     Args:
         generator: Initialized MeshGenerator instance
         predictor_n: Number of neighbors for predictor
+        predictor_g: Number of fan sector points
+        predictor_beta: Fan radius factor
         max_steps: Maximum number of steps to prevent infinite loops
         verbose: Whether to print progress information
         
@@ -151,7 +171,7 @@ def generate_sequence(generator, predictor_n, max_steps, verbose):
     if verbose:
         print(f"[State 0] Initial state - Boundary size: {initial_boundary_size}")
     
-    states.append(capture_current_state(generator, predictor_n, is_initial=True))
+    states.append(capture_current_state(generator, predictor_n, predictor_g, predictor_beta, is_initial=True))
     
     # Main inference loop
     step_count = 0
@@ -174,7 +194,9 @@ def generate_sequence(generator, predictor_n, max_steps, verbose):
         # Capture new state
         state = capture_current_state(
             generator, 
-            predictor_n, 
+            predictor_n,
+            predictor_g,
+            predictor_beta,
             action=action_info, 
             element=element
         )
@@ -327,7 +349,7 @@ def main():
             print(f"{'='*70}\n")
         
         # Generate sequence
-        states = generate_sequence(generator, PREDICTOR_N, MAX_STEPS, VERBOSE)
+        states = generate_sequence(generator, PREDICTOR_N, PREDICTOR_G, PREDICTOR_BETA, MAX_STEPS, VERBOSE)
         
         if not states:
             print("\n✗ No states generated. Aborting.")
