@@ -229,10 +229,15 @@ def main():
     
     # Show output location
     if not args.preview:
-        output_dir = Path("media/videos/mesh_generation_scene")
+        # Manim saves to: media/videos/{scene_name}/{resolution}/ (relative to root dir)
+        import os
+        root_dir = Path(os.getcwd())
+        scene_name = "mesh_generation_scene"
         quality_dir = f"{manim_config.pixel_height}p{manim_config.frame_rate}"
-        output_path = output_dir / quality_dir
+        output_path = root_dir / "media" / "videos" / scene_name / quality_dir
+        video_file = output_path / "MeshGenerationScene.mp4"
         print(f"Output location: {output_path}")
+        print(f"Video file: {video_file}")
     
     print()
 

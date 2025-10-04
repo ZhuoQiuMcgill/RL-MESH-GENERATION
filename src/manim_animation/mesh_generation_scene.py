@@ -64,6 +64,9 @@ class MeshGenerationScene(Scene):
         # Create renderers
         self._create_renderers()
         
+        # Show initial boundary scene
+        self._show_initial_boundary()
+        
         # Animate through all states (borders and labels will be added inside)
         self._animate_states()
     
@@ -86,30 +89,33 @@ class MeshGenerationScene(Scene):
     
     def _show_opening_title(self):
         """Show opening title sequence for 2 seconds."""
-        # Main title - split into two lines
+        # Main title - split into two lines with Serif
         title_line1 = Text(
             "Reinforcement Learning",
+            font="Serif",
             font_size=52,
-            color=WHITE,
-            weight=BOLD
+            weight=BOLD,
+            color="#58C4DD"
         )
         title_line2 = Text(
             "for Mesh Generation",
+            font="Serif",
             font_size=52,
-            color=WHITE,
-            weight=BOLD
+            weight=BOLD,
+            color="#58C4DD"
         )
         
         # Position title lines
         title_line1.move_to(ORIGIN + UP * 0.5)
         title_line2.next_to(title_line1, DOWN, buff=0.2)
         
-        # Subtitle
+        # Subtitle with Serif and yellow color
         subtitle = Text(
             "- powered by Design Lab",
+            font="Serif",
             font_size=28,
-            color=GRAY,
-            slant=ITALIC
+            slant=ITALIC,
+            color="#FFFF00"
         )
         subtitle.next_to(title_line2, DOWN, buff=0.6)
         
@@ -120,6 +126,86 @@ class MeshGenerationScene(Scene):
         self.play(FadeIn(title_group, run_time=0.5))
         self.wait(2.0)
         self.play(FadeOut(title_group, run_time=0.5))
+    
+    def _show_initial_boundary(self):
+        """Show initial boundary in the center of screen for 2 seconds."""
+        if not self.states:
+            return
+        
+        # Get initial boundary from first state
+        first_state = self.states[0]
+        initial_boundary = first_state.get('boundary', [])
+        
+        if not initial_boundary:
+            return
+        
+        # Calculate bounds of initial boundary
+        from .utils.coordinate_transform import calculate_bounds
+        min_x, max_x, min_y, max_y = calculate_bounds(initial_boundary)
+        boundary_width = max_x - min_x
+        boundary_height = max_y - min_y
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        
+        # Calculate scale to fit in screen with padding
+        frame_width = config.config.frame_width
+        frame_height = config.config.frame_height
+        padding_ratio = 0.2  # 20% padding
+        available_width = frame_width * (1 - 2 * padding_ratio)
+        available_height = frame_height * (1 - 2 * padding_ratio)
+        
+        scale_x = available_width / boundary_width if boundary_width > 0 else 1.0
+        scale_y = available_height / boundary_height if boundary_height > 0 else 1.0
+        scale = min(scale_x, scale_y)
+        
+        # Create boundary visualization
+        boundary_group = VGroup()
+        
+        # Draw boundary edges
+        for i in range(len(initial_boundary)):
+            start = initial_boundary[i]
+            end = initial_boundary[(i + 1) % len(initial_boundary)]
+            
+            # Transform coordinates to center of screen
+            start_x = (start[0] - center_x) * scale
+            start_y = (start[1] - center_y) * scale
+            end_x = (end[0] - center_x) * scale
+            end_y = (end[1] - center_y) * scale
+            
+            line = Line(
+                [start_x, start_y, 0],
+                [end_x, end_y, 0],
+                stroke_color=config.BOUNDARY_COLOR,
+                stroke_width=config.BOUNDARY_EDGE_STROKE_WIDTH
+            )
+            boundary_group.add(line)
+        
+        # Draw boundary points
+        for vertex in initial_boundary:
+            x = (vertex[0] - center_x) * scale
+            y = (vertex[1] - center_y) * scale
+            
+            dot = Dot(
+                point=[x, y, 0],
+                radius=config.BOUNDARY_POINT_RADIUS,
+                color=config.BOUNDARY_COLOR
+            )
+            boundary_group.add(dot)
+        
+        # Add label
+        label = Text(
+            "Initial Boundary",
+            font="Serif",
+            font_size=36,
+            weight=BOLD,
+            color="#58C4DD"
+        )
+        label.to_edge(UP, buff=0.5)
+        
+        # Animate: fade in, hold, fade out
+        self.play(FadeIn(VGroup(boundary_group, label), run_time=0.5))
+        self.wait(2.0)
+        self.play(FadeOut(VGroup(boundary_group, label), run_time=0.5))
     
     def _calculate_region_bounds(self):
         """Calculate bounds for each region in Manim coordinate space."""
@@ -238,32 +324,50 @@ class MeshGenerationScene(Scene):
         return borders
     
     def _create_region_labels(self) -> VGroup:
-        """Create labels for each region."""
+        """Create labels for each region with Serif font and blue color."""
         labels = VGroup()
         
-        # Mesh label (top-center of mesh region)
-        mesh_label = Text("Mesh", font_size=32, color=WHITE, weight=BOLD)
+        # Mesh label (just below the divider line)
+        mesh_label = Text(
+            "Mesh", 
+            font="Serif", 
+            font_size=32, 
+            weight=BOLD,
+            color="#58C4DD"
+        )
         mesh_label.move_to([
             (self.mesh_bounds[0] + self.mesh_bounds[1]) / 2,  # Center of mesh region
-            self.mesh_bounds[3] + self.label_height / 2,  # Just above mesh region top
+            self.mesh_bounds[3] + 0.05,  # Slightly above the divider
             0
         ])
         labels.add(mesh_label)
         
-        # Local Environment label (top-center of local region) - single line
-        local_label = Text("Local Environment", font_size=28, color=WHITE, weight=BOLD)
+        # Local Environment label (just below the divider line)
+        local_label = Text(
+            "Local Environment", 
+            font="Serif", 
+            font_size=28, 
+            weight=BOLD,
+            color="#58C4DD"
+        )
         local_label.move_to([
             (self.local_bounds[0] + self.local_bounds[1]) / 2,  # Center of local region
-            self.local_bounds[3] + self.label_height / 2,  # Just above local region top
+            self.local_bounds[3] + 0.05,  # Slightly above the divider
             0
         ])
         labels.add(local_label)
         
-        # Boundary label (top-center of boundary region)
-        boundary_label = Text("Boundary", font_size=32, color=WHITE, weight=BOLD)
+        # Boundary label (just below the divider line)
+        boundary_label = Text(
+            "Boundary", 
+            font="Serif", 
+            font_size=32, 
+            weight=BOLD,
+            color="#58C4DD"
+        )
         boundary_label.move_to([
             (self.boundary_bounds[0] + self.boundary_bounds[1]) / 2,  # Center of boundary region
-            self.boundary_bounds[3] + self.label_height / 2,  # Just above boundary region top
+            self.boundary_bounds[3] + 0.05,  # Slightly above the divider
             0
         ])
         labels.add(boundary_label)
