@@ -403,15 +403,20 @@ class MeshGenerationScene(Scene):
         # Add first state without animation
         first_state_mobjects = self._create_state_mobjects(self.states[0])
         self.add(first_state_mobjects)
+
+        # Hold initial state before any transition
+        initial_state_id = self.states[0].get('state_id', 0)
+        initial_duration = config.get_state_duration(initial_state_id)
+        if initial_duration > 0:
+            self.wait(initial_duration)
         
         # Animate through remaining states
         for i in range(1, len(self.states)):
             state = self.states[i]
             state_id = state.get('state_id', i)
-            prev_state_id = self.states[i-1].get('state_id', i-1)
             
-            # Get timing
-            prev_duration = config.get_state_duration(prev_state_id)
+            # Get timing for the state we are about to show
+            current_duration = config.get_state_duration(state_id)
             transition_time = config.DEFAULT_TRANSITION_DURATION
             
             # Create mobjects for current state
@@ -429,9 +434,9 @@ class MeshGenerationScene(Scene):
                 self.add(current_mobjects)
                 self.wait(transition_time)
             
-            # Hold current state
-            if prev_duration > 0:
-                self.wait(prev_duration)
+            # Hold the current state for its configured duration
+            if current_duration > 0:
+                self.wait(current_duration)
             
             first_state_mobjects = current_mobjects
             
@@ -439,10 +444,7 @@ class MeshGenerationScene(Scene):
             if i % 10 == 0 or i == len(self.states) - 1:
                 print(f"Rendered state {i + 1}/{len(self.states)}")
         
-        # Hold final state
-        final_duration = config.get_state_duration(self.states[-1].get('state_id', len(self.states)-1))
-        if final_duration > 0:
-            self.wait(final_duration)
+        # Note: final state's duration has already been applied in the loop above
     
     def _create_state_mobjects(self, state: Dict) -> VGroup:
         """

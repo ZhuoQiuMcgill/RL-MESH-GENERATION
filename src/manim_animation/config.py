@@ -38,6 +38,10 @@ BOUNDARY_COLOR = RED                # Red for boundary
 LOCAL_ENV_POINT_COLOR = YELLOW      # Yellow for local environment points
 LOCAL_ENV_EDGE_COLOR = YELLOW       # Yellow for local environment edges
 REF_POINT_COLOR = GREEN             # Green for reference point
+SECTOR_AREA_COLOR = "#FF6B6B"       # Light red for sector area
+SECTOR_AREA_OPACITY = 0.3           # Opacity for sector area fill
+FAN_POINT_COLOR = "#FF00FF"         # Magenta for fan points in mesh region
+FAN_POINT_RADIUS_MESH = 0.06        # Radius for fan points in mesh region
 
 # Local region colors
 LOCAL_AXIS_COLOR = GRAY             # Gray for coordinate axes
@@ -78,8 +82,8 @@ STATE_DURATION_OVERRIDES = {
     # Example: Fast-forward through boring middle states
     # (40, 80): 0.5,  # States 40-80 only show for 0.5 seconds each
     
-    # Example: Emphasize important states
-    # 0: 2.0,         # Initial state shows for 2 seconds
+    # Emphasize initial state
+    0: 3.0,         # Initial state shows for 3 seconds
     # 114: 3.0,       # Final state shows for 3 seconds
 }
 
@@ -113,9 +117,11 @@ FADE_TRANSITIONS = True             # Use fade transitions between states
 # Z-Index layering (higher = on top)
 Z_INDEX_MESH_EDGES = 1
 Z_INDEX_MESH_POINTS = 2
+Z_INDEX_SECTOR_AREA = 2.5
 Z_INDEX_BOUNDARY = 3
 Z_INDEX_LOCAL_ENV_EDGES = 4
 Z_INDEX_LOCAL_ENV_POINTS = 5
+Z_INDEX_FAN_POINTS_MESH = 5.5
 Z_INDEX_REF_POINT = 6
 
 

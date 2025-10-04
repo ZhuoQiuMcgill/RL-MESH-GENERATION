@@ -36,12 +36,14 @@ def normalize_local_env(
     # Extract reference point
     ref_point = np.array(neighbors[ref_point_idx])
     
-    # Extract previous neighbor (the one used to define x-axis)
-    prev_neighbor_idx = ref_point_idx - 1
-    prev_neighbor = np.array(neighbors[prev_neighbor_idx])
+    # Extract vr1 (right neighbor, the one used to define x-axis)
+    # In neighbors array: [..., vl2, vl1, v0, vr1, vr2, ...]
+    # X-axis should point from v0 to vr1 (next in array, ref_point_idx + 1)
+    vr1_idx = ref_point_idx + 1
+    vr1 = np.array(neighbors[vr1_idx])
     
-    # Calculate x-axis direction vector (from ref to prev neighbor)
-    x_axis_vec = prev_neighbor - ref_point
+    # Calculate x-axis direction vector (from v0 to vr1)
+    x_axis_vec = vr1 - ref_point
     x_axis_length = np.linalg.norm(x_axis_vec)
     
     # Handle edge case where points coincide
