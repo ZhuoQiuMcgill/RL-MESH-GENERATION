@@ -225,8 +225,19 @@ class FanShape:
                         rep[i] = v
 
                     best_vertices = rep
-                    best_angles = [x[0] if x is not None else None for x in [(items[0] if len(items) > 0 else None), (items[1] if len(items) > 1 else None), (items[2] if len(items) > 2 else None)]
-                    best_dists = [float(np.linalg.norm((np.asarray(v, dtype=float) - v_ref))) if v is not None else float("inf") for v in best_vertices]
+                    # Recompute angles for selected representatives to avoid syntax pitfalls
+                    best_angles = []
+                    for v in best_vertices:
+                        if v is None:
+                            best_angles.append(None)
+                        else:
+                            vec2 = np.asarray(v, dtype=float) - v_ref
+                            best_angles.append(self._angle(vec2))
+                    # Update distances accordingly
+                    best_dists = [
+                        float(np.linalg.norm((np.asarray(v, dtype=float) - v_ref))) if v is not None else float("inf")
+                        for v in best_vertices
+                    ]
 
         # Ensure strictly increasing angles across sectors (best-effort)
         # With open sectors and tie-breaking, duplicates should rarely happen.
