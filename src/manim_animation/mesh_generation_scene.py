@@ -55,13 +55,16 @@ class MeshGenerationScene(Scene):
         # Load data
         self._load_data()
         
+        # Show opening title sequence
+        self._show_opening_title()
+        
         # Calculate region bounds
         self._calculate_region_bounds()
         
         # Create renderers
         self._create_renderers()
         
-        # Animate through all states (borders will be added inside)
+        # Animate through all states (borders and labels will be added inside)
         self._animate_states()
     
     def _load_data(self):
@@ -81,33 +84,76 @@ class MeshGenerationScene(Scene):
         print(f"Mesh: {self.metadata.get('mesh_name', 'unknown')}")
         print(f"Model: {self.metadata.get('model_name', 'unknown')}")
     
+    def _show_opening_title(self):
+        """Show opening title sequence for 2 seconds."""
+        # Main title - split into two lines
+        title_line1 = Text(
+            "Reinforcement Learning",
+            font_size=52,
+            color=WHITE,
+            weight=BOLD
+        )
+        title_line2 = Text(
+            "for Mesh Generation",
+            font_size=52,
+            color=WHITE,
+            weight=BOLD
+        )
+        
+        # Position title lines
+        title_line1.move_to(ORIGIN + UP * 0.5)
+        title_line2.next_to(title_line1, DOWN, buff=0.2)
+        
+        # Subtitle
+        subtitle = Text(
+            "- powered by Design Lab",
+            font_size=28,
+            color=GRAY,
+            slant=ITALIC
+        )
+        subtitle.next_to(title_line2, DOWN, buff=0.6)
+        
+        # Group titles
+        title_group = VGroup(title_line1, title_line2, subtitle)
+        
+        # Animate: fade in, hold, fade out
+        self.play(FadeIn(title_group, run_time=0.5))
+        self.wait(2.0)
+        self.play(FadeOut(title_group, run_time=0.5))
+    
     def _calculate_region_bounds(self):
         """Calculate bounds for each region in Manim coordinate space."""
         # Get camera frame dimensions
         frame_width = config.config.frame_width
         frame_height = config.config.frame_height
         
+        # Reserve space for labels at top of each region
+        label_height = 0.4  # Height reserved for region labels
+        
         # Calculate region boundaries
         # Mesh region: left 60%
         mesh_left = -frame_width / 2
         mesh_right = mesh_left + frame_width * config.MESH_REGION_WIDTH_RATIO
         mesh_bottom = -frame_height / 2
-        mesh_top = frame_height / 2
+        mesh_top = frame_height / 2 - label_height  # Leave space for label
         self.mesh_bounds = (mesh_left, mesh_right, mesh_bottom, mesh_top)
         
         # Local region: right upper (40% width × 50% height)
         local_left = mesh_right
         local_right = frame_width / 2
         local_bottom = 0
-        local_top = frame_height / 2
+        local_top = frame_height / 2 - label_height  # Leave space for label
         self.local_bounds = (local_left, local_right, local_bottom, local_top)
         
         # Boundary region: right lower (40% width × 50% height)
         boundary_left = mesh_right
         boundary_right = frame_width / 2
         boundary_bottom = -frame_height / 2
-        boundary_top = 0
+        boundary_top = 0 - label_height  # Leave space for label
         self.boundary_bounds = (boundary_left, boundary_right, boundary_bottom, boundary_top)
+        
+        # Store label height for later use
+        self.label_height = label_height
         
         # Calculate mesh scale factor
         self._calculate_mesh_scale()
@@ -191,16 +237,58 @@ class MeshGenerationScene(Scene):
         
         return borders
     
+    def _create_region_labels(self) -> VGroup:
+        """Create labels for each region."""
+        labels = VGroup()
+        
+        # Mesh label (top-center of mesh region)
+        mesh_label = Text("Mesh", font_size=32, color=WHITE, weight=BOLD)
+        mesh_label.move_to([
+            (self.mesh_bounds[0] + self.mesh_bounds[1]) / 2,  # Center of mesh region
+            self.mesh_bounds[3] + self.label_height / 2,  # Just above mesh region top
+            0
+        ])
+        labels.add(mesh_label)
+        
+        # Local Environment label (top-center of local region) - single line
+        local_label = Text("Local Environment", font_size=28, color=WHITE, weight=BOLD)
+        local_label.move_to([
+            (self.local_bounds[0] + self.local_bounds[1]) / 2,  # Center of local region
+            self.local_bounds[3] + self.label_height / 2,  # Just above local region top
+            0
+        ])
+        labels.add(local_label)
+        
+        # Boundary label (top-center of boundary region)
+        boundary_label = Text("Boundary", font_size=32, color=WHITE, weight=BOLD)
+        boundary_label.move_to([
+            (self.boundary_bounds[0] + self.boundary_bounds[1]) / 2,  # Center of boundary region
+            self.boundary_bounds[3] + self.label_height / 2,  # Just above boundary region top
+            0
+        ])
+        labels.add(boundary_label)
+        
+        return labels
+    
     def _animate_states(self):
         """Animate through all states.
         
         Note: Manim creates partial movie files for each play() call.
         This is normal behavior and they will be combined into one final video.
         """
-        # Create and add region borders once at the start
+        # Create region borders and labels
+        persistent_elements = VGroup()
+        
         if config.SHOW_REGION_BORDERS:
             borders = self._create_region_borders()
-            self.add(borders)
+            persistent_elements.add(borders)
+        
+        # Always add region labels
+        labels = self._create_region_labels()
+        persistent_elements.add(labels)
+        
+        # Fade in borders and labels
+        self.play(FadeIn(persistent_elements, run_time=0.5))
         
         if not self.states:
             return

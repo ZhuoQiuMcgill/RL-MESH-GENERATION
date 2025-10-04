@@ -20,11 +20,6 @@ import json
 import datetime
 import traceback
 
-# Add project root to path for imports
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
 from src.mesh_generator.mesh_generator import MeshGenerator
 from src.mesh_generator.rl_predictor import RLPredictor
 from src.utils.importer import MeshImporter
@@ -42,7 +37,7 @@ MESH_DIR = os.path.join(DATA_DIR, 'mesh')
 MODEL_DIR = os.path.join(DATA_DIR, 'models')
 
 # ------------- Mesh and Model Configuration -------------
-MODEL_NAME = 'basic1-robust68.886'     # Model name (without .zip extension)
+MODEL_NAME = 'basic1'     # Model name (without .zip extension)
 MESH_NAME = 'basic1'                   # Mesh name (without .txt extension)
 
 MODEL_PATH = os.path.join(MODEL_DIR, MODEL_NAME + '.zip')
