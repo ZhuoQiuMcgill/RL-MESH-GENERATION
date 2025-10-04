@@ -82,8 +82,8 @@ STATE_DURATION_OVERRIDES = {
     # Example: Fast-forward through boring middle states
     # (40, 80): 0.5,  # States 40-80 only show for 0.5 seconds each
     
-    # Emphasize initial state
-    0: 3.0,         # Initial state shows for 3 seconds
+    # Example: Emphasize important states
+    # 0: 2.0,         # Initial state shows for 2 seconds
     # 114: 3.0,       # Final state shows for 3 seconds
 }
 
@@ -105,7 +105,7 @@ LOCAL_AXIS_LENGTH = 1.5             # Length of coordinate axes in local region
 # ============================================================================
 # Data Configuration
 # ============================================================================
-DEFAULT_JSON_PATH = "data/animation_data/basic1_sequence.json"
+DEFAULT_JSON_PATH = "data/animation_data/boundary6_sequence.json"
 
 # ============================================================================
 # Animation Options

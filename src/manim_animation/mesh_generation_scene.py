@@ -69,6 +69,9 @@ class MeshGenerationScene(Scene):
         
         # Animate through all states (borders and labels will be added inside)
         self._animate_states()
+        
+        # Show final mesh scene
+        self._show_final_mesh()
     
     def _load_data(self):
         """Load JSON sequence data."""
@@ -445,6 +448,97 @@ class MeshGenerationScene(Scene):
                 print(f"Rendered state {i + 1}/{len(self.states)}")
         
         # Note: final state's duration has already been applied in the loop above
+    
+    def _show_final_mesh(self):
+        """Show final mesh in the center of screen for 3 seconds."""
+        if not self.states:
+            return
+        
+        # Get final state
+        final_state = self.states[-1]
+        mesh_points = final_state.get('mesh_points', {})
+        
+        if not mesh_points:
+            return
+        
+        # Extract mesh data
+        from .utils.coordinate_transform import extract_mesh_edges, get_all_mesh_vertices
+        mesh_edges = extract_mesh_edges(mesh_points)
+        mesh_vertices = get_all_mesh_vertices(mesh_points)
+        
+        if not mesh_vertices:
+            return
+        
+        # Calculate bounds and center
+        from .utils.coordinate_transform import calculate_bounds
+        min_x, max_x, min_y, max_y = calculate_bounds(mesh_vertices)
+        mesh_width = max_x - min_x
+        mesh_height = max_y - min_y
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        
+        # Calculate scale to fit in screen with padding
+        frame_width = config.config.frame_width
+        frame_height = config.config.frame_height
+        padding_ratio = 0.2  # 20% padding
+        available_width = frame_width * (1 - 2 * padding_ratio)
+        available_height = frame_height * (1 - 2 * padding_ratio)
+        
+        scale_x = available_width / mesh_width if mesh_width > 0 else 1.0
+        scale_y = available_height / mesh_height if mesh_height > 0 else 1.0
+        scale = min(scale_x, scale_y)
+        
+        # Fade out current scene
+        self.play(FadeOut(*self.mobjects, run_time=0.5))
+        
+        # Create mesh visualization
+        mesh_group = VGroup()
+        
+        # Draw mesh edges
+        for edge in mesh_edges:
+            start = edge[0]
+            end = edge[1]
+            
+            # Transform coordinates to center of screen
+            start_x = (start[0] - center_x) * scale
+            start_y = (start[1] - center_y) * scale
+            end_x = (end[0] - center_x) * scale
+            end_y = (end[1] - center_y) * scale
+            
+            line = Line(
+                [start_x, start_y, 0],
+                [end_x, end_y, 0],
+                stroke_color=config.MESH_EDGE_COLOR,
+                stroke_width=config.MESH_EDGE_STROKE_WIDTH
+            )
+            mesh_group.add(line)
+        
+        # Draw mesh points
+        for vertex in mesh_vertices:
+            x = (vertex[0] - center_x) * scale
+            y = (vertex[1] - center_y) * scale
+            
+            dot = Dot(
+                point=[x, y, 0],
+                radius=config.MESH_POINT_RADIUS,
+                color=config.MESH_POINT_COLOR
+            )
+            mesh_group.add(dot)
+        
+        # Add label
+        label = Text(
+            "Final Mesh",
+            font="Serif",
+            font_size=36,
+            weight=BOLD,
+            color="#58C4DD"
+        )
+        label.to_edge(UP, buff=0.5)
+        
+        # Animate: fade in, hold, fade out
+        self.play(FadeIn(VGroup(mesh_group, label), run_time=0.5))
+        self.wait(3.0)
+        self.play(FadeOut(VGroup(mesh_group, label), run_time=0.5))
     
     def _create_state_mobjects(self, state: Dict) -> VGroup:
         """
