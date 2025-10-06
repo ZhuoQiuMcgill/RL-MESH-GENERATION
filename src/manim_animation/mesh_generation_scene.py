@@ -12,6 +12,7 @@ from typing import Dict, List, Tuple
 from pathlib import Path
 
 from . import config
+from .action_intro_scene import ActionIntroScene
 from .renderers import MeshRenderer, LocalRenderer, BoundaryRenderer
 from .utils.coordinate_transform import calculate_bounds, get_all_mesh_vertices
 
@@ -57,6 +58,9 @@ class MeshGenerationScene(Scene):
         
         # Show opening title sequence
         self._show_opening_title()
+        
+        # Show action introduction scene
+        self._show_action_intro()
         
         # Calculate region bounds
         self._calculate_region_bounds()
@@ -129,6 +133,27 @@ class MeshGenerationScene(Scene):
         self.play(FadeIn(title_group, run_time=0.5))
         self.wait(2.0)
         self.play(FadeOut(title_group, run_time=0.5))
+    
+    def _show_action_intro(self):
+        """Show action introduction scene."""
+        # Create action intro scene instance
+        action_intro = ActionIntroScene(actions_json_path="data/animation_data/actions.json")
+        
+        # Load actions data
+        action_intro._load_actions_data()
+        
+        # Create scene elements
+        title = action_intro._create_title()
+        action_panels = action_intro._create_action_panels()
+        legend = action_intro._create_legend()
+        
+        # Group all elements
+        all_elements = VGroup(title, action_panels, legend)
+        
+        # Animate
+        self.play(FadeIn(all_elements, run_time=0.5))
+        self.wait(3.0)
+        self.play(FadeOut(all_elements, run_time=0.5))
     
     def _show_initial_boundary(self):
         """Show initial boundary in the center of screen for 2 seconds."""

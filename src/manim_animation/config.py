@@ -105,7 +105,7 @@ LOCAL_AXIS_LENGTH = 1.5             # Length of coordinate axes in local region
 # ============================================================================
 # Data Configuration
 # ============================================================================
-DEFAULT_JSON_PATH = "data/animation_data/boundary6_sequence.json"
+DEFAULT_JSON_PATH = "data/animation_data/basic1_sequence.json"
 
 # ============================================================================
 # Animation Options
