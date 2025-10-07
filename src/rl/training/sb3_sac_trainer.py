@@ -182,29 +182,29 @@ class _EpisodeCallback(BaseCallback):
             if self.enable_verbose_logging:
                 logger.info(f"Starting evaluation #{self._eval_count + 1} (Episode {self._current_episode})")
 
-            # 使用当前环境进行评估
+            # Use current environment for evaluation
             eval_env = self.model.env
             if eval_env is None:
-                logger.warning("评估环境不可用，跳过评估")
+                logger.warning("Evaluation environment unavailable, skipping evaluation")
                 return
                 
-            # 设置环境为评估模式
+            # Set environment to evaluation mode
             if hasattr(eval_env, 'set_eval_mode'):
                 eval_env.set_eval_mode(True)
                 if self.enable_verbose_logging:
-                    logger.debug("已设置环境为评估模式")
+                    logger.debug("Set environment to evaluation mode")
 
-            # 执行评估
+            # Execute evaluation
             episode_rewards = []
-            completed_episodes = []  # 记录每个episode是否完成
+            completed_episodes = []  # Record whether each episode completed
             
             for i in range(self.n_eval_episodes):
-                # 在每个评估episode开始前检查停止事件
+                # Check stop event before each evaluation episode
                 if self.stop_event and self.stop_event.is_set():
-                    logger.info("检测到停止信号，终止评估")
+                    logger.info("Stop signal detected, terminating evaluation")
                     return
 
-                # 兼容不同版本的gymnasium/gym API
+                # Compatible with different versions of gymnasium/gym API
                 reset_result = eval_env.reset()
                 if isinstance(reset_result, tuple):
                     obs, _ = reset_result
@@ -213,17 +213,17 @@ class _EpisodeCallback(BaseCallback):
 
                 total_reward = 0.0
                 done = False
-                episode_completed = False  # 追踪整个episode的完成状态
+                episode_completed = False  # Track episode completion status throughout
 
                 while not done:
-                    # 在evaluation步骤中也检查停止事件
+                    # Check stop event during evaluation steps
                     if self.stop_event and self.stop_event.is_set():
-                        logger.info("检测到停止信号，终止当前评估episode")
+                        logger.info("Stop signal detected, terminating current evaluation episode")
                         return
 
                     action, _ = self.model.predict(obs, deterministic=True)
 
-                    # 兼容不同版本的step返回值
+                    # Compatible with different versions of step return values
                     step_result = eval_env.step(action)
                     if len(step_result) == 5:
                         obs, reward, terminated, truncated, info = step_result
@@ -231,36 +231,36 @@ class _EpisodeCallback(BaseCallback):
                     elif len(step_result) == 4:
                         obs, reward, done, info = step_result
                     else:
-                        logger.error(f"意外的step返回值数量: {len(step_result)}")
+                        logger.error(f"Unexpected step return value count: {len(step_result)}")
                         break
 
                     total_reward += float(reward)
                     
-                    # 检查episode是否在任何时刻完成任务（修复：追踪整个过程）
+                    # Check if episode completed task at any point (fix: track throughout process)
                     if info and 'detail' in info:
                         current_completed = info['detail'].get('is_completed', False)
-                        # 一旦检测到完成状态，就保持为True（不会被后续的False覆盖）
+                        # Once completed state detected, keep it True (won't be overwritten by False)
                         if current_completed:
                             episode_completed = True
                     
-                    # 如果episode因为任务完成而终止，立即停止（避免继续执行无效动作）
+                    # If episode terminated due to task completion, stop immediately (avoid invalid actions)
                     if done and episode_completed:
                         break
 
                 episode_rewards.append(total_reward)
                 completed_episodes.append(episode_completed)
                 if self.enable_verbose_logging:
-                    logger.debug(f"评估Episode {i + 1}/{self.n_eval_episodes}: {total_reward:.3f}, 完成: {episode_completed}")
+                    logger.debug(f"Evaluation Episode {i + 1}/{self.n_eval_episodes}: {total_reward:.3f}, Completed: {episode_completed}")
 
-            # 计算平均奖励
+            # Calculate average reward
             mean_reward = float(np.mean(episode_rewards))
             std_reward = float(np.std(episode_rewards))
             
-            # 统计完成情况
+            # Count completion statistics
             completed_count = sum(completed_episodes)
             completion_rate = completed_count / len(completed_episodes) if completed_episodes else 0.0
 
-            # 更新评估统计
+            # Update evaluation statistics
             self._eval_count += 1
             self._last_eval_reward = mean_reward
             self._eval_rewards_history.append({
@@ -274,65 +274,77 @@ class _EpisodeCallback(BaseCallback):
                 'completion_rate': completion_rate
             })
 
-            # 恢复环境为训练模式
+            # Restore environment to training mode
             if hasattr(eval_env, 'set_eval_mode'):
                 eval_env.set_eval_mode(False)
                 if self.enable_verbose_logging:
-                    logger.debug("已恢复环境为训练模式")
+                    logger.debug("Restored environment to training mode")
                     
             if self.enable_verbose_logging:
-                logger.info(f"评估完成: 平均奖励={mean_reward:.3f}±{std_reward:.3f}, 完成率={completion_rate:.2%} ({completed_count}/{len(completed_episodes)})")
-                # 调试日志：显示每个episode的完成状态
-                logger.debug(f"Episode完成状态: {completed_episodes}")
-                logger.debug(f"Episode奖励: {[f'{r:.2f}' for r in episode_rewards]}")
+                logger.info(f"Evaluation complete: average reward={mean_reward:.3f}±{std_reward:.3f}, completion rate={completion_rate:.2%} ({completed_count}/{len(completed_episodes)})")
+                # Debug log: show completion status of each episode
+                logger.debug(f"Episode completion status: {completed_episodes}")
+                logger.debug(f"Episode rewards: {[f'{r:.2f}' for r in episode_rewards]}")
             
-            # 检查是否满足保存条件：根据配置决定是否要求完成任务
+            # Check if save condition is met: decide whether to require completion based on config
             should_save = False
             save_reason = ""
+            save_type = ""  # Track save type: "best" or "good"
             
-            # 检查完成条件（如果启用了要求完成的配置）
+            # Check completion condition (if completion requirement is enabled)
             completion_check_passed = True
             if self.require_completed_for_save and completed_count == 0:
                 completion_check_passed = False
-                save_reason = "没有episode完成任务，不保存模型"
+                save_reason = "No episodes completed task, not saving model"
             
-            # 检查奖励提升条件
+            # Check reward conditions if completion check passed
             if completion_check_passed:
-                if mean_reward <= self._best_eval_reward:
-                    save_reason = f"奖励未提升 ({mean_reward:.3f} <= {self._best_eval_reward:.3f})，不保存模型"
-                else:
+                # Check if this is a new best model
+                if mean_reward > self._best_eval_reward:
                     should_save = True
+                    save_type = "best"
                     if self.require_completed_for_save:
-                        save_reason = f"发现更好的模型! 奖励提升: {self._best_eval_reward:.3f} -> {mean_reward:.3f}, 完成率: {completion_rate:.2%}"
+                        save_reason = f"Found better model! Reward improved: {self._best_eval_reward:.3f} -> {mean_reward:.3f}, completion rate: {completion_rate:.2%}"
                     else:
-                        save_reason = f"发现更好的模型! 奖励提升: {self._best_eval_reward:.3f} -> {mean_reward:.3f} (不要求完成)"
+                        save_reason = f"Found better model! Reward improved: {self._best_eval_reward:.3f} -> {mean_reward:.3f} (completion not required)"
+                # Check if this is a good model (>= 95% of best)
+                elif mean_reward >= self._best_eval_reward * 0.95:
+                    should_save = True
+                    save_type = "good"
+                    save_reason = f"Found good model! Reward: {mean_reward:.3f} (>= 95% of best: {self._best_eval_reward:.3f})"
+                else:
+                    save_reason = f"Reward too low ({mean_reward:.3f} < 95% of best: {self._best_eval_reward * 0.95:.3f}), not saving model"
             
             if should_save:
-                self._best_eval_reward = mean_reward
-                logger.info(f"🎉 {save_reason}")  # 保存成功总是记录
+                # Update best reward only if this is truly the best
+                if save_type == "best":
+                    self._best_eval_reward = mean_reward
+                    
+                logger.info(f"🎉 {save_reason}")  # Save success always logged
 
-                # 保存最佳模型
+                # Save model
                 if self.training_session_dir:
-                    self._save_best_model(mean_reward, completed_count, completion_rate)
+                    self._save_best_model(mean_reward, completed_count, completion_rate, save_type)
             else:
                 if self.enable_verbose_logging:
-                    logger.info(save_reason)  # 不保存的原因只在verbose模式下记录
+                    logger.info(save_reason)  # Not saving reason only logged in verbose mode
 
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"自动评估过程中出错: {e}")
+            logger.error(f"Error during automatic evaluation: {e}")
             import traceback
             logger.error(traceback.format_exc())
 
-    def _save_best_model(self, reward, completed_count=0, completion_rate=0.0):
+    def _save_best_model(self, reward, completed_count=0, completion_rate=0.0, save_type="best"):
         """
-        保存最佳模型
+        Save best or good model
         
         Args:
-            reward: 当前评估奖励
-            completed_count: 完成任务的episode数量
-            completion_rate: 任务完成率
+            reward: Current evaluation reward
+            completed_count: Number of episodes that completed the task
+            completion_rate: Task completion rate
+            save_type: Type of save - "best" for new best, "good" for >= 95% of best
         """
         try:
             import os
@@ -341,148 +353,72 @@ class _EpisodeCallback(BaseCallback):
             logger = logging.getLogger(__name__)
 
             if not self.training_session_dir:
-                logger.warning("训练会话目录未设置，无法保存最佳模型")
+                logger.warning("Training session directory not set, cannot save best model")
                 return
 
-            # 创建最佳模型目录
+            # Create best model directory
             best_model_dir = os.path.join(self.training_session_dir, "best_model")
             os.makedirs(best_model_dir, exist_ok=True)
 
-            # 删除之前的最佳模型文件
-            if self._best_model_path:
-                try:
-                    # 删除之前的SB3模型文件
-                    if 'sb3_path' in self._best_model_path and os.path.exists(self._best_model_path['sb3_path']):
-                        os.remove(self._best_model_path['sb3_path'])
-                        if self.enable_verbose_logging:
-                            logger.info(f"已删除旧的SB3模型: {self._best_model_path['sb3_path']}")
+            # No longer delete previous models - keep all good models
+            # Generate new filename with episode number and save type
+            episode_num = self._current_episode
+            if save_type == "best":
+                model_name = f"best_ep{episode_num}_reward{reward:.3f}_completed{completed_count}_rate{completion_rate:.0%}"
+            else:  # save_type == "good"
+                model_name = f"good_ep{episode_num}_reward{reward:.3f}_completed{completed_count}_rate{completion_rate:.0%}"
 
-                    # 删除之前的Checkpoint文件
-                    if 'checkpoint_path' in self._best_model_path and os.path.exists(
-                            self._best_model_path['checkpoint_path']):
-                        os.remove(self._best_model_path['checkpoint_path'])
-                        if self.enable_verbose_logging:
-                            logger.info(f"已删除旧的Checkpoint: {self._best_model_path['checkpoint_path']}")
-
-                    # 删除之前的评估信息文件
-                    if 'eval_info_path' in self._best_model_path and os.path.exists(
-                            self._best_model_path['eval_info_path']):
-                        os.remove(self._best_model_path['eval_info_path'])
-                        if self.enable_verbose_logging:
-                            logger.info(f"已删除旧的评估信息: {self._best_model_path['eval_info_path']}")
-                    
-                    # 删除之前的replay buffer文件 (新增)
-                    if 'checkpoint_path' in self._best_model_path:
-                        old_buffer_path = self._best_model_path['checkpoint_path'].replace('.pth', '_replay_buffer.pkl')
-                        if os.path.exists(old_buffer_path):
-                            os.remove(old_buffer_path)
-                            if self.enable_verbose_logging:
-                                logger.info(f"已删除旧的replay buffer: {old_buffer_path}")
-
-                except Exception as e:
-                    logger.warning(f"删除旧的最佳模型文件时发生错误: {e}")
-            else:
-                # 如果没有记录的最佳模型路径，尝试清理目录中的所有最佳模型文件
-                try:
-                    for pattern in ["best_model_*.zip", "best_model_*.pth", "best_model_*_eval_info.json", "best_model_*_replay_buffer.pkl"]:
-                        for file_path in glob.glob(os.path.join(best_model_dir, pattern)):
-                            os.remove(file_path)
-                            if self.enable_verbose_logging:
-                                logger.info(f"已删除旧的最佳模型文件: {file_path}")
-                except Exception as e:
-                    logger.warning(f"清理旧的最佳模型文件时发生错误: {e}")
-
-            # 生成新的文件名，包含完成信息
-            timestamp = self._current_episode
-            best_model_name = f"best_model_ep{timestamp}_reward{reward:.3f}_completed{completed_count}_rate{completion_rate:.0%}"
-
-            # 保存SB3模型
-            sb3_path = os.path.join(best_model_dir, f"{best_model_name}.zip")
+            # Save SB3 model
+            sb3_path = os.path.join(best_model_dir, f"{model_name}.zip")
             self.model.save(sb3_path)
 
-            # 保存PyTorch模型参数
-            import torch
-            checkpoint = {
-                'episode': self._current_episode,
-                'eval_count': self._eval_count,
-                'eval_reward': reward,
-                'training_timesteps': self.model.num_timesteps,
-                'learning_rate': self.model.learning_rate,
-                'gamma': self.model.gamma,
-                'tau': self.model.tau,
-                'actor_state_dict': self.model.policy.actor.state_dict(),
-                'critic_state_dict': self.model.policy.critic.state_dict(),
-                'critic_target_state_dict': self.model.policy.critic_target.state_dict(),
-            }
-
-            # 保存温度参数
-            if hasattr(self.model.policy, 'log_ent_coef'):
-                checkpoint['log_ent_coef'] = self.model.policy.log_ent_coef.data.clone()
-            elif hasattr(self.model.policy, 'ent_coef'):
-                checkpoint['ent_coef'] = self.model.policy.ent_coef
-
-            # 保存replay buffer (新增)
-            if hasattr(self.model, 'replay_buffer') and self.model.replay_buffer is not None:
-                buffer_path = os.path.join(best_model_dir, f"{best_model_name}_replay_buffer.pkl")
-                try:
-                    import pickle
-                    with open(buffer_path, 'wb') as f:
-                        pickle.dump(self.model.replay_buffer, f)
-                    logger.info(f"Best model replay buffer saved: {buffer_path}")
-                    checkpoint['has_replay_buffer'] = True
-                except Exception as e:
-                    logger.warning(f"Failed to save best model replay buffer: {e}")
-                    checkpoint['has_replay_buffer'] = False
-            else:
-                checkpoint['has_replay_buffer'] = False
-
-            # 保存checkpoint
-            checkpoint_path = os.path.join(best_model_dir, f"{best_model_name}.pth")
-            torch.save(checkpoint, checkpoint_path)
-
-            # 保存评估信息
+            # Save evaluation info (simplified to avoid redundant data)
             import json
             eval_info = {
                 'episode': self._current_episode,
                 'eval_count': self._eval_count,
                 'eval_reward': float(reward),
                 'best_eval_reward': float(self._best_eval_reward),
+                'save_type': save_type,
                 'completed_count': completed_count,
                 'completion_rate': float(completion_rate),
                 'n_eval_episodes': self.n_eval_episodes,
                 'evaluation_frequency': self.evaluation_frequency,
                 'timestamp': self.model.num_timesteps,
-                'eval_history': self._eval_rewards_history,
                 'save_criteria': {
-                    'requires_completion': True,
-                    'requires_better_reward': True,
-                    'description': 'Model saved only if episodes completed tasks AND reward improved'
+                    'requires_completion': self.require_completed_for_save,
+                    'requires_better_reward': save_type == 'best',
+                    'threshold_percentage': 0.95 if save_type == 'good' else 1.0,
+                    'description': f'Model saved as {save_type} - new best or >= 95% of best reward'
                 }
             }
 
-            eval_info_path = os.path.join(best_model_dir, f"{best_model_name}_eval_info.json")
+            eval_info_path = os.path.join(best_model_dir, f"{model_name}_info.json")
             with open(eval_info_path, 'w', encoding='utf-8') as f:
                 json.dump(eval_info, f, indent=2, default=str)
 
-            # 更新最佳模型路径
-            self._best_model_path = {
+            # Track this model (no longer overwrite _best_model_path, just log it)
+            current_model_info = {
                 'sb3_path': sb3_path,
-                'checkpoint_path': checkpoint_path,
                 'eval_info_path': eval_info_path,
                 'reward': reward,
-                'episode': self._current_episode
+                'episode': self._current_episode,
+                'save_type': save_type
             }
 
-            logger.info(f"✓ 最佳模型已保存 (奖励: {reward:.3f}, 完成: {completed_count}/{self.n_eval_episodes}, 完成率: {completion_rate:.1%})")
+            # Update _best_model_path only for truly best models (for backward compatibility)
+            if save_type == "best":
+                self._best_model_path = current_model_info
+
+            logger.info(f"✓ {save_type.capitalize()} model saved (reward: {reward:.3f}, completed: {completed_count}/{self.n_eval_episodes}, completion rate: {completion_rate:.1%})")
             if self.enable_verbose_logging:
-                logger.info(f"  - SB3模型: {sb3_path}")
-                logger.info(f"  - Checkpoint: {checkpoint_path}")
-                logger.info(f"  - 评估信息: {eval_info_path}")
+                logger.info(f"  - SB3 model: {sb3_path}")
+                logger.info(f"  - Model info: {eval_info_path}")
 
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"保存最佳模型失败: {e}")
+            logger.error(f"Failed to save {save_type} model: {e}")
             import traceback
             logger.error(traceback.format_exc())
 
