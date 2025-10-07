@@ -1,6 +1,6 @@
 # Direct imports that won't cause circular dependencies
-from .angle import euclidean_distance, get_interior_angle, is_angle_in_slice, normalize_coordinates, decode_coordinate, \
-    calculate_polygon_area, valid_element_angle, get_avg_interior_angle
+from .angle import euclidean_distance, get_interior_angle, is_angle_in_slice, normalize_coordinates_polar, decode_coordinate_polar, \
+    normalize_coordinates_cartesian, decode_coordinate_cartesian, calculate_polygon_area, valid_element_angle, get_avg_interior_angle
 from .segment import ray_segment_intersection, orientation, point_on_line_segment, line_segments_intersect, \
     segments_overlap_interior, point_to_segment_distance
 
@@ -70,7 +70,8 @@ __all__ = [
     'euclidean_distance',
     'get_interior_angle',
     'is_angle_in_slice',
-    'normalize_coordinates',
+    'normalize_coordinates_polar',
+    'normalize_coordinates_cartesian',
     'calculate_polygon_area',
     'ray_segment_intersection',
     'orientation',
@@ -78,7 +79,8 @@ __all__ = [
     'line_segments_intersect',
     'segments_overlap_interior',
     'point_to_segment_distance',
-    'decode_coordinate',
+    'decode_coordinate_polar',
+    'decode_coordinate_cartesian',
     'valid_element_angle',
     'get_avg_interior_angle'
 ]

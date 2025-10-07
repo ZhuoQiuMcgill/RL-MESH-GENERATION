@@ -1,5 +1,5 @@
 from src.interfaces import Predictor
-from src.utils import normalize_coordinates
+from src.utils import normalize_coordinates_cartesian
 import numpy as np
 import os
 from stable_baselines3 import SAC
@@ -153,7 +153,7 @@ class RLPredictor(Predictor):
         scale_factor = 1.0 / base_len if base_len > 0 else 1.0
         
         # Normalize coordinates
-        normalized_vertex = normalize_coordinates(
+        normalized_vertex = normalize_coordinates_cartesian(
             neighbor_coords + fan_coords, ref_v, right_neighbor_v, scale_factor
         )
         

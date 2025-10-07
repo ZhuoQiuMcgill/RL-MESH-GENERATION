@@ -4,7 +4,7 @@ Geometry visualization API blueprint
 """
 import logging
 from flask import Blueprint, request, jsonify
-from src.utils.angle import normalize_coordinates, euclidean_distance
+from src.utils.angle import normalize_coordinates_cartesian, euclidean_distance
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ def normalize_coordinates_endpoint():
         logger.info(f"Scale factor: {scale_factor} (avg edge length: {average_edge_length})")
         
         # 调用normalize_coordinates函数
-        normalized_coords = normalize_coordinates(
+        normalized_coords = normalize_coordinates_cartesian(
             vertices=coordinates,
             ref_vertex=tuple(ref_vertex),
             right_neighbor_vertex=tuple(right_neighbor_vertex),

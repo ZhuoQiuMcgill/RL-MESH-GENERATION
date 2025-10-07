@@ -13,6 +13,9 @@ class GeometryViz {
         this.points = [];
         this.normalizedData = null;
         
+        // Coordinate system toggle state (true = polar, false = cartesian)
+        this.showPolarCoordinates = true;
+        
         // UI elements
         this.pointCountEl = document.getElementById('pointCount');
         this.coordinatesListEl = document.getElementById('coordinatesList');
@@ -21,6 +24,9 @@ class GeometryViz {
         this.statusTextEl = document.getElementById('statusText');
         this.clearBtn = document.getElementById('clearBtn');
         this.processBtn = document.getElementById('processBtn');
+        this.toggleCoordBtn = document.getElementById('toggleCoordBtn');
+        this.coordSystemDescEl = document.getElementById('coordSystemDesc');
+        this.coordListTitleEl = document.getElementById('coordListTitle');
         
         // Configuration
         this.pointRadius = 6;
@@ -44,6 +50,10 @@ class GeometryViz {
         this.processBtn.addEventListener('click', () => {
             this.processCoordinates();
         });
+        
+        this.toggleCoordBtn.addEventListener('click', () => {
+            this.toggleCoordinateSystem();
+        });
     }
     
     addPoint(event) {
@@ -51,8 +61,13 @@ class GeometryViz {
         const scaleX = this.inputCanvas.width / rect.width;
         const scaleY = this.inputCanvas.height / rect.height;
         
-        const x = (event.clientX - rect.left) * scaleX;
-        const y = (event.clientY - rect.top) * scaleY;
+        // Convert to mathematical coordinate system (origin at bottom-left, Y up)
+        const canvasX = (event.clientX - rect.left) * scaleX;
+        const canvasY = (event.clientY - rect.top) * scaleY;
+        
+        // Transform: origin at bottom-left, Y axis pointing up
+        const x = canvasX;
+        const y = this.inputCanvas.height - canvasY;
         
         this.points.push({ x, y });
         this.updateUI();
@@ -116,6 +131,12 @@ class GeometryViz {
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
+        // Helper function to convert from math coords to canvas coords
+        const toCanvasY = (mathY) => canvas.height - mathY;
+        
+        // Draw coordinate axes (origin at bottom-left)
+        this.drawInputCoordinateAxes(ctx, canvas, toCanvasY);
+        
         if (this.points.length === 0) return;
         
         const refIndex = Math.floor(this.points.length / 2);
@@ -126,18 +147,20 @@ class GeometryViz {
             ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-connecting-line-color').trim() || '#718096';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(this.points[0].x, this.points[0].y);
+            ctx.moveTo(this.points[0].x, toCanvasY(this.points[0].y));
             
             for (let i = 1; i < this.points.length; i++) {
-                ctx.lineTo(this.points[i].x, this.points[i].y);
+                ctx.lineTo(this.points[i].x, toCanvasY(this.points[i].y));
             }
             ctx.stroke();
         }
         
         // Draw points
         this.points.forEach((point, index) => {
+            const canvasY = toCanvasY(point.y);
+            
             ctx.beginPath();
-            ctx.arc(point.x, point.y, this.pointRadius, 0, 2 * Math.PI);
+            ctx.arc(point.x, canvasY, this.pointRadius, 0, 2 * Math.PI);
             
             // Set colors
             if (index === refIndex) {
@@ -160,7 +183,7 @@ class GeometryViz {
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(index.toString(), point.x, point.y);
+            ctx.fillText(index.toString(), point.x, canvasY);
         });
     }
     
@@ -186,36 +209,56 @@ class GeometryViz {
         const centerY = canvas.height / 2;
         const maxRadius = Math.min(canvas.width, canvas.height) / 3;
         
-        // Draw coordinate axes
-        this.drawCoordinateAxes(ctx, centerX, centerY, maxRadius);
-        
-        // Find maximum radius for scaling
-        const maxR = Math.max(...normalizedCoords.map(coord => coord[0]));
-        const scale = maxR > 0 ? maxRadius / maxR : 1;
-        
         const refIndex = this.normalizedData.ref_vertex_index;
         const rightNeighborIndex = this.normalizedData.right_neighbor_index;
         
-        // Convert polar coordinates to Cartesian and draw connecting lines
-        const cartesianPoints = normalizedCoords.map(([r, theta]) => ({
-            x: centerX + r * scale * Math.cos(theta),
-            y: centerY + r * scale * Math.sin(theta)
-        }));
+        let canvasPoints;
         
-        if (cartesianPoints.length > 1) {
+        if (this.showPolarCoordinates) {
+            // Polar mode: Interpret data as [r, theta] and convert to canvas coordinates
+            this.drawPolarAxes(ctx, centerX, centerY, maxRadius);
+            
+            // Find maximum radius for scaling
+            const maxR = Math.max(...normalizedCoords.map(coord => coord[0]));
+            const scale = maxR > 0 ? maxRadius / maxR : 1;
+            
+            // Convert polar to Cartesian for rendering
+            canvasPoints = normalizedCoords.map(([r, theta]) => ({
+                x: centerX + r * scale * Math.cos(theta),
+                y: centerY + r * scale * Math.sin(theta)
+            }));
+        } else {
+            // Cartesian mode: Interpret data as [x, y] directly
+            this.drawCartesianAxes(ctx, centerX, centerY, maxRadius);
+            
+            // Find maximum absolute value for scaling
+            const maxAbsVal = Math.max(
+                ...normalizedCoords.flatMap(coord => [Math.abs(coord[0]), Math.abs(coord[1])])
+            );
+            const scale = maxAbsVal > 0 ? maxRadius / maxAbsVal : 1;
+            
+            // Treat data as Cartesian coordinates directly
+            canvasPoints = normalizedCoords.map(([x, y]) => ({
+                x: centerX + x * scale,
+                y: centerY - y * scale  // Negative y because canvas Y increases downward
+            }));
+        }
+        
+        // Draw connecting lines
+        if (canvasPoints.length > 1) {
             ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-connecting-line-color').trim() || '#718096';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(cartesianPoints[0].x, cartesianPoints[0].y);
+            ctx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
             
-            for (let i = 1; i < cartesianPoints.length; i++) {
-                ctx.lineTo(cartesianPoints[i].x, cartesianPoints[i].y);
+            for (let i = 1; i < canvasPoints.length; i++) {
+                ctx.lineTo(canvasPoints[i].x, canvasPoints[i].y);
             }
             ctx.stroke();
         }
         
         // Draw points
-        cartesianPoints.forEach((point, index) => {
+        canvasPoints.forEach((point, index) => {
             ctx.beginPath();
             ctx.arc(point.x, point.y, this.pointRadius, 0, 2 * Math.PI);
             
@@ -250,7 +293,64 @@ class GeometryViz {
         ctx.fill();
     }
     
-    drawCoordinateAxes(ctx, centerX, centerY, maxRadius) {
+    drawInputCoordinateAxes(ctx, canvas, toCanvasY) {
+        const axisColor = getComputedStyle(document.documentElement).getPropertyValue('--canvas-axis-color').trim() || '#4a5568';
+        const textColor = getComputedStyle(document.documentElement).getPropertyValue('--color-text-tertiary').trim() || '#a0aec0';
+        
+        ctx.strokeStyle = axisColor;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        
+        const arrowSize = 8;
+        const margin = 30;
+        
+        // X axis (bottom of canvas)
+        ctx.beginPath();
+        ctx.moveTo(margin, toCanvasY(margin));
+        ctx.lineTo(canvas.width - margin, toCanvasY(margin));
+        ctx.stroke();
+        
+        // X axis arrow
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(canvas.width - margin, toCanvasY(margin));
+        ctx.lineTo(canvas.width - margin - arrowSize, toCanvasY(margin - arrowSize/2));
+        ctx.lineTo(canvas.width - margin - arrowSize, toCanvasY(margin + arrowSize/2));
+        ctx.closePath();
+        ctx.fillStyle = axisColor;
+        ctx.fill();
+        
+        // Y axis (left side of canvas)
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(margin, toCanvasY(margin));
+        ctx.lineTo(margin, toCanvasY(canvas.height - margin));
+        ctx.stroke();
+        
+        // Y axis arrow
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(margin, toCanvasY(canvas.height - margin));
+        ctx.lineTo(margin - arrowSize/2, toCanvasY(canvas.height - margin - arrowSize));
+        ctx.lineTo(margin + arrowSize/2, toCanvasY(canvas.height - margin - arrowSize));
+        ctx.closePath();
+        ctx.fillStyle = axisColor;
+        ctx.fill();
+        
+        // Axis labels
+        ctx.fillStyle = textColor;
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('0', margin - 10, toCanvasY(margin - 10));
+        ctx.fillText('+X', canvas.width - margin, toCanvasY(margin - 15));
+        ctx.textAlign = 'right';
+        ctx.fillText('+Y', margin - 10, toCanvasY(canvas.height - margin));
+        
+        // Reset line dash
+        ctx.setLineDash([]);
+    }
+    
+    drawPolarAxes(ctx, centerX, centerY, maxRadius) {
         ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-axis-color').trim() || '#4a5568';
         ctx.lineWidth = 1;
         
@@ -271,6 +371,50 @@ class GeometryViz {
         for (let r = maxRadius / 4; r <= maxRadius; r += maxRadius / 4) {
             ctx.beginPath();
             ctx.arc(centerX, centerY, r, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+        
+        // Axis labels
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-text-tertiary').trim() || '#a0aec0';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('0', centerX - 10, centerY + 15);
+        ctx.fillText('+X', centerX + maxRadius - 10, centerY - 10);
+        ctx.fillText('+Y', centerX + 10, centerY - maxRadius + 15);
+    }
+    
+    drawCartesianAxes(ctx, centerX, centerY, maxRadius) {
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-axis-color').trim() || '#4a5568';
+        ctx.lineWidth = 1;
+        
+        // X axis
+        ctx.beginPath();
+        ctx.moveTo(centerX - maxRadius, centerY);
+        ctx.lineTo(centerX + maxRadius, centerY);
+        ctx.stroke();
+        
+        // Y axis
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY - maxRadius);
+        ctx.lineTo(centerX, centerY + maxRadius);
+        ctx.stroke();
+        
+        // Draw rectangular grid
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-grid-light-color').trim() || 'rgba(255, 255, 255, 0.15)';
+        
+        // Vertical grid lines
+        for (let x = centerX - maxRadius; x <= centerX + maxRadius; x += maxRadius / 4) {
+            ctx.beginPath();
+            ctx.moveTo(x, centerY - maxRadius);
+            ctx.lineTo(x, centerY + maxRadius);
+            ctx.stroke();
+        }
+        
+        // Horizontal grid lines
+        for (let y = centerY - maxRadius; y <= centerY + maxRadius; y += maxRadius / 4) {
+            ctx.beginPath();
+            ctx.moveTo(centerX - maxRadius, y);
+            ctx.lineTo(centerX + maxRadius, y);
             ctx.stroke();
         }
         
@@ -323,6 +467,25 @@ class GeometryViz {
         }
     }
     
+    toggleCoordinateSystem() {
+        this.showPolarCoordinates = !this.showPolarCoordinates;
+        
+        // Update button text
+        if (this.showPolarCoordinates) {
+            this.toggleCoordBtn.textContent = 'Switch to Cartesian';
+            this.coordSystemDescEl.textContent = 'Processed polar coordinate results';
+            this.coordListTitleEl.textContent = 'Normalized Coordinates (r, θ):';
+        } else {
+            this.toggleCoordBtn.textContent = 'Switch to Polar';
+            this.coordSystemDescEl.textContent = 'Processed Cartesian coordinate results';
+            this.coordListTitleEl.textContent = 'Normalized Coordinates (x, y):';
+        }
+        
+        // Redraw canvas and update results
+        this.drawOutputCanvas();
+        this.updateResultsList();
+    }
+    
     updateResultsList() {
         if (!this.normalizedData) {
             this.resultsListEl.textContent = 'Waiting for processing...';
@@ -333,23 +496,46 @@ class GeometryViz {
         const refIndex = this.normalizedData.ref_vertex_index;
         const rightNeighborIndex = this.normalizedData.right_neighbor_index;
         
-        this.resultsListEl.innerHTML = coords
-            .map(([r, theta], index) => {
-                let className = '';
-                let label = '';
-                
-                if (index === refIndex) {
-                    className = 'text-green-600 font-semibold';
-                    label = ' (Reference Point)';
-                } else if (index === rightNeighborIndex) {
-                    className = 'text-yellow-600 font-semibold';
-                    label = ' (Right Neighbor)';
-                }
-                
-                const degrees = (theta * 180 / Math.PI).toFixed(1);
-                return `<div class="${className}">${index}: [${r.toFixed(3)}, ${theta.toFixed(3)} (${degrees}°)]${label}</div>`;
-            })
-            .join('');
+        if (this.showPolarCoordinates) {
+            // Display as polar coordinates: [r, theta]
+            this.resultsListEl.innerHTML = coords
+                .map(([val1, val2], index) => {
+                    let className = '';
+                    let label = '';
+                    
+                    if (index === refIndex) {
+                        className = 'text-green-600 font-semibold';
+                        label = ' (Reference Point)';
+                    } else if (index === rightNeighborIndex) {
+                        className = 'text-yellow-600 font-semibold';
+                        label = ' (Right Neighbor)';
+                    }
+                    
+                    // Display as polar: r, theta (with degrees)
+                    const degrees = (val2 * 180 / Math.PI).toFixed(1);
+                    return `<div class="${className}">${index}: [${val1.toFixed(3)}, ${val2.toFixed(3)} (${degrees}°)]${label}</div>`;
+                })
+                .join('');
+        } else {
+            // Display as Cartesian coordinates: [x, y]
+            this.resultsListEl.innerHTML = coords
+                .map(([val1, val2], index) => {
+                    let className = '';
+                    let label = '';
+                    
+                    if (index === refIndex) {
+                        className = 'text-green-600 font-semibold';
+                        label = ' (Reference Point)';
+                    } else if (index === rightNeighborIndex) {
+                        className = 'text-yellow-600 font-semibold';
+                        label = ' (Right Neighbor)';
+                    }
+                    
+                    // Display as Cartesian: x, y (no conversion, just display raw values)
+                    return `<div class="${className}">${index}: [${val1.toFixed(3)}, ${val2.toFixed(3)}]${label}</div>`;
+                })
+                .join('');
+        }
         
         // Add processing information
         this.resultsListEl.innerHTML += `

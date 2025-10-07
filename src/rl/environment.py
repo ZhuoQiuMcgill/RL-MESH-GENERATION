@@ -7,7 +7,7 @@ from typing import Any
 from src.geometry import Mesh, Boundary
 from src.rl.action.action_manager import ActionManager
 from .config import load_config
-from src.utils import euclidean_distance, normalize_coordinates, calculate_polygon_area
+from src.utils import euclidean_distance, normalize_coordinates_cartesian, calculate_polygon_area
 
 
 class MeshEnv(gym.Env):
@@ -279,7 +279,7 @@ class MeshEnv(gym.Env):
         scale_factor = 1.0 / base_len if base_len > 0 else 1.0
 
         # 4. normalize coordinates in one shot
-        normalized_vertex = normalize_coordinates(
+        normalized_vertex = normalize_coordinates_cartesian(
             neighbor_coords + fan_coords, ref_v, right_neighbor_v, scale_factor
         )
 

@@ -5,7 +5,7 @@ from gymnasium import spaces
 from .type0_left import ActionType0Left
 from .type0_right import ActionType0Right
 from .type1 import ActionType1
-from src.utils import euclidean_distance, decode_coordinate, get_interior_angle
+from src.utils import euclidean_distance, decode_coordinate_cartesian, get_interior_angle
 
 
 class ActionManager:
@@ -95,7 +95,7 @@ class ActionManager:
             spaces.Box: Action space with shape (3,) and range [-1, 1]
         """
         # return spaces.Box(low=-1, high=1, shape=(self.action_dim,), dtype=np.float32)
-        return spaces.Box(low=np.array([-1, 0, -3.14]), high=np.array([1, 1.5, 0]), dtype=np.float32)
+        return spaces.Box(low=np.array([-1, -1.5, -1.5]), high=np.array([1, 1.5, 0]), dtype=np.float32)
 
     def decode_action(self, action, boundary, reference_vertex_idx, command=False):
         type_logit = action[0]
@@ -132,7 +132,7 @@ class ActionManager:
             scale_factor = 1.0 / base_len if base_len > 0 else 1.0
             new_r, new_theta = action[1], action[2]
 
-            x, y = decode_coordinate(ref_v, right_neighbor_v, scale_factor, new_r, new_theta)
+            x, y = decode_coordinate_cartesian(ref_v, right_neighbor_v, scale_factor, new_r, new_theta)
 
             new_coords.append((x, y))
 

@@ -94,6 +94,7 @@
             <div class="canvas-container">
                 <h2 class="text-xl font-semibold mb-4 text-gray-800">Input Canvas</h2>
                 <p class="text-sm text-gray-600 mb-4">Click on canvas to add points (odd number required)</p>
+                <p class="text-xs text-gray-500 mb-2">📐 Coordinate System: Origin at bottom-left, +X right, +Y up</p>
                 <canvas id="inputCanvas" width="500" height="400" class="w-full"></canvas>
                 
                 <!-- Coordinate Display -->
@@ -107,13 +108,21 @@
 
             <!-- Right Side: Output Canvas -->
             <div class="canvas-container">
-                <h2 class="text-xl font-semibold mb-4 text-gray-800">Normalized Results</h2>
-                <p class="text-sm text-gray-600 mb-4">Processed polar coordinate results</p>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800">Normalized Results</h2>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-600">Coordinate System:</span>
+                        <button id="toggleCoordBtn" class="px-3 py-1 text-sm rounded-lg transition-colors font-medium" style="background: linear-gradient(135deg, #1E00FF 0%, #FF00FF 100%); color: white;">
+                            Switch to Cartesian
+                        </button>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600 mb-4" id="coordSystemDesc">Processed polar coordinate results</p>
                 <canvas id="outputCanvas" width="500" height="400" class="w-full"></canvas>
                 
                 <!-- Result Display -->
                 <div class="mt-4">
-                    <h3 class="font-medium text-gray-700 mb-2">Normalized Coordinates (r, θ):</h3>
+                    <h3 class="font-medium text-gray-700 mb-2" id="coordListTitle">Normalized Coordinates (r, θ):</h3>
                     <div id="resultsList" class="p-3 rounded border max-h-32 overflow-y-auto text-sm font-mono" style="background: var(--color-bg-card); border-color: var(--color-border-primary); color: var(--color-text-primary);">
                         Waiting for processing...
                     </div>

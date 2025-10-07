@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from src.geometry import Boundary
 from src.rl.action.action_manager import ActionManager
 from src.rl.environment import MeshEnv
-from src.utils import normalize_coordinates, euclidean_distance, get_avg_interior_angle
+from src.utils import normalize_coordinates_cartesian, euclidean_distance, get_avg_interior_angle
 
 action_bp = Blueprint('action', __name__, url_prefix='/action')
 
@@ -150,7 +150,7 @@ class ActionTesterService:
                 scale_factor = 1.0 / base_len if base_len > 0 else 1.0
 
                 # Normalize the clicked point
-                normalized_coords = normalize_coordinates(
+                normalized_coords = normalize_coordinates_cartesian(
                     [clicked_point], ref_vertex, right_neighbor, scale_factor
                 )[0]
 
