@@ -10,7 +10,7 @@ from src.utils import euclidean_distance, decode_coordinate, get_interior_angle
 
 class ActionManager:
     _EPS = 0.1
-    _ANGLE_EPS = 30
+    _ANGLE_EPS = 0
     _ACTION_CHANGE = True
 
     def __init__(self, alpha=2, n=2, max_steps=1000, action_config=None):
@@ -95,7 +95,7 @@ class ActionManager:
             spaces.Box: Action space with shape (3,) and range [-1, 1]
         """
         # return spaces.Box(low=-1, high=1, shape=(self.action_dim,), dtype=np.float32)
-        return spaces.Box(low=np.array([-1, 0, -1.5]), high=np.array([1, 1.5, 0]), dtype=np.float32)
+        return spaces.Box(low=np.array([-1, 0, -3.14]), high=np.array([1, 1.5, 0]), dtype=np.float32)
 
     def decode_action(self, action, boundary, reference_vertex_idx, command=False):
         type_logit = action[0]
