@@ -119,8 +119,13 @@ Examples:
     return parser.parse_args()
 
 
-def configure_manim(args):
-    """Configure Manim settings based on arguments."""
+def configure_manim(args, json_filename):
+    """Configure Manim settings based on arguments.
+    
+    Args:
+        args: Command line arguments
+        json_filename: Name of the JSON file (without extension) for output naming
+    """
     # Set quality
     quality_map = {
         'low': {'pixel_height': 480, 'pixel_width': 854, 'frame_rate': 15},
@@ -169,9 +174,12 @@ def configure_manim(args):
     if args.write_all:
         manim_config.write_all = True
     
-    # Output file
+    # Output file - include JSON filename if not specified by user
     if args.output:
         manim_config.output_file = args.output
+    else:
+        # Auto-generate output filename with JSON name
+        manim_config.output_file = f"MeshGeneration_{json_filename}"
     
     # Background color
     manim_config.background_color = config.BACKGROUND_COLOR
@@ -212,8 +220,11 @@ def main():
     
     print(f"\nLoading animation data from: {json_path}")
     
+    # Extract JSON filename (without extension) for output naming
+    json_filename = json_path.stem  # e.g., "basic1_sequence" from "basic1_sequence.json"
+    
     # Configure Manim
-    configure_manim(args)
+    configure_manim(args, json_filename)
     
     # Update config
     update_config(args)
@@ -232,10 +243,14 @@ def main():
         # Manim saves to: media/videos/{scene_name}/{resolution}/ (relative to root dir)
         import os
         root_dir = Path(os.getcwd())
-        scene_name = "mesh_generation_scene"
+        scene_name = "MeshGenerationScene"
         quality_dir = f"{manim_config.pixel_height}p{manim_config.frame_rate}"
         output_path = root_dir / "media" / "videos" / scene_name / quality_dir
-        video_file = output_path / "MeshGenerationScene.mp4"
+        
+        # Output filename includes JSON name
+        output_filename = f"{manim_config.output_file}.mp4"
+        video_file = output_path / output_filename
+        
         print(f"Output location: {output_path}")
         print(f"Video file: {video_file}")
     

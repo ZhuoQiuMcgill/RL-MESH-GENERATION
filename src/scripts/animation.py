@@ -38,7 +38,7 @@ MODEL_DIR = os.path.join(DATA_DIR, 'models')
 
 # ------------- Mesh and Model Configuration -------------
 MODEL_NAME = 'basic1'     # Model name (without .zip extension)
-MESH_NAME = 'boundary6'                   # Mesh name (without .txt extension)
+MESH_NAME = 'basic1'                   # Mesh name (without .txt extension)
 
 MODEL_PATH = os.path.join(MODEL_DIR, MODEL_NAME + '.zip')
 MESH_PATH = os.path.join(MESH_DIR, MESH_NAME + '.txt')

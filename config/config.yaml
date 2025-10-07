@@ -22,7 +22,7 @@ sb3_sac:
   learning_rate: 0.0003
 
   # 经验回放缓冲区大小 - 存储经验的容量
-  buffer_size: 100000
+  buffer_size: 1000000
 
   # 开始训练前的随机探索步数 - 确保缓冲区有足够的经验
   learning_starts: 10000
