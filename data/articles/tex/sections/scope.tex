@@ -1,0 +1,9 @@
+% 2. Scope and Problem Setting
+\section{Scope and Problem Setting}
+We focus on mesh generation as a condition--driven geometric construction problem: given a geometric domain, boundary constraints, and quality/size goals, construct a mesh that satisfies hard constraints while best achieving soft preferences. We do not address PDE solution on meshes nor general geometric recognition; our scope is the construction of 2D/3D meshes (triangular/quadrilateral and tetrahedral/hexahedral) under practical engineering requirements.
+
+We view the problem family as:
+\begin{quote}
+Boundary description + quality targets + size control $\Rightarrow$ mesh.
+\end{quote}
+Hard constraints (Global Rule) include validity (no overlaps, proper adjacency), full coverage, and boundary conformity. Soft preferences include smooth element size transitions, shape quality, alignment to directions, and regularity of valence. The goal of this paper is not to invent a universal algorithm but to provide a structured perspective that clarifies what to reuse, what to optimize, and where algorithms tend to fail.

@@ -1,0 +1,9 @@
+% 5. Cross-cutting Patterns and Insights
+\section{Cross-cutting Patterns and Insights}
+We summarize recurring patterns that the framework makes explicit:
+\begin{description}
+  \item[Strong vs. weak problem reduction.] Methods that first map to a simpler task (e.g., triangulate then quad; optimize points then triangulate) tend to be more stable and leave the Engine simpler. Purely direct methods rely heavily on Local Rule and are more prone to deadlocks.
+  \item[Global vs. local dominance.] PDE/optimization/field-guided approaches are globally coordinated with weaker explicit local rules; advancing-front/greedy approaches are strongly local with minimal global planning. Practical systems often hybridize the two.
+  \item[Quality as hard rule vs. soft preference.] Refinement methods harden minimum-angle constraints; CVT/DistMesh optimize a soft energy. This trades theoretical guarantees for flexibility and simplicity.
+  \item[Engine completeness and failure modes.] All-hex front methods may fail when implicit assumptions in Reduction/Local rules break. The framework helps pinpoint which module needs reinforcement (e.g., deferring decisions or adding parity planning).
+\end{description}

@@ -1,0 +1,57 @@
+% 4. Historical Mapping of Mesh Generation Methods
+\section{Historical Mapping of Mesh Generation Methods}
+We briefly remap representative methods to the six-part framework; details and pointers appear inline.
+
+\subsection{Structured mapping and PDE-based grids (1960s--1970s)}
+\textbf{Conformity:} largely global; local rules are implicit in PDE discretization.
+\\\textbf{Input:} boundary geometry, target spacing; often a mapping between physical and computational domains.
+\\\textbf{Global Rule:} structured topology, boundary alignment, no overlaps.
+\\\textbf{Problem Reduction:} transform meshing into solving elliptic PDEs or smooth mappings \citep{thompson1985grid}.
+\\\textbf{Local Rule:} none explicit; positions result from global solves.
+\\\textbf{Engine:} numerical solution (e.g., Laplace) until smooth coordinates emerge.
+\\\textbf{Output:} structured quad/hex meshes; high quality but limited flexibility for complex topology.
+
+\subsection{1980s: Advancing front, Delaunay, quadtree/octree}
+\paragraph{Advancing front.} Incrementally fills the domain from the boundary. Strong Local Rule, weak explicit reduction. Robust near boundaries, can struggle with dead cavities.
+\\\textbf{Input:} discretized boundary, size field.\
+\textbf{Global Rule:} fill without overlaps, maintain the moving front.\
+\textbf{Problem Reduction:} none explicit.\
+\textbf{Local Rule:} heuristic front selection and point placement.\
+\textbf{Engine:} iterative addition of elements.
+
+\paragraph{Delaunay triangulation (Bowyer--Watson).} Direct solve with clear local criterion; reduction is implicit through computational geometry \citep{bowyer1981computing,watson1981computing}.
+\\\textbf{Input:} point set (+ boundary constraints for CDT).\
+\textbf{Global Rule:} coverage, CDT constraints.\
+\textbf{Problem Reduction:} none explicit.\
+\textbf{Local Rule:} empty circumcircle; local edge flips maintain Delaunay.\
+\textbf{Engine:} incremental insertion.
+
+\paragraph{Quadtree/octree subdivision.} Recursive space partitioning acts as explicit reduction \citep{yerry1983modified}.
+\\\textbf{Input:} boundary and size thresholds.\
+\textbf{Global Rule:} coverage and balance between neighboring levels.\
+\textbf{Problem Reduction:} recursive subdivision to simple blocks.\
+\textbf{Local Rule:} split/balance predicates.\
+\textbf{Engine:} refine to leaves then convert to elements.
+
+\subsection{1990s: Quality refinement, all-quad, and all-hex}
+\paragraph{Delaunay refinement (Chew, Ruppert).} Elevates minimum-angle constraints to hard rules; reduction via iterative elimination of bad elements \citep{ruppert1995delaunay}.
+\\\textbf{Input:} PSLG, angle threshold.\
+\textbf{Global Rule:} boundary conformity and minimum-angle guarantee.\
+\textbf{Problem Reduction:} repeated local repairs to remove skinny triangles.\
+\textbf{Local Rule:} circumsenter insertion; protected splitting when invading constraints.\
+\textbf{Engine:} refine until no bad elements remain.
+
+\paragraph{All-quad meshing (Paving, Q-Morph).} Either direct layered fronts (Paving) or indirect conversion from triangles (Q-Morph). Q-Morph makes reduction explicit by first triangulating, then locally merging pairs of triangles into quads \citep{owen1998qmorph}.
+
+\paragraph{All-hex (Plastering).} 3D layered fronts; partial conformity to the framework with possible engine failure in complex regions.
+
+\subsection{2000s: Optimization and relaxation}
+\paragraph{Centroidal Voronoi tessellations (CVT/Lloyd).} Optimize point locations then triangulate, emphasizing soft preferences via an energy objective \citep{du1999centroidal,lloyd1982least}.
+\\\textbf{Engine:} alternate global Voronoi update with local centroid relocation.
+
+\paragraph{DistMesh.} Spring system relaxation with Delaunay reconnections \citep{persson2004simple}. Reduction is implicit via energy minimization.
+
+\subsection{Field-guided and parameterization-based (2010s)}
+\paragraph{Mixed-Integer Quadrangulation (MIQ).} Convert layout to cross-field and parameterization optimization, then extract quads \citep{bommes2009mixed}.
+
+\paragraph{Instant Field-Aligned Meshes.} Fast, greedy field-aligned layout: approximate reduction plus strong local decisions \citep{jakob2015instant}.

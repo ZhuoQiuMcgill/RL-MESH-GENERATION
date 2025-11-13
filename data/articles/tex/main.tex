@@ -1,0 +1,67 @@
+% Main manuscript for Engineering with Computers (Springer svjour3)
+\documentclass[smallextended]{svjour3}      % onecolumn (second format)
+\smartqed  % flush right qed marks, e.g. at end of proof
+
+% Packages
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref} % reviewer-friendly (no colored boxes)
+\usepackage{microtype}
+\usepackage{url}
+\usepackage[switch]{lineno} % optional line numbers for review (toggle below)
+
+% Review toggles
+\newif\ifanonymous % set to \anonymoustrue for anonymous review copy
+\anonymousfalse
+\newif\ifwithlinenumbers % set to \withlinenumberstrue to enable line numbers
+\withlinenumbersfalse
+
+% Journal name
+\journalname{Engineering with Computers}
+
+% Metadata (edit as appropriate)
+\title{A Condition--Driven Geometric Framework for Mesh Generation: Historical Mapping and Design Insights}
+
+\titlerunning{A Condition--Driven Framework for Mesh Generation}        % if too long for running head
+
+\ifanonymous
+  \author{Anonymous}
+  \authorrunning{Anonymous}
+  \institute{Anonymous Institution}
+\else
+  \author{First Author \and Second Author}
+  \authorrunning{First Author et al.}
+  \institute{First Author \at\\Department, University, City, Country\\\email{first.author@example.com}
+             \and
+             Second Author \at\\Institute, University, City, Country}
+\fi
+
+\date{}
+
+\begin{document}
+\maketitle
+\ifwithlinenumbers\linenumbers\fi
+
+\begin{abstract}
+Mesh generation underlies simulation, optimization, and engineering design, yet decades of algorithms are often compared in an ad-hoc manner. We propose a concise condition--driven geometric framework that decomposes a method into six modules: Input, Global Rule, Problem Reduction, Local Rule, Engine, and Output. Using this lens, we remap representative structured, unstructured, optimization-based, and field-guided methods from the 1960s to recent years, revealing cross-cutting patterns that explain success and failure modes. We further show how the framework can guide small but effective design patches, illustrated on advancing-front meshing. The framework clarifies what is reusable infrastructure and what is algorithm-specific policy, offering a path toward modular combinations and, ultimately, geometric agents for broader classes of problems.
+\keywords{Mesh generation \and Delaunay triangulation \and quadrangulation \and hexahedral meshing \and CVT \and DistMesh \and advancing front \and mixed-integer quadrangulation \and field-aligned meshing \and problem reduction}
+\end{abstract}
+
+% Sections
+\input{sections/intro}
+\input{sections/scope}
+\input{sections/framework}
+\input{sections/historical_mapping}
+\input{sections/patterns}
+\input{sections/design_example}
+\input{sections/implications}
+\input{sections/conclusion}
+\input{sections/acknowledgements}
+\input{sections/declarations}
+
+% References
+\bibliographystyle{spmpsci} % numeric Springer style
+\bibliography{references}
+
+\end{document}

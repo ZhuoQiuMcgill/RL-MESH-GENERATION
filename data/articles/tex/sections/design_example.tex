@@ -1,0 +1,13 @@
+% 6. Framework-Guided Method Design: An Illustrative Patch
+\section{Framework-Guided Method Design: An Illustrative Patch}
+To demonstrate forward utility, we sketch a light-weight patch to a basic advancing-front triangulator that often stalls in complex cavities.
+
+\paragraph{Diagnosis via the framework.} The method exhibits: (i) no explicit \emph{Problem Reduction} to avoid dead cavities; (ii) strong \emph{Local Rule} but no global parity/planning.
+
+\paragraph{Patch.} Add a coarse reduction and a parity-aware local rule:
+\begin{enumerate}
+  \item \textbf{Coarse reduction:} Before front propagation, build a coarse balanced quadtree restricted to the domain. Use it to (a) detect narrow channels and (b) seed interior points in large voids. This reduces the chance of late-stage cavities by preconditioning the space.
+  \item \textbf{Parity planning:} Track the parity of front edge counts around prospective collision zones. If two fronts are predicted to meet with odd parity, locally insert a Steiner point or perform a controlled edge flip earlier to equalize parity before collision.
+\end{enumerate}
+
+\paragraph{Qualitative effect.} In simple conceptual cases (concave bays, thin necks), the coarse seeds reduce void size while parity planning prevents one-triangle leftovers. Engine complexity barely increases, but failure cases are reduced. This mirrors the framework guidance: compensate a weak Reduction with a small, targeted Reduction+Local policy without rewriting the Engine.

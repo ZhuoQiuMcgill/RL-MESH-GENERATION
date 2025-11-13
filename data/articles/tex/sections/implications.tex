@@ -1,0 +1,10 @@
+% 7. Implications for Engineering Practice and Geometric Agents
+\section{Implications for Engineering Practice and Geometric Agents}
+\paragraph{For current practice.} The framework helps:
+\begin{itemize}
+  \item Select and combine methods by module strengths/weaknesses.
+  \item Modularize codebases: reuse Global Rule and Reduction, swap Local Rule and Engine policies.
+  \item Expose where guarantees come from (hard rules) vs. where preferences can be tuned (soft objectives).
+\end{itemize}
+
+\paragraph{Toward geometric agents.} The framework suggests a layered architecture: a unified top layer for Inputs/Rules; a middle layer that performs Problem Reduction by mapping to familiar task families; and a bottom layer hosting Engines (classical algorithms, continuous optimization, RL, or learned policies). Mesh generation is a mature testbed to validate this ``brain structure'' before generalizing to broader geometric problems.

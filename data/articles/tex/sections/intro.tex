@@ -1,0 +1,12 @@
+% 1. Introduction
+\section{Introduction}
+Mesh generation is a critical enabler for computational physics, simulation-based design, and engineering software. Despite a long history and a diversity of algorithmic families, practitioners still lack a unified way to structure, compare, and recombine methods. As a result, engineers frequently rely on experience to select or tweak codes, making systematic improvement difficult.
+
+This paper proposes and applies a simple but expressive six-part condition--driven geometric framework. We show that classical and modern meshing methods can be consistently aligned with this decomposition, and that the alignment exposes structural strengths, weaknesses, and recurring patterns across families. We further demonstrate that the framework is not merely retrospective: it can guide light-weight design patches that improve robustness without heavy re-engineering.
+
+Our contributions are threefold:
+\begin{itemize}
+  \item We present a unified six-part framework for meshing: Input, Global Rule, Problem Reduction, Local Rule, Engine, and Output.
+  \item We systematically remap major families---structured/PDE-based, advancing front, Delaunay and refinement, quadtree/octree, quadrangulation and hexahedral meshing, optimization- and field-guided methods---to this framework, highlighting module-level contrasts.
+  \item We extract cross-cutting patterns (e.g., strength of problem reduction, global vs local dominance, hard constraints vs soft preferences, engine completeness) and illustrate a framework-guided patch for advancing-front meshing.
+\end{itemize}
