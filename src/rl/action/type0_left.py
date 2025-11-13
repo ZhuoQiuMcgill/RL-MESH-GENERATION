@@ -1,6 +1,8 @@
 from src.interfaces import ActionType
 from src.utils import get_interior_angle, euclidean_distance, valid_element_angle
+from src.quality import calculate_angle_quality
 import math
+
 
 
 class ActionType0Left(ActionType):
@@ -58,7 +60,7 @@ class ActionType0Left(ActionType):
         # angles created after insertion
         angle_1 = get_interior_angle(v2, v3, boundary.get_vertex_by_index(reference_vertex_idx + 2))
         angle_2 = get_interior_angle(boundary.get_vertex_by_index(reference_vertex_idx - 3), v2, v3)
-        angle_quality = self.calculate_angle_quality(angle_1, angle_2, M_angle)
+        angle_quality = calculate_angle_quality(angle_1, angle_2, M_angle)
 
         target_len = euclidean_distance(v2, v3)
         edge_lengths = target_len

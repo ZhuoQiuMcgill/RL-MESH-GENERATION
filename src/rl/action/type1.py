@@ -1,6 +1,6 @@
 from src.interfaces import ActionType
 from src.utils import get_interior_angle, euclidean_distance, valid_element_angle
-
+from src.quality import calculate_angle_quality
 
 
 class ActionType1(ActionType):
@@ -81,7 +81,7 @@ class ActionType1(ActionType):
         angle_2 = get_interior_angle(boundary.get_vertex_by_index(reference_vertex_idx - 2), v1, v2)
 
         # angle-quality term (saturated by M_angle)
-        angle_quality = self.calculate_angle_quality(angle_1, angle_2, M_angle)
+        angle_quality = calculate_angle_quality(angle_1, angle_2, M_angle)
 
         # --- 2. smoothness term (q_smooth) --------------------------------------
         # lengths around the new edge: 5 consecutive boundary segments (±2 on each side)

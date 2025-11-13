@@ -46,8 +46,8 @@ class MeshEnv(gym.Env):
         boundary_vertices = initial_boundary.get_vertices()
         if boundary_vertices:
             all_coords = np.array(boundary_vertices)
-            min_coord = np.min(all_coords)
-            max_coord = np.max(all_coords)
+            min_coord = -999
+            max_coord = 999
         else:
             min_coord, max_coord = -1.0, 1.0
         print(f"min_coord: {min_coord}, max_coord: {max_coord}")
